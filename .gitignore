@@ -1,0 +1,29 @@
+
+# Maven
+target/
+
+# Banco de dados
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# Segredos e credenciais
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.properties

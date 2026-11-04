@@ -35,8 +35,8 @@ final class PainelConversa extends JPanel implements Scrollable {
 
     PainelConversa() {
         setLayout(new LayoutConversa());
-        setOpaque(true);
-        setBackground(TemaSakura.CARTAO);
+        // Transparente: o fundo floral fica no cartão da conversa.
+        setOpaque(false);
     }
 
     void definirUsuarioAtual(String nome) {

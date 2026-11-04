@@ -47,8 +47,7 @@ final class BarraRolagemSakura extends BasicScrollBarUI {
 
     @Override
     protected void paintTrack(Graphics g, JComponent c, Rectangle area) {
-        g.setColor(trackColor);
-        g.fillRect(area.x, area.y, area.width, area.height);
+        // Trilho transparente: o fundo da conversa aparece por trás.
     }
 
     @Override

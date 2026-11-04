@@ -214,8 +214,13 @@ public final class ClienteChat extends JFrame {
 
     private JPanel criarAreaConversa() {
 
+        // Área rolável transparente sobre o fundo floral fixo. O modo
+        // simples redesenha a área visível a cada rolagem, mantendo a
+        // decoração parada enquanto as mensagens se movem.
         rolagem.setBorder(BorderFactory.createEmptyBorder());
-        rolagem.getViewport().setBackground(TemaSakura.CARTAO);
+        rolagem.setOpaque(false);
+        rolagem.getViewport().setOpaque(false);
+        rolagem.getViewport().setScrollMode(JViewport.SIMPLE_SCROLL_MODE);
         rolagem.setHorizontalScrollBarPolicy(
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
         );
@@ -228,13 +233,7 @@ public final class ClienteChat extends JFrame {
                 e -> atualizarAcompanhamentoDoFim()
         );
 
-        PainelArredondado cartao = new PainelArredondado(
-                new BorderLayout(),
-                TemaSakura.CARTAO,
-                null,
-                TemaSakura.ROSA_BORDA,
-                TemaSakura.RAIO_CARTAO
-        );
+        FundoConversa cartao = new FundoConversa(new BorderLayout());
         cartao.setBorder(new EmptyBorder(6, 6, 6, 6));
         cartao.add(rolagem, BorderLayout.CENTER);
 

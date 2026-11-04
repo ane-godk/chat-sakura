@@ -13,14 +13,21 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
 public final class ClienteHandler
         implements Runnable, ConexaoCliente {
 
+    static final int QUANTIDADE_HISTORICO = 20;
+
     private final Socket socket;
     private final ChatService chatService;
+
+    // Protegidos pelo monitor deste handler (this).
+    private final List<Mensagem> pendentes = new ArrayList<>();
+    private boolean historicoEnviado;
 
     private BufferedReader entrada;
     private BufferedWriter saida;
@@ -85,8 +92,13 @@ public final class ClienteHandler
                 return;
             }
 
+            List<Mensagem> historico;
+
             try {
-                chatService.registrarCliente(this);
+                historico = chatService.registrarClienteComHistorico(
+                        this,
+                        QUANTIDADE_HISTORICO
+                );
                 registrado = true;
             } catch (IllegalArgumentException e) {
                 enviarLinha(
@@ -94,13 +106,25 @@ public final class ClienteHandler
                                 + e.getMessage()
                 );
                 return;
+            } catch (IllegalStateException e) {
+                enviarLinha(
+                        "SISTEMA: Não foi possível carregar o histórico."
+                );
+                System.err.println(
+                        "Erro de persistência: " + e.getMessage()
+                );
+                return;
             }
 
+            // Broadcasts recebidos a partir daqui ficam pendentes
+            // até que a confirmação e o histórico sejam enviados.
             enviarLinha(
                     "SISTEMA: Conectado como " + usuario.getNome()
             );
 
-            enviarHistorico();
+            enviarHistorico(historico);
+
+            liberarMensagensPendentes();
 
             System.out.println(
                     usuario.getNome()
@@ -178,17 +202,16 @@ public final class ClienteHandler
         }
     }
 
-    private void enviarHistorico() throws IOException {
-
-        List<Mensagem> historico =
-                chatService.buscarHistorico(20);
+    private void enviarHistorico(List<Mensagem> historico)
+            throws IOException {
 
         enviarLinha(
                 "SISTEMA: ===== HISTÓRICO RECENTE ====="
         );
 
+        // Escrita direta: enviar() enfileiraria até o fim do histórico.
         for (Mensagem mensagem : historico) {
-            enviar(mensagem);
+            enviarLinha(mensagem.formatar());
         }
 
         enviarLinha(
@@ -210,8 +233,31 @@ public final class ClienteHandler
         saida.flush();
     }
 
+    /**
+     * Envia as mensagens recebidas durante a conexão, na ordem de
+     * chegada, e passa a entregar os próximos broadcasts diretamente.
+     */
+    private synchronized void liberarMensagensPendentes()
+            throws IOException {
+
+        for (Mensagem mensagem : pendentes) {
+            enviarLinha(mensagem.formatar());
+        }
+
+        pendentes.clear();
+        historicoEnviado = true;
+    }
+
     @Override
-    public void enviar(Mensagem mensagem) throws IOException {
+    public synchronized void enviar(Mensagem mensagem)
+            throws IOException {
+
+        if (!historicoEnviado) {
+            // Apenas enfileira (sem I/O), sem atrasar o broadcast.
+            pendentes.add(mensagem);
+            return;
+        }
+
         enviarLinha(mensagem.formatar());
     }
 

@@ -88,6 +88,28 @@ public final class ChatService {
         registro.registrar(cliente);
     }
 
+    /**
+     * Lê o histórico e registra o cliente de forma atômica em relação
+     * ao envio de mensagens. Como {@link #enviarMensagem} usa o mesmo
+     * bloqueio, toda mensagem ou está no histórico retornado, ou será
+     * entregue ao cliente por broadcast — nunca nos dois, nunca em nenhum.
+     */
+    public List<Mensagem> registrarClienteComHistorico(
+            ConexaoCliente cliente,
+            int quantidade
+    ) {
+
+        synchronized (bloqueioMensagens) {
+
+            List<Mensagem> historico =
+                    repositorio.buscarUltimas(quantidade);
+
+            registro.registrar(cliente);
+
+            return historico;
+        }
+    }
+
     public void removerCliente(ConexaoCliente cliente) {
         registro.remover(cliente);
     }

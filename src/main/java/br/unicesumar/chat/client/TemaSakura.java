@@ -38,13 +38,13 @@ final class TemaSakura {
 
     // Estados
     static final Color VERDE = new Color(64, 160, 120);
-    static final Color VERDE_CLARO = new Color(230, 245, 238);
     static final Color AMBAR = new Color(230, 160, 60);
-    static final Color AMBAR_CLARO = new Color(253, 243, 224);
     static final Color AMBAR_TEXTO = new Color(160, 95, 15);
     static final Color CORAL = new Color(214, 92, 92);
-    static final Color CORAL_CLARO = new Color(252, 232, 232);
     static final Color CORAL_TEXTO = new Color(184, 60, 60);
+
+    /** Fundo translúcido de selos e controles sobre a ilustração. */
+    static final Color BRANCO_TRANSLUCIDO = new Color(255, 255, 255, 220);
 
     /**
      * Cores dos nomes de outros participantes (contraste acima de 4,5:1
@@ -65,16 +65,30 @@ final class TemaSakura {
     static final int RAIO_CONTROLE = 14;
     static final int RAIO_CARTAO = 18;
 
+    /** Texto secundário sobre a ilustração do cabeçalho (contraste ~5,7:1). */
+    static final Color TEXTO_CABECALHO = new Color(110, 70, 95);
+
     private static final String FAMILIA = escolherFamilia();
 
+    // Nunito (SIL OFL 1.1, em resources/sakura/fontes) para título e
+    // controles; Segoe UI para o texto corrido. Sem a Nunito, todas as
+    // fontes recaem na família do sistema.
+    private static final Font NUNITO_SEMIBOLD =
+            RecursosSakura.carregarFonte(RecursosSakura.FONTE_SEMIBOLD).orElse(null);
+    private static final Font NUNITO_BOLD =
+            RecursosSakura.carregarFonte(RecursosSakura.FONTE_BOLD).orElse(null);
+    private static final Font NUNITO_EXTRABOLD =
+            RecursosSakura.carregarFonte(RecursosSakura.FONTE_EXTRABOLD).orElse(null);
+
     // Fontes
-    static final Font FONTE_TITULO = fonte(Font.BOLD, 24f);
-    static final Font FONTE_TITULO_DIALOGO = fonte(Font.BOLD, 18f);
-    static final Font FONTE_SUBTITULO = fonte(Font.PLAIN, 13f);
+    static final Font FONTE_TITULO = destaque(NUNITO_EXTRABOLD, Font.BOLD, 30f);
+    static final Font FONTE_TITULO_DIALOGO = destaque(NUNITO_EXTRABOLD, Font.BOLD, 19f);
+    static final Font FONTE_SUBTITULO = destaque(NUNITO_SEMIBOLD, Font.PLAIN, 14f);
+    static final Font FONTE_BOTAO = destaque(NUNITO_BOLD, Font.BOLD, 13f);
+    static final Font FONTE_STATUS = destaque(NUNITO_BOLD, Font.BOLD, 13f);
+    static final Font FONTE_PEQUENA_NEGRITO = destaque(NUNITO_BOLD, Font.BOLD, 12.5f);
     static final Font FONTE_TEXTO = fonte(Font.PLAIN, 14f);
-    static final Font FONTE_BOTAO = fonte(Font.BOLD, 13f);
     static final Font FONTE_PEQUENA = fonte(Font.PLAIN, 12f);
-    static final Font FONTE_PEQUENA_NEGRITO = fonte(Font.BOLD, 12f);
 
     private TemaSakura() {
     }
@@ -91,6 +105,20 @@ final class TemaSakura {
 
     static Font fonte(int estilo, float tamanho) {
         return new Font(FAMILIA, estilo, 1).deriveFont(estilo, tamanho);
+    }
+
+    /** Fonte de destaque (Nunito) ou, na falta dela, a do sistema. */
+    private static Font destaque(Font base, int estiloAlternativo, float tamanho) {
+        return base != null
+                ? base.deriveFont(tamanho)
+                : fonte(estiloAlternativo, tamanho);
+    }
+
+    /** Indica se as fontes de destaque internas foram carregadas. */
+    static boolean fontesDestaqueCarregadas() {
+        return NUNITO_SEMIBOLD != null
+                && NUNITO_BOLD != null
+                && NUNITO_EXTRABOLD != null;
     }
 
     /**

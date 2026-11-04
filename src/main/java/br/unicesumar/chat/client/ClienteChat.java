@@ -148,34 +148,36 @@ public final class ClienteChat extends JFrame {
 
     private JPanel criarCabecalho() {
 
-        PainelArredondado cabecalho = new PainelArredondado(
-                new BorderLayout(TemaSakura.ESPACO_M, 0),
-                TemaSakura.ROSA_PETALA,
-                TemaSakura.CARTAO,
-                TemaSakura.ROSA_BORDA,
-                TemaSakura.RAIO_CARTAO
+        PainelCabecalho cabecalho = new PainelCabecalho(
+                new BorderLayout(TemaSakura.ESPACO_M, 0)
         );
-        cabecalho.setBorder(new EmptyBorder(10, 14, 10, 8));
+        cabecalho.setBorder(new EmptyBorder(12, 14, 12, 8));
 
-        JLabel titulo = new JLabel("Chat Sakura");
-        titulo.setFont(TemaSakura.FONTE_TITULO);
-        titulo.setForeground(TemaSakura.ROSA_ESCURO);
+        TituloSakura titulo = new TituloSakura(
+                "Chat Sakura",
+                TemaSakura.FONTE_TITULO,
+                TemaSakura.ROSA_ESCURO
+        );
 
         JLabel subtitulo = new JLabel("Converse em tempo real");
         subtitulo.setFont(TemaSakura.FONTE_SUBTITULO);
-        subtitulo.setForeground(TemaSakura.TEXTO_SUAVE);
+        subtitulo.setForeground(TemaSakura.TEXTO_CABECALHO);
 
-        JPanel titulos = new JPanel(new GridLayout(2, 1));
+        JPanel titulos = new JPanel(new BorderLayout(0, 0));
         titulos.setOpaque(false);
-        titulos.add(titulo);
-        titulos.add(subtitulo);
+        titulos.add(titulo, BorderLayout.CENTER);
+        titulos.add(subtitulo, BorderLayout.SOUTH);
+
+        JPanel blocoTitulos = new JPanel(new GridBagLayout());
+        blocoTitulos.setOpaque(false);
+        blocoTitulos.add(titulos);
 
         JPanel marca = new JPanel(
                 new BorderLayout(TemaSakura.ESPACO_M, 0)
         );
         marca.setOpaque(false);
-        marca.add(new IconeSakura(44), BorderLayout.WEST);
-        marca.add(titulos, BorderLayout.CENTER);
+        marca.add(new IconeSakura(60), BorderLayout.WEST);
+        marca.add(blocoTitulos, BorderLayout.CENTER);
 
         JPanel linhaStatus = new JPanel(
                 new FlowLayout(FlowLayout.RIGHT, 6, 0)
@@ -190,6 +192,12 @@ public final class ClienteChat extends JFrame {
         acoes.add(botaoConectar);
         acoes.add(botaoDesconectar);
         acoes.add(botaoExportar);
+
+        // O selo nunca fica mais largo que a fileira de botões,
+        // para não cobrir o título em janelas estreitas.
+        indicador.definirLarguraMaxima(
+                acoes.getPreferredSize().width - 12
+        );
 
         JPanel lateral = new JPanel(new BorderLayout(0, 6));
         lateral.setOpaque(false);

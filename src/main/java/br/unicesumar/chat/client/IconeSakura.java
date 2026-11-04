@@ -15,8 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Flor de cerejeira (sakura) desenhada em código, sem arquivos de imagem.
- * Usada no cabeçalho, no diálogo de conexão e como ícone da janela.
+ * Flor de cerejeira (sakura) usada no cabeçalho, no diálogo de conexão
+ * e como ícone da janela. Usa a imagem interna {@code flor.png}; se ela
+ * não estiver disponível, desenha a flor em código.
  */
 final class IconeSakura extends JComponent {
 
@@ -31,17 +32,52 @@ final class IconeSakura extends JComponent {
         setOpaque(false);
     }
 
+    // Flor PNG já redimensionada para o tamanho em pixels da tela.
+    private transient BufferedImage florAjustada;
+
     @Override
     protected void paintComponent(Graphics g) {
 
         Graphics2D g2 = TemaSakura.suavizar(g);
 
         try {
-            double raio = Math.min(getWidth(), getHeight()) / 2.0 - 1;
-            desenhar(g2, getWidth() / 2.0, getHeight() / 2.0, raio);
+            int lado = Math.min(getWidth(), getHeight());
+            int x = (getWidth() - lado) / 2;
+            int y = (getHeight() - lado) / 2;
+
+            BufferedImage flor = florNoTamanho(
+                    lado, g2.getTransform().getScaleX()
+            );
+
+            if (flor != null) {
+                g2.setRenderingHint(
+                        RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BILINEAR
+                );
+                g2.drawImage(flor, x, y, lado, lado, null);
+            } else {
+                desenhar(g2, getWidth() / 2.0, getHeight() / 2.0, lado / 2.0 - 1);
+            }
         } finally {
             g2.dispose();
         }
+    }
+
+    private BufferedImage florNoTamanho(int lado, double escala) {
+
+        BufferedImage original = RecursosSakura.flor().orElse(null);
+
+        if (original == null || lado <= 0) {
+            return null;
+        }
+
+        int pixels = (int) Math.ceil(lado * escala);
+
+        if (florAjustada == null || florAjustada.getWidth() != pixels) {
+            florAjustada = RecursosSakura.redimensionar(original, pixels, pixels);
+        }
+
+        return florAjustada;
     }
 
     static void desenhar(
@@ -102,7 +138,14 @@ final class IconeSakura extends JComponent {
 
         List<Image> imagens = new ArrayList<>();
 
-        for (int tamanho : new int[] {16, 24, 32, 48, 64}) {
+        BufferedImage flor = RecursosSakura.flor().orElse(null);
+
+        for (int tamanho : new int[] {16, 24, 32, 48, 64, 128}) {
+
+            if (flor != null) {
+                imagens.add(RecursosSakura.redimensionar(flor, tamanho, tamanho));
+                continue;
+            }
 
             BufferedImage imagem = new BufferedImage(
                     tamanho, tamanho, BufferedImage.TYPE_INT_ARGB

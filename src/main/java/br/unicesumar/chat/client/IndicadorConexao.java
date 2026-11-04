@@ -2,47 +2,67 @@ package br.unicesumar.chat.client;
 
 import javax.swing.JLabel;
 import javax.swing.border.EmptyBorder;
+import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 
 /**
- * Selo de estado da conexão: pílula colorida com um ponto indicador
- * (verde, âmbar ou coral) seguido do texto do estado.
+ * Selo de estado da conexão: pílula branca translúcida com borda rosa,
+ * um ponto indicador (verde, âmbar ou coral) e o texto do estado.
  */
 final class IndicadorConexao extends JLabel {
 
     private static final long serialVersionUID = 1L;
 
-    private static final int DIAMETRO_PONTO = 8;
-    private static final int MARGEM = 12;
+    private static final int DIAMETRO_PONTO = 10;
+    private static final int MARGEM = 14;
 
     enum Estado {
-        CONECTADO(TemaSakura.VERDE, TemaSakura.VERDE_CLARO),
-        CONECTANDO(TemaSakura.AMBAR, TemaSakura.AMBAR_CLARO),
-        DESCONECTADO(TemaSakura.CORAL, TemaSakura.CORAL_CLARO);
+        CONECTADO(TemaSakura.VERDE),
+        CONECTANDO(TemaSakura.AMBAR),
+        DESCONECTADO(TemaSakura.CORAL);
 
         private final Color ponto;
-        private final Color fundo;
 
-        Estado(Color ponto, Color fundo) {
+        Estado(Color ponto) {
             this.ponto = ponto;
-            this.fundo = fundo;
         }
     }
 
     private Estado estado = Estado.DESCONECTADO;
 
+    private int larguraMaxima = Integer.MAX_VALUE;
+
     IndicadorConexao() {
         super("Desconectado");
-        setFont(TemaSakura.FONTE_PEQUENA_NEGRITO);
+        setFont(TemaSakura.FONTE_STATUS);
         setForeground(TemaSakura.TEXTO);
         setOpaque(false);
         setBorder(new EmptyBorder(
-                5, MARGEM + DIAMETRO_PONTO + 7, 5, MARGEM
+                6, MARGEM + DIAMETRO_PONTO + 8, 6, MARGEM
         ));
+    }
+
+    /**
+     * Limita a largura do selo; textos maiores são abreviados com "…"
+     * e aparecem completos na dica (tooltip).
+     */
+    void definirLarguraMaxima(int largura) {
+        this.larguraMaxima = largura;
+        revalidate();
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        Dimension tamanho = super.getPreferredSize();
+        return new Dimension(
+                Math.min(tamanho.width, larguraMaxima),
+                tamanho.height
+        );
     }
 
     void mostrar(Estado novoEstado, String texto) {
@@ -58,12 +78,17 @@ final class IndicadorConexao extends JLabel {
         Graphics2D g2 = TemaSakura.suavizar(g);
 
         try {
-            float altura = getHeight() - 1f;
+            float altura = getHeight() - 1.5f;
+            RoundRectangle2D pilula = new RoundRectangle2D.Float(
+                    0.75f, 0.75f, getWidth() - 1.5f, altura, altura, altura
+            );
 
-            g2.setColor(estado.fundo);
-            g2.fill(new RoundRectangle2D.Float(
-                    0, 0, getWidth() - 1f, altura, altura, altura
-            ));
+            g2.setColor(TemaSakura.BRANCO_TRANSLUCIDO);
+            g2.fill(pilula);
+
+            g2.setStroke(new BasicStroke(1.2f));
+            g2.setColor(TemaSakura.ROSA_BORDA);
+            g2.draw(pilula);
 
             double y = (getHeight() - DIAMETRO_PONTO) / 2.0;
             g2.setColor(estado.ponto);

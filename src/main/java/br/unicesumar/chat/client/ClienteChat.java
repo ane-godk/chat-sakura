@@ -3,6 +3,10 @@ package br.unicesumar.chat.client;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.AncestorEvent;
+import javax.swing.event.AncestorListener;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -20,21 +24,28 @@ public final class ClienteChat extends JFrame {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Color ROSA = new Color(225, 105, 150);
-    private static final Color ROSA_CLARO = new Color(255, 230, 240);
-    private static final Color FUNDO = new Color(255, 247, 250);
-    private static final Color TEXTO = new Color(75, 55, 68);
-    private static final Color VERDE = new Color(45, 145, 95);
+    private static final int LIMITE_MENSAGEM = 500;
 
     private final JTextArea areaMensagens = new JTextArea();
-    private final JTextField campoMensagem = new JTextField();
 
-    private final JButton botaoEnviar = new JButton("Enviar");
-    private final JButton botaoConectar = new JButton("Conectar");
-    private final JButton botaoDesconectar = new JButton("Sair");
-    private final JButton botaoExportar = new JButton("Exportar TXT");
+    private final CampoTextoSakura campoMensagem = new CampoTextoSakura(
+            20,
+            "Digite sua mensagem...",
+            "Conecte-se para enviar mensagens"
+    );
 
-    private final JLabel labelStatus = new JLabel("Desconectado");
+    private final JLabel contador = new JLabel();
+
+    private final BotaoSakura botaoEnviar =
+            new BotaoSakura("Enviar", BotaoSakura.Estilo.PRINCIPAL);
+    private final BotaoSakura botaoConectar =
+            new BotaoSakura("Conectar", BotaoSakura.Estilo.PRINCIPAL);
+    private final BotaoSakura botaoDesconectar =
+            new BotaoSakura("Sair", BotaoSakura.Estilo.SECUNDARIO);
+    private final BotaoSakura botaoExportar =
+            new BotaoSakura("Exportar TXT", BotaoSakura.Estilo.SECUNDARIO);
+
+    private final IndicadorConexao indicador = new IndicadorConexao();
 
     private final AtomicBoolean conectado = new AtomicBoolean(false);
     private final AtomicBoolean conectando = new AtomicBoolean(false);
@@ -58,6 +69,7 @@ public final class ClienteChat extends JFrame {
         setMinimumSize(new Dimension(600, 420));
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setIconImages(IconeSakura.imagensJanela());
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -69,103 +81,40 @@ public final class ClienteChat extends JFrame {
 
     private void montarInterface() {
 
-        JPanel principal = new JPanel(new BorderLayout(0, 14));
-        principal.setBackground(FUNDO);
-        principal.setBorder(new EmptyBorder(18, 20, 18, 20));
+        int espaco = TemaSakura.ESPACO_M;
 
-        JPanel cabecalho = new JPanel(new BorderLayout(10, 8));
-        cabecalho.setOpaque(false);
-
-        JLabel titulo = new JLabel("Chat Sakura");
-        titulo.setFont(new Font("SansSerif", Font.BOLD, 28));
-        titulo.setForeground(ROSA);
-
-        JLabel subtitulo = new JLabel("Converse em tempo real");
-        subtitulo.setForeground(TEXTO);
-
-        JPanel titulos = new JPanel(new GridLayout(2, 1));
-        titulos.setOpaque(false);
-        titulos.add(titulo);
-        titulos.add(subtitulo);
-
-        JPanel acoes = new JPanel(
-                new FlowLayout(FlowLayout.RIGHT, 8, 0)
-        );
-        acoes.setOpaque(false);
-
-        estilizarBotao(botaoConectar, ROSA);
-        estilizarBotao(
-                botaoDesconectar,
-                new Color(130, 110, 125)
-        );
-        estilizarBotao(botaoExportar, ROSA);
-
-        acoes.add(botaoConectar);
-        acoes.add(botaoDesconectar);
-        acoes.add(botaoExportar);
-
-        cabecalho.add(titulos, BorderLayout.WEST);
-        cabecalho.add(acoes, BorderLayout.EAST);
-
-        areaMensagens.setEditable(false);
-        areaMensagens.setLineWrap(true);
-        areaMensagens.setWrapStyleWord(true);
-        areaMensagens.setFont(
-                new Font("SansSerif", Font.PLAIN, 14)
-        );
-        areaMensagens.setBackground(Color.WHITE);
-        areaMensagens.setForeground(TEXTO);
-        areaMensagens.setMargin(
-                new Insets(16, 16, 16, 16)
+        JPanel principal = new JPanel(new BorderLayout(0, espaco));
+        principal.setBackground(TemaSakura.FUNDO);
+        principal.setBorder(
+                new EmptyBorder(espaco, espaco, espaco, espaco)
         );
 
-        JScrollPane rolagem = new JScrollPane(areaMensagens);
-        rolagem.setBorder(
-                BorderFactory.createLineBorder(
-                        ROSA_CLARO, 2
-                )
-        );
-
-        JPanel inferior = new JPanel(
-                new BorderLayout(0, 10)
-        );
-        inferior.setOpaque(false);
-
-        labelStatus.setFont(
-                new Font("SansSerif", Font.BOLD, 12)
-        );
-
-        JPanel envio = new JPanel(
-                new BorderLayout(10, 0)
-        );
-        envio.setOpaque(false);
-
-        campoMensagem.setFont(
-                new Font("SansSerif", Font.PLAIN, 14)
-        );
-
-        campoMensagem.setBorder(
-                BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(
-                                ROSA_CLARO, 2
-                        ),
-                        new EmptyBorder(10, 12, 10, 12)
-                )
-        );
-
-        estilizarBotao(botaoEnviar, ROSA);
-
-        envio.add(campoMensagem, BorderLayout.CENTER);
-        envio.add(botaoEnviar, BorderLayout.EAST);
-
-        inferior.add(labelStatus, BorderLayout.NORTH);
-        inferior.add(envio, BorderLayout.CENTER);
-
-        principal.add(cabecalho, BorderLayout.NORTH);
-        principal.add(rolagem, BorderLayout.CENTER);
-        principal.add(inferior, BorderLayout.SOUTH);
+        principal.add(criarCabecalho(), BorderLayout.NORTH);
+        principal.add(criarAreaConversa(), BorderLayout.CENTER);
+        principal.add(criarBarraEnvio(), BorderLayout.SOUTH);
 
         setContentPane(principal);
+
+        campoMensagem.getDocument().addDocumentListener(
+                new DocumentListener() {
+                    @Override
+                    public void insertUpdate(DocumentEvent e) {
+                        atualizarContador();
+                    }
+
+                    @Override
+                    public void removeUpdate(DocumentEvent e) {
+                        atualizarContador();
+                    }
+
+                    @Override
+                    public void changedUpdate(DocumentEvent e) {
+                        atualizarContador();
+                    }
+                }
+        );
+
+        atualizarContador();
 
         botaoConectar.addActionListener(
                 e -> abrirDialogoConexao()
@@ -188,24 +137,133 @@ public final class ClienteChat extends JFrame {
         );
     }
 
-    private void estilizarBotao(
-            JButton botao,
-            Color cor
-    ) {
-        botao.setBackground(cor);
-        botao.setForeground(Color.WHITE);
-        botao.setFont(
-                new Font("SansSerif", Font.BOLD, 13)
+    private JPanel criarCabecalho() {
+
+        PainelArredondado cabecalho = new PainelArredondado(
+                new BorderLayout(TemaSakura.ESPACO_M, 0),
+                TemaSakura.ROSA_PETALA,
+                TemaSakura.CARTAO,
+                TemaSakura.ROSA_BORDA,
+                TemaSakura.RAIO_CARTAO
         );
-        botao.setFocusPainted(false);
-        botao.setBorder(
-                new EmptyBorder(11, 18, 11, 18)
+        cabecalho.setBorder(new EmptyBorder(10, 14, 10, 8));
+
+        JLabel titulo = new JLabel("Chat Sakura");
+        titulo.setFont(TemaSakura.FONTE_TITULO);
+        titulo.setForeground(TemaSakura.ROSA_ESCURO);
+
+        JLabel subtitulo = new JLabel("Converse em tempo real");
+        subtitulo.setFont(TemaSakura.FONTE_SUBTITULO);
+        subtitulo.setForeground(TemaSakura.TEXTO_SUAVE);
+
+        JPanel titulos = new JPanel(new GridLayout(2, 1));
+        titulos.setOpaque(false);
+        titulos.add(titulo);
+        titulos.add(subtitulo);
+
+        JPanel marca = new JPanel(
+                new BorderLayout(TemaSakura.ESPACO_M, 0)
         );
-        botao.setCursor(
-                Cursor.getPredefinedCursor(
-                        Cursor.HAND_CURSOR
-                )
+        marca.setOpaque(false);
+        marca.add(new IconeSakura(44), BorderLayout.WEST);
+        marca.add(titulos, BorderLayout.CENTER);
+
+        JPanel linhaStatus = new JPanel(
+                new FlowLayout(FlowLayout.RIGHT, 6, 0)
         );
+        linhaStatus.setOpaque(false);
+        linhaStatus.add(indicador);
+
+        JPanel acoes = new JPanel(
+                new FlowLayout(FlowLayout.RIGHT, 6, 0)
+        );
+        acoes.setOpaque(false);
+        acoes.add(botaoConectar);
+        acoes.add(botaoDesconectar);
+        acoes.add(botaoExportar);
+
+        JPanel lateral = new JPanel(new BorderLayout(0, 6));
+        lateral.setOpaque(false);
+        lateral.add(linhaStatus, BorderLayout.NORTH);
+        lateral.add(acoes, BorderLayout.SOUTH);
+
+        cabecalho.add(marca, BorderLayout.WEST);
+        cabecalho.add(lateral, BorderLayout.EAST);
+
+        return cabecalho;
+    }
+
+    private JPanel criarAreaConversa() {
+
+        areaMensagens.setEditable(false);
+        areaMensagens.setLineWrap(true);
+        areaMensagens.setWrapStyleWord(true);
+        areaMensagens.setFont(TemaSakura.FONTE_TEXTO);
+        areaMensagens.setBackground(TemaSakura.CARTAO);
+        areaMensagens.setForeground(TemaSakura.TEXTO);
+        areaMensagens.setSelectionColor(TemaSakura.ROSA_PETALA);
+        areaMensagens.setSelectedTextColor(TemaSakura.TEXTO);
+        areaMensagens.setMargin(new Insets(12, 14, 12, 14));
+
+        JScrollPane rolagem = new JScrollPane(areaMensagens);
+        rolagem.setBorder(BorderFactory.createEmptyBorder());
+        rolagem.getViewport().setBackground(TemaSakura.CARTAO);
+
+        PainelArredondado cartao = new PainelArredondado(
+                new BorderLayout(),
+                TemaSakura.CARTAO,
+                null,
+                TemaSakura.ROSA_BORDA,
+                TemaSakura.RAIO_CARTAO
+        );
+        cartao.setBorder(new EmptyBorder(6, 6, 6, 6));
+        cartao.add(rolagem, BorderLayout.CENTER);
+
+        return cartao;
+    }
+
+    private JPanel criarBarraEnvio() {
+
+        contador.setFont(TemaSakura.FONTE_PEQUENA);
+        contador.setHorizontalAlignment(SwingConstants.RIGHT);
+
+        // Largura fixa para o campo não "pular" ao digitar.
+        FontMetrics metricas = contador.getFontMetrics(contador.getFont());
+        contador.setPreferredSize(new Dimension(
+                metricas.stringWidth("000/" + LIMITE_MENSAGEM) + 4,
+                metricas.getHeight()
+        ));
+
+        JPanel direita = new JPanel(
+                new BorderLayout(TemaSakura.ESPACO_P, 0)
+        );
+        direita.setOpaque(false);
+        direita.add(contador, BorderLayout.WEST);
+        direita.add(botaoEnviar, BorderLayout.EAST);
+
+        JPanel barra = new JPanel(
+                new BorderLayout(TemaSakura.ESPACO_P, 0)
+        );
+        barra.setOpaque(false);
+        barra.add(campoMensagem, BorderLayout.CENTER);
+        barra.add(direita, BorderLayout.EAST);
+
+        return barra;
+    }
+
+    private void atualizarContador() {
+
+        int tamanho = campoMensagem.getDocument().getLength();
+
+        contador.setText(tamanho + "/" + LIMITE_MENSAGEM);
+
+        if (tamanho > LIMITE_MENSAGEM) {
+            contador.setForeground(TemaSakura.CORAL_TEXTO);
+        } else if (tamanho >= LIMITE_MENSAGEM * 9 / 10) {
+            contador.setForeground(TemaSakura.AMBAR_TEXTO);
+        } else {
+            contador.setForeground(TemaSakura.TEXTO_SUAVE);
+        }
     }
 
     private void abrirDialogoConexao() {
@@ -214,30 +272,41 @@ public final class ClienteChat extends JFrame {
             return;
         }
 
-        JTextField campoNome = new JTextField(15);
-        JTextField campoServidor =
-                new JTextField("localhost", 15);
-        JTextField campoPorta =
-                new JTextField("12345", 15);
+        CampoTextoSakura campoNome =
+                new CampoTextoSakura(18, "Ex.: Ana", null);
+        CampoTextoSakura campoServidor =
+                new CampoTextoSakura(18, null, null);
+        CampoTextoSakura campoPorta =
+                new CampoTextoSakura(18, null, null);
 
-        JPanel formulario = new JPanel(
-                new GridLayout(0, 1, 5, 5)
+        campoServidor.setText("localhost");
+        campoPorta.setText("12345");
+
+        JOptionPane painel = criarPainelConexao(
+                campoNome,
+                campoServidor,
+                campoPorta
         );
 
-        formulario.add(new JLabel("Nome de usuário:"));
-        formulario.add(campoNome);
-        formulario.add(new JLabel("Endereço do servidor:"));
-        formulario.add(campoServidor);
-        formulario.add(new JLabel("Porta:"));
-        formulario.add(campoPorta);
-
-        int opcao = JOptionPane.showConfirmDialog(
+        JDialog dialogo = painel.createDialog(
                 this,
-                formulario,
-                "Conectar ao Chat Sakura",
-                JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE
+                "Conectar ao Chat Sakura"
         );
+        dialogo.getContentPane().setBackground(TemaSakura.FUNDO);
+
+        // Enter confirma, como no diálogo padrão; Esc continua cancelando.
+        dialogo.getRootPane().setDefaultButton(
+                (JButton) painel.getOptions()[0]
+        );
+
+        dialogo.setVisible(true);
+        dialogo.dispose();
+
+        Object valor = painel.getValue();
+
+        int opcao = valor instanceof Integer escolha
+                ? escolha
+                : JOptionPane.CLOSED_OPTION;
 
         if (opcao != JOptionPane.OK_OPTION) {
             return;
@@ -292,6 +361,111 @@ public final class ClienteChat extends JFrame {
 
         thread.setDaemon(true);
         thread.start();
+    }
+
+    private JOptionPane criarPainelConexao(
+            CampoTextoSakura campoNome,
+            CampoTextoSakura campoServidor,
+            CampoTextoSakura campoPorta
+    ) {
+
+        JLabel titulo = new JLabel("Entrar no Chat Sakura");
+        titulo.setFont(TemaSakura.FONTE_TITULO_DIALOGO);
+        titulo.setForeground(TemaSakura.ROSA_ESCURO);
+
+        JPanel topo = new JPanel(new BorderLayout(TemaSakura.ESPACO_M, 0));
+        topo.setOpaque(false);
+        topo.add(new IconeSakura(34), BorderLayout.WEST);
+        topo.add(titulo, BorderLayout.CENTER);
+
+        JPanel formulario = new JPanel(new GridBagLayout());
+        formulario.setOpaque(false);
+
+        GridBagConstraints posicao = new GridBagConstraints();
+        posicao.gridx = 0;
+        posicao.gridy = 0;
+        posicao.weightx = 1;
+        posicao.fill = GridBagConstraints.HORIZONTAL;
+        posicao.insets = new Insets(0, 0, TemaSakura.ESPACO_G, 0);
+        formulario.add(topo, posicao);
+
+        adicionarCampo(formulario, posicao, "Nome de usuário:", campoNome);
+        adicionarCampo(formulario, posicao, "Endereço do servidor:", campoServidor);
+        adicionarCampo(formulario, posicao, "Porta:", campoPorta);
+
+        // Foco inicial no nome quando o diálogo é exibido.
+        campoNome.addAncestorListener(new AncestorListener() {
+            @Override
+            public void ancestorAdded(AncestorEvent e) {
+                SwingUtilities.invokeLater(campoNome::requestFocusInWindow);
+            }
+
+            @Override
+            public void ancestorRemoved(AncestorEvent e) {
+            }
+
+            @Override
+            public void ancestorMoved(AncestorEvent e) {
+            }
+        });
+
+        BotaoSakura botaoOk =
+                new BotaoSakura("Conectar", BotaoSakura.Estilo.PRINCIPAL);
+        BotaoSakura botaoCancelar =
+                new BotaoSakura("Cancelar", BotaoSakura.Estilo.SECUNDARIO);
+
+        JOptionPane painel = new JOptionPane(
+                formulario,
+                JOptionPane.PLAIN_MESSAGE,
+                JOptionPane.OK_CANCEL_OPTION,
+                null,
+                new Object[] {botaoOk, botaoCancelar},
+                botaoOk
+        );
+
+        botaoOk.addActionListener(
+                e -> painel.setValue(JOptionPane.OK_OPTION)
+        );
+        botaoCancelar.addActionListener(
+                e -> painel.setValue(JOptionPane.CANCEL_OPTION)
+        );
+
+        aplicarFundo(painel, TemaSakura.FUNDO);
+
+        return painel;
+    }
+
+    private static void adicionarCampo(
+            JPanel formulario,
+            GridBagConstraints posicao,
+            String rotulo,
+            JTextField campo
+    ) {
+
+        JLabel legenda = new JLabel(rotulo);
+        legenda.setFont(TemaSakura.FONTE_PEQUENA_NEGRITO);
+        legenda.setForeground(TemaSakura.TEXTO);
+        legenda.setLabelFor(campo);
+
+        posicao.gridy++;
+        posicao.insets = new Insets(0, 0, 4, 0);
+        formulario.add(legenda, posicao);
+
+        posicao.gridy++;
+        posicao.insets = new Insets(0, 0, TemaSakura.ESPACO_M, 0);
+        formulario.add(campo, posicao);
+    }
+
+    /** Aplica a cor de fundo ao painel e aos seus subpainéis. */
+    private static void aplicarFundo(Container container, Color cor) {
+
+        container.setBackground(cor);
+
+        for (Component filho : container.getComponents()) {
+            if (filho instanceof JPanel subpainel) {
+                aplicarFundo(subpainel, cor);
+            }
+        }
     }
 
     private void conectar(
@@ -433,7 +607,7 @@ public final class ClienteChat extends JFrame {
             return;
         }
 
-        if (texto.length() > 500) {
+        if (texto.length() > LIMITE_MENSAGEM) {
             mostrarErro(
                     "A mensagem deve ter no máximo 500 caracteres."
             );
@@ -505,22 +679,23 @@ public final class ClienteChat extends JFrame {
 
             if (ativo) {
 
-                labelStatus.setText(
+                indicador.mostrar(
+                        IndicadorConexao.Estado.CONECTADO,
                         "Conectado como " + nomeUsuario
                 );
 
-                labelStatus.setForeground(VERDE);
-
             } else if (emConexao) {
 
-                labelStatus.setText("Conectando...");
-                labelStatus.setForeground(ROSA);
+                indicador.mostrar(
+                        IndicadorConexao.Estado.CONECTANDO,
+                        "Conectando..."
+                );
 
             } else {
 
-                labelStatus.setText("Desconectado");
-                labelStatus.setForeground(
-                        new Color(160, 75, 90)
+                indicador.mostrar(
+                        IndicadorConexao.Estado.DESCONECTADO,
+                        "Desconectado"
                 );
             }
         });

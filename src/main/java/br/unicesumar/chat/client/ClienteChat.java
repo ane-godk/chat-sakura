@@ -2,42 +2,54 @@
 package br.unicesumar.chat.client;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-public class ClienteChat extends JFrame {
+public final class ClienteChat extends JFrame {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Color ROSA = new Color(232, 122, 158);
-    private static final Color FUNDO = new Color(255, 245, 249);
-    private static final Color TEXTO = new Color(75, 55, 65);
+    private static final Color ROSA = new Color(225, 105, 150);
+    private static final Color ROSA_CLARO = new Color(255, 230, 240);
+    private static final Color FUNDO = new Color(255, 247, 250);
+    private static final Color TEXTO = new Color(75, 55, 68);
+    private static final Color VERDE = new Color(45, 145, 95);
 
     private final JTextArea areaMensagens = new JTextArea();
     private final JTextField campoMensagem = new JTextField();
     private final JButton botaoEnviar = new JButton("Enviar");
-    private final JLabel status = new JLabel("Desconectado");
+    private final JButton botaoConectar = new JButton("Conectar");
+    private final JButton botaoDesconectar = new JButton("Sair");
+    private final JLabel labelStatus = new JLabel("Desconectado");
 
-    private Socket socket;
-    private BufferedReader entrada;
-    private PrintWriter saida;
+    private final AtomicBoolean conectado = new AtomicBoolean(false);
+
+    private volatile Socket socket;
+    private volatile BufferedWriter saida;
 
     private String nomeUsuario;
 
     public ClienteChat() {
         configurarJanela();
         montarInterface();
-        conectar();
+        atualizarEstado(false);
     }
 
     private void configurarJanela() {
         setTitle("Chat Sakura");
-        setSize(650, 500);
-        setMinimumSize(new Dimension(450, 350));
+        setSize(760, 560);
+        setMinimumSize(new Dimension(560, 400));
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
@@ -50,243 +62,385 @@ public class ClienteChat extends JFrame {
     }
 
     private void montarInterface() {
-        JPanel principal = new JPanel(new BorderLayout(12, 12));
+
+        JPanel principal = new JPanel(new BorderLayout(0, 14));
         principal.setBackground(FUNDO);
-        principal.setBorder(
-                BorderFactory.createEmptyBorder(16, 16, 16, 16)
-        );
+        principal.setBorder(new EmptyBorder(18, 20, 18, 20));
+
+        JPanel cabecalho = new JPanel(new BorderLayout(10, 8));
+        cabecalho.setOpaque(false);
 
         JLabel titulo = new JLabel("Chat Sakura");
-        titulo.setFont(new Font("SansSerif", Font.BOLD, 24));
+        titulo.setFont(new Font("SansSerif", Font.BOLD, 28));
         titulo.setForeground(ROSA);
 
-        status.setForeground(TEXTO);
+        JLabel subtitulo = new JLabel("Converse em tempo real");
+        subtitulo.setForeground(TEXTO);
 
-        JPanel topo = new JPanel(new BorderLayout());
-        topo.setOpaque(false);
-        topo.add(titulo, BorderLayout.WEST);
-        topo.add(status, BorderLayout.EAST);
+        JPanel titulos = new JPanel(new GridLayout(2, 1));
+        titulos.setOpaque(false);
+        titulos.add(titulo);
+        titulos.add(subtitulo);
+
+        JPanel acoes = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        acoes.setOpaque(false);
+
+        estilizarBotao(botaoConectar, ROSA);
+        estilizarBotao(botaoDesconectar, new Color(130, 110, 125));
+
+        acoes.add(botaoConectar);
+        acoes.add(botaoDesconectar);
+
+        cabecalho.add(titulos, BorderLayout.WEST);
+        cabecalho.add(acoes, BorderLayout.EAST);
 
         areaMensagens.setEditable(false);
         areaMensagens.setLineWrap(true);
         areaMensagens.setWrapStyleWord(true);
-        areaMensagens.setFont(
-                new Font("SansSerif", Font.PLAIN, 14)
-        );
+        areaMensagens.setFont(new Font("SansSerif", Font.PLAIN, 14));
         areaMensagens.setBackground(Color.WHITE);
         areaMensagens.setForeground(TEXTO);
-        areaMensagens.setMargin(new Insets(12, 12, 12, 12));
+        areaMensagens.setMargin(new Insets(16, 16, 16, 16));
 
         JScrollPane rolagem = new JScrollPane(areaMensagens);
         rolagem.setBorder(
-                BorderFactory.createLineBorder(
-                        new Color(245, 210, 223)
+                BorderFactory.createLineBorder(ROSA_CLARO, 2)
+        );
+
+        JPanel inferior = new JPanel(new BorderLayout(0, 10));
+        inferior.setOpaque(false);
+
+        labelStatus.setFont(new Font("SansSerif", Font.BOLD, 12));
+
+        JPanel envio = new JPanel(new BorderLayout(10, 0));
+        envio.setOpaque(false);
+
+        campoMensagem.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        campoMensagem.setBorder(
+                BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(ROSA_CLARO, 2),
+                        new EmptyBorder(10, 12, 10, 12)
                 )
         );
 
-        campoMensagem.setFont(
-                new Font("SansSerif", Font.PLAIN, 14)
-        );
+        estilizarBotao(botaoEnviar, ROSA);
 
-        botaoEnviar.setBackground(ROSA);
-        botaoEnviar.setForeground(Color.WHITE);
-        botaoEnviar.setFocusPainted(false);
-        botaoEnviar.setEnabled(false);
+        envio.add(campoMensagem, BorderLayout.CENTER);
+        envio.add(botaoEnviar, BorderLayout.EAST);
 
-        JPanel rodape = new JPanel(new BorderLayout(10, 0));
-        rodape.setOpaque(false);
-        rodape.add(campoMensagem, BorderLayout.CENTER);
-        rodape.add(botaoEnviar, BorderLayout.EAST);
+        inferior.add(labelStatus, BorderLayout.NORTH);
+        inferior.add(envio, BorderLayout.CENTER);
 
-        botaoEnviar.addActionListener(e -> enviarMensagem());
-        campoMensagem.addActionListener(e -> enviarMensagem());
-
-        principal.add(topo, BorderLayout.NORTH);
+        principal.add(cabecalho, BorderLayout.NORTH);
         principal.add(rolagem, BorderLayout.CENTER);
-        principal.add(rodape, BorderLayout.SOUTH);
+        principal.add(inferior, BorderLayout.SOUTH);
 
         setContentPane(principal);
+
+        botaoConectar.addActionListener(e -> abrirDialogoConexao());
+        botaoDesconectar.addActionListener(e -> desconectar());
+        botaoEnviar.addActionListener(e -> enviarMensagem());
+        campoMensagem.addActionListener(e -> enviarMensagem());
     }
 
-    private void conectar() {
-        String nome = JOptionPane.showInputDialog(
+    private void estilizarBotao(JButton botao, Color cor) {
+        botao.setBackground(cor);
+        botao.setForeground(Color.WHITE);
+        botao.setFont(new Font("SansSerif", Font.BOLD, 13));
+        botao.setFocusPainted(false);
+        botao.setBorder(new EmptyBorder(11, 18, 11, 18));
+        botao.setCursor(
+                Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        );
+    }
+
+    private void abrirDialogoConexao() {
+
+        JTextField campoNome = new JTextField(15);
+        JTextField campoServidor = new JTextField("localhost", 15);
+        JTextField campoPorta = new JTextField("12345", 15);
+
+        JPanel formulario = new JPanel(new GridLayout(0, 1, 5, 5));
+        formulario.add(new JLabel("Nome de usuário:"));
+        formulario.add(campoNome);
+        formulario.add(new JLabel("Endereço do servidor:"));
+        formulario.add(campoServidor);
+        formulario.add(new JLabel("Porta:"));
+        formulario.add(campoPorta);
+
+        int opcao = JOptionPane.showConfirmDialog(
                 this,
-                "Digite seu nome de usuário:",
-                "Entrar no Chat Sakura",
-                JOptionPane.QUESTION_MESSAGE
+                formulario,
+                "Conectar ao Chat Sakura",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
         );
 
-        if (nome == null || nome.isBlank()) {
-            dispose();
+        if (opcao != JOptionPane.OK_OPTION) {
             return;
         }
 
-        nomeUsuario = nome.trim();
+        String nome = campoNome.getText().trim();
+        String endereco = campoServidor.getText().trim();
 
-        String endereco = JOptionPane.showInputDialog(
-                this,
-                "Endereço do servidor:",
-                "localhost"
-        );
-
-        if (endereco == null || endereco.isBlank()) {
-            dispose();
+        if (nome.isBlank() || nome.length() > 30
+                || nome.matches(".*\\s+.*")) {
+            mostrarErro(
+                    "O nome deve ter entre 1 e 30 caracteres, sem espaços."
+            );
             return;
         }
 
-        String portaTexto = JOptionPane.showInputDialog(
-                this,
-                "Porta do servidor:",
-                "12345"
-        );
-
-        if (portaTexto == null) {
-            dispose();
+        if (endereco.isBlank()) {
+            mostrarErro("Informe o endereço do servidor.");
             return;
         }
 
         final int porta;
 
         try {
-            porta = Integer.parseInt(portaTexto.trim());
+            porta = Integer.parseInt(campoPorta.getText().trim());
 
             if (porta < 1 || porta > 65535) {
                 throw new NumberFormatException();
             }
-
         } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Porta inválida.",
-                    "Erro",
-                    JOptionPane.ERROR_MESSAGE
-            );
-            dispose();
+            mostrarErro("Informe uma porta válida.");
             return;
         }
 
-        status.setText("Conectando...");
+        nomeUsuario = nome;
+        botaoConectar.setEnabled(false);
+        labelStatus.setText("Conectando...");
 
-        Thread threadConexao = new Thread(() -> {
-            try {
-                socket = new Socket(endereco.trim(), porta);
+        Thread thread = new Thread(
+                () -> conectar(endereco, porta, nome),
+                "sakura-conexao"
+        );
 
-                entrada = new BufferedReader(
-                        new InputStreamReader(
-                                socket.getInputStream(),
-                                StandardCharsets.UTF_8
-                        )
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void conectar(String endereco, int porta, String nome) {
+
+        Socket novaConexao = new Socket();
+
+        try {
+            novaConexao.connect(
+                    new InetSocketAddress(endereco, porta),
+                    5000
+            );
+
+            socket = novaConexao;
+
+            BufferedReader entrada = new BufferedReader(
+                    new InputStreamReader(
+                            novaConexao.getInputStream(),
+                            StandardCharsets.UTF_8
+                    )
+            );
+
+            saida = new BufferedWriter(
+                    new OutputStreamWriter(
+                            novaConexao.getOutputStream(),
+                            StandardCharsets.UTF_8
+                    )
+            );
+
+            // Protocolo atual do servidor:
+            // duas linhas de boas-vindas antes do nickname.
+            String saudacao = entrada.readLine();
+            String pedidoNome = entrada.readLine();
+
+            if (saudacao == null || pedidoNome == null) {
+                throw new IOException(
+                        "O servidor encerrou a conexão."
                 );
-
-                saida = new PrintWriter(
-                        new OutputStreamWriter(
-                                socket.getOutputStream(),
-                                StandardCharsets.UTF_8
-                        ),
-                        true
-                );
-
-                // O servidor envia duas linhas iniciais.
-                // Depois espera receber o nome do usuário.
-                String primeiraLinha = entrada.readLine();
-                String segundaLinha = entrada.readLine();
-
-                if (primeiraLinha == null || segundaLinha == null) {
-                    throw new IOException(
-                            "O servidor encerrou a conexão."
-                    );
-                }
-
-                adicionarMensagem(primeiraLinha);
-                adicionarMensagem(segundaLinha);
-
-                saida.println(nomeUsuario);
-
-                SwingUtilities.invokeLater(() -> {
-                    status.setText("Conectado: " + nomeUsuario);
-                    botaoEnviar.setEnabled(true);
-                    campoMensagem.setEnabled(true);
-                    campoMensagem.requestFocusInWindow();
-                });
-
-                String linha;
-
-                while ((linha = entrada.readLine()) != null) {
-                    adicionarMensagem(linha);
-                }
-
-            } catch (IOException e) {
-                adicionarMensagem(
-                        "SISTEMA: Erro de conexão: " + e.getMessage()
-                );
-
-            } finally {
-                desconectar();
-
-                SwingUtilities.invokeLater(() -> {
-                    status.setText("Desconectado");
-                    botaoEnviar.setEnabled(false);
-                    campoMensagem.setEnabled(false);
-                });
             }
-        }, "chat-sakura-rede");
 
-        threadConexao.setDaemon(true);
-        threadConexao.start();
+            adicionarMensagem(saudacao);
+            adicionarMensagem(pedidoNome);
+
+            escreverLinha(nome);
+
+            String confirmacao = entrada.readLine();
+
+            if (confirmacao == null
+                    || !confirmacao.startsWith(
+                            "SISTEMA: Conectado como "
+                    )) {
+
+                if (confirmacao != null) {
+                    adicionarMensagem(confirmacao);
+                }
+
+                throw new IOException(
+                        "O servidor recusou a conexão."
+                );
+            }
+
+            conectado.set(true);
+
+            adicionarMensagem(confirmacao);
+
+            SwingUtilities.invokeLater(() -> {
+                atualizarEstado(true);
+                campoMensagem.requestFocusInWindow();
+            });
+
+            String linha;
+
+            while (conectado.get()
+                    && (linha = entrada.readLine()) != null) {
+
+                adicionarMensagem(linha);
+            }
+
+        } catch (IOException e) {
+
+            adicionarMensagem(
+                    "SISTEMA: " + e.getMessage()
+            );
+
+        } finally {
+
+            conectado.set(false);
+
+            try {
+                novaConexao.close();
+            } catch (IOException e) {
+                System.err.println(
+                        "Erro ao fechar conexão: " + e.getMessage()
+                );
+            }
+
+            if (socket == novaConexao) {
+                socket = null;
+                saida = null;
+            }
+
+            SwingUtilities.invokeLater(() -> atualizarEstado(false));
+        }
+    }
+
+    private synchronized void escreverLinha(String texto)
+            throws IOException {
+
+        if (saida == null) {
+            throw new IOException("Não existe conexão ativa.");
+        }
+
+        saida.write(texto);
+        saida.newLine();
+        saida.flush();
     }
 
     private void enviarMensagem() {
-        String texto = campoMensagem.getText().trim();
 
-        if (texto.isEmpty() || saida == null) {
+        if (!conectado.get()) {
             return;
         }
 
-        saida.println(texto);
+        String texto = campoMensagem.getText().trim();
 
-        if (saida.checkError()) {
-            adicionarMensagem(
-                    "SISTEMA: Não foi possível enviar a mensagem."
-            );
+        if (texto.isEmpty()) {
             return;
         }
 
         campoMensagem.setText("");
+
+        Thread thread = new Thread(() -> {
+
+            try {
+                escreverLinha(texto);
+
+            } catch (IOException e) {
+
+                adicionarMensagem(
+                        "SISTEMA: Falha ao enviar: "
+                                + e.getMessage()
+                );
+            }
+
+        }, "sakura-envio");
+
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void desconectar() {
+
+        conectado.set(false);
+
+        Socket conexaoAtual = socket;
+
+        if (conexaoAtual != null) {
+            try {
+                conexaoAtual.close();
+            } catch (IOException e) {
+                System.err.println(
+                        "Erro ao desconectar: " + e.getMessage()
+                );
+            }
+        }
+
+        atualizarEstado(false);
+    }
+
+    private void atualizarEstado(boolean ativo) {
+
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(
+                    () -> atualizarEstado(ativo)
+            );
+            return;
+        }
+
+        botaoConectar.setEnabled(!ativo);
+        botaoDesconectar.setEnabled(ativo);
+        botaoEnviar.setEnabled(ativo);
+        campoMensagem.setEnabled(ativo);
+
+        labelStatus.setText(
+                ativo
+                        ? "Conectado como " + nomeUsuario
+                        : "Desconectado"
+        );
+
+        labelStatus.setForeground(
+                ativo ? VERDE : new Color(160, 75, 90)
+        );
     }
 
     private void adicionarMensagem(String mensagem) {
+
         SwingUtilities.invokeLater(() -> {
+
             areaMensagens.append(mensagem + "\n");
+
             areaMensagens.setCaretPosition(
                     areaMensagens.getDocument().getLength()
             );
         });
     }
 
-    private void desconectar() {
-        try {
-            if (saida != null) {
-                saida.println("/sair");
-            }
+    private void mostrarErro(String mensagem) {
 
-            if (socket != null && !socket.isClosed()) {
-                socket.close();
-            }
-
-        } catch (IOException e) {
-            System.err.println(
-                    "Erro ao desconectar: " + e.getMessage()
-            );
-        }
+        JOptionPane.showMessageDialog(
+                this,
+                mensagem,
+                "Chat Sakura",
+                JOptionPane.ERROR_MESSAGE
+        );
     }
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> {
-            ClienteChat cliente = new ClienteChat();
 
-            if (cliente.isDisplayable()) {
-                cliente.setVisible(true);
-            }
+        SwingUtilities.invokeLater(() -> {
+
+            ClienteChat janela = new ClienteChat();
+            janela.setVisible(true);
         });
     }
 }

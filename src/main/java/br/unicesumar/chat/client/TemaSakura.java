@@ -46,6 +46,18 @@ final class TemaSakura {
     static final Color CORAL_CLARO = new Color(252, 232, 232);
     static final Color CORAL_TEXTO = new Color(184, 60, 60);
 
+    /**
+     * Cores dos nomes de outros participantes (contraste acima de 4,5:1
+     * sobre branco). O próprio usuário usa {@link #ROSA_ESCURO}.
+     */
+    static final Color[] CORES_PARTICIPANTES = {
+            new Color(122, 74, 160),
+            new Color(36, 115, 135),
+            new Color(165, 85, 35),
+            new Color(50, 120, 70),
+            new Color(90, 90, 160)
+    };
+
     // Espaçamentos e raios
     static final int ESPACO_P = 8;
     static final int ESPACO_M = 12;

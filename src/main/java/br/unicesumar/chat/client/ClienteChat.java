@@ -26,7 +26,16 @@ public final class ClienteChat extends JFrame {
 
     private static final int LIMITE_MENSAGEM = 500;
 
-    private final JTextArea areaMensagens = new JTextArea();
+    /** Distância do fim (px) em que a rolagem automática continua ativa. */
+    private static final int TOLERANCIA_ROLAGEM = 24;
+
+    private final AreaConversa areaMensagens = new AreaConversa();
+    private final JScrollPane rolagem = new JScrollPane(areaMensagens);
+
+    // Estado da rolagem automática; acessado somente na EDT.
+    private boolean acompanhandoFim = true;
+    private int extensaoAnterior = -1;
+    private int maximoAnterior = -1;
 
     private final CampoTextoSakura campoMensagem = new CampoTextoSakura(
             20,
@@ -195,19 +204,19 @@ public final class ClienteChat extends JFrame {
 
     private JPanel criarAreaConversa() {
 
-        areaMensagens.setEditable(false);
-        areaMensagens.setLineWrap(true);
-        areaMensagens.setWrapStyleWord(true);
-        areaMensagens.setFont(TemaSakura.FONTE_TEXTO);
-        areaMensagens.setBackground(TemaSakura.CARTAO);
-        areaMensagens.setForeground(TemaSakura.TEXTO);
-        areaMensagens.setSelectionColor(TemaSakura.ROSA_PETALA);
-        areaMensagens.setSelectedTextColor(TemaSakura.TEXTO);
-        areaMensagens.setMargin(new Insets(12, 14, 12, 14));
-
-        JScrollPane rolagem = new JScrollPane(areaMensagens);
         rolagem.setBorder(BorderFactory.createEmptyBorder());
         rolagem.getViewport().setBackground(TemaSakura.CARTAO);
+        rolagem.setHorizontalScrollBarPolicy(
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+        );
+
+        JScrollBar barraVertical = rolagem.getVerticalScrollBar();
+        barraVertical.setUI(new BarraRolagemSakura());
+        barraVertical.setUnitIncrement(16);
+        barraVertical.setOpaque(false);
+        barraVertical.getModel().addChangeListener(
+                e -> atualizarAcompanhamentoDoFim()
+        );
 
         PainelArredondado cartao = new PainelArredondado(
                 new BorderLayout(),
@@ -220,6 +229,46 @@ public final class ClienteChat extends JFrame {
         cartao.add(rolagem, BorderLayout.CENTER);
 
         return cartao;
+    }
+
+    /**
+     * Rolagem automática sem atrapalhar a leitura (executado na EDT).
+     *
+     * Quando só a posição muda, foi o usuário quem rolou: passa a
+     * acompanhar o fim apenas se ele estiver no fim. Quando muda o
+     * tamanho do conteúdo (nova mensagem) ou da janela, mantém a
+     * última linha visível se o usuário estava acompanhando o fim.
+     */
+    private void atualizarAcompanhamentoDoFim() {
+
+        BoundedRangeModel modelo = rolagem.getVerticalScrollBar().getModel();
+
+        boolean noFim = modelo.getValue() + modelo.getExtent()
+                >= modelo.getMaximum() - TOLERANCIA_ROLAGEM;
+
+        boolean mudouTamanho = modelo.getExtent() != extensaoAnterior
+                || modelo.getMaximum() != maximoAnterior;
+
+        if (!mudouTamanho) {
+            acompanhandoFim = noFim;
+            return;
+        }
+
+        extensaoAnterior = modelo.getExtent();
+        maximoAnterior = modelo.getMaximum();
+
+        if (modelo.getMaximum() <= modelo.getExtent()) {
+            acompanhandoFim = true;
+        }
+
+        boolean fimExato = modelo.getValue() + modelo.getExtent()
+                >= modelo.getMaximum();
+
+        if (acompanhandoFim && !fimExato) {
+            SwingUtilities.invokeLater(
+                    () -> modelo.setValue(modelo.getMaximum())
+            );
+        }
     }
 
     private JPanel criarBarraEnvio() {
@@ -351,7 +400,9 @@ public final class ClienteChat extends JFrame {
         }
 
         nomeUsuario = nome;
-        areaMensagens.setText("");
+        areaMensagens.limpar();
+        areaMensagens.definirUsuarioAtual(nome);
+        acompanhandoFim = true;
         atualizarEstado();
 
         Thread thread = new Thread(
@@ -674,7 +725,7 @@ public final class ClienteChat extends JFrame {
             campoMensagem.setEnabled(ativo);
 
             botaoExportar.setEnabled(
-                    !areaMensagens.getText().isBlank()
+                    !areaMensagens.texto().isBlank()
             );
 
             if (ativo) {
@@ -705,11 +756,9 @@ public final class ClienteChat extends JFrame {
 
         SwingUtilities.invokeLater(() -> {
 
-            areaMensagens.append(mensagem + "\n");
-
-            areaMensagens.setCaretPosition(
-                    areaMensagens.getDocument().getLength()
-            );
+            // A rolagem até a nova linha é feita por
+            // atualizarAcompanhamentoDoFim, se o usuário estiver no fim.
+            areaMensagens.adicionarLinha(mensagem);
 
             botaoExportar.setEnabled(true);
         });
@@ -717,7 +766,7 @@ public final class ClienteChat extends JFrame {
 
     private void exportarHistorico() {
 
-        String conteudo = areaMensagens.getText();
+        String conteudo = areaMensagens.texto();
 
         if (conteudo.isBlank()) {
             mostrarErro(

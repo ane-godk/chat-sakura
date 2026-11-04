@@ -1,28 +1,26 @@
 
 package br.unicesumar.chat.server;
 
-import br.unicesumar.chat.domain.Mensagem;
-import br.unicesumar.chat.domain.MensagemRepository;
-import br.unicesumar.chat.persistence.MensagemRepositoryEmMemoria;
+import br.unicesumar.chat.persistence.MensagemRepository;
+import br.unicesumar.chat.persistence.jdbc.ConnectionFactory;
+import br.unicesumar.chat.persistence.jdbc.JdbcMensagemRepository;
+import br.unicesumar.chat.service.ChatService;
+import br.unicesumar.chat.service.ClientRegistry;
 
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.time.Clock;
+import java.util.Objects;
 
-public class Servidor {
+public final class Servidor {
 
     public static final int PORTA_PADRAO = 12345;
 
     private final int porta;
-    private final MensagemRepository repositorio;
+    private final ChatService chatService;
 
-    private final List<ClienteHandler> clientes =
-            Collections.synchronizedList(new ArrayList<>());
-
-    public Servidor(int porta, MensagemRepository repositorio) {
+    public Servidor(int porta, ChatService chatService) {
 
         if (porta < 1 || porta > 65535) {
             throw new IllegalArgumentException(
@@ -30,14 +28,11 @@ public class Servidor {
             );
         }
 
-        if (repositorio == null) {
-            throw new IllegalArgumentException(
-                    "O repositório não pode ser nulo."
-            );
-        }
-
         this.porta = porta;
-        this.repositorio = repositorio;
+        this.chatService = Objects.requireNonNull(
+                chatService,
+                "O serviço do chat é obrigatório."
+        );
     }
 
     public void iniciar() {
@@ -48,13 +43,8 @@ public class Servidor {
 
         try (ServerSocket servidorSocket = new ServerSocket(porta)) {
 
-            System.out.println(
-                    "Servidor iniciado na porta " + porta
-            );
-
-            System.out.println(
-                    "Aguardando conexões..."
-            );
+            System.out.println("Servidor iniciado na porta " + porta);
+            System.out.println("Aguardando conexões...");
 
             while (true) {
 
@@ -65,16 +55,15 @@ public class Servidor {
                                 + socket.getRemoteSocketAddress()
                 );
 
-                ClienteHandler clienteHandler =
-                        new ClienteHandler(
-                                socket,
-                                this,
-                                repositorio
-                        );
+                ClienteHandler handler = new ClienteHandler(
+                        socket,
+                        chatService
+                );
 
-                Thread thread = new Thread(clienteHandler);
-
-                thread.start();
+                new Thread(
+                        handler,
+                        "chat-cliente-" + socket.getPort()
+                ).start();
             }
 
         } catch (IOException e) {
@@ -85,64 +74,25 @@ public class Servidor {
         }
     }
 
-    public void adicionarCliente(ClienteHandler cliente) {
-
-        clientes.add(cliente);
-
-        System.out.println(
-                "Clientes conectados: " + contarClientes()
-        );
-    }
-
-    public void removerCliente(ClienteHandler cliente) {
-
-        clientes.remove(cliente);
-
-        System.out.println(
-                "Clientes conectados: " + contarClientes()
-        );
-    }
-
-    public int contarClientes() {
-
-        synchronized (clientes) {
-            return clientes.size();
-        }
-    }
-
-    public void broadcast(Mensagem mensagem) {
-
-        synchronized (clientes) {
-
-            for (ClienteHandler cliente : clientes) {
-
-                try {
-
-                    cliente.enviarMensagem(
-                            mensagem.toString()
-                    );
-
-                } catch (IOException e) {
-
-                    System.err.println(
-                            "Falha ao enviar mensagem para "
-                                    + cliente.getNomeUsuario()
-                                    + ": "
-                                    + e.getMessage()
-                    );
-                }
-            }
-        }
-    }
-
     public static void main(String[] args) {
 
+        ConnectionFactory fabrica =
+                new ConnectionFactory("chat-sakura.db");
+
         MensagemRepository repositorio =
-                new MensagemRepositoryEmMemoria();
+                new JdbcMensagemRepository(fabrica);
+
+        ClientRegistry registro = new ClientRegistry();
+
+        ChatService servico = new ChatService(
+                repositorio,
+                registro,
+                Clock.systemDefaultZone()
+        );
 
         Servidor servidor = new Servidor(
                 PORTA_PADRAO,
-                repositorio
+                servico
         );
 
         servidor.iniciar();

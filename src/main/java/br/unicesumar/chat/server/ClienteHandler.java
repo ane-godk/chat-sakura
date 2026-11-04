@@ -1,9 +1,10 @@
 
 package br.unicesumar.chat.server;
 
-import br.unicesumar.chat.domain.Mensagem;
-import br.unicesumar.chat.domain.MensagemRepository;
-import br.unicesumar.chat.domain.Usuario;
+import br.unicesumar.chat.model.Mensagem;
+import br.unicesumar.chat.model.Usuario;
+import br.unicesumar.chat.service.ChatService;
+import br.unicesumar.chat.service.ConexaoCliente;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -13,27 +14,31 @@ import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 
-public class ClienteHandler implements Runnable {
+public final class ClienteHandler
+        implements Runnable, ConexaoCliente {
 
     private final Socket socket;
-    private final Servidor servidor;
-    private final MensagemRepository repositorio;
+    private final ChatService chatService;
 
     private BufferedReader entrada;
     private BufferedWriter saida;
-
     private Usuario usuario;
 
     public ClienteHandler(
             Socket socket,
-            Servidor servidor,
-            MensagemRepository repositorio
+            ChatService chatService
     ) {
+        this.socket = Objects.requireNonNull(
+                socket,
+                "Socket obrigatório."
+        );
 
-        this.socket = socket;
-        this.servidor = servidor;
-        this.repositorio = repositorio;
+        this.chatService = Objects.requireNonNull(
+                chatService,
+                "Serviço obrigatório."
+        );
     }
 
     @Override
@@ -57,41 +62,51 @@ public class ClienteHandler implements Runnable {
                     )
             );
 
-            enviarMensagem(
+            enviarLinha(
                     "SISTEMA: Bem-vindo ao Chat Sakura!"
             );
 
-            enviarMensagem(
+            enviarLinha(
                     "SISTEMA: Informe seu nome de usuário:"
             );
 
             String nome = entrada.readLine();
 
-            if (nome == null || nome.isBlank()) {
-                enviarMensagem(
-                        "SISTEMA: Nome de usuário inválido."
+            if (nome == null) {
+                return;
+            }
+
+            try {
+                usuario = new Usuario(nome);
+            } catch (IllegalArgumentException e) {
+                enviarLinha(
+                        "SISTEMA: Nome inválido: " + e.getMessage()
                 );
                 return;
             }
 
-            usuario = new Usuario(nome.trim());
+            try {
+                chatService.registrarCliente(this);
+                registrado = true;
+            } catch (IllegalArgumentException e) {
+                enviarLinha(
+                        "SISTEMA: Não foi possível entrar: "
+                                + e.getMessage()
+                );
+                return;
+            }
 
-            servidor.adicionarCliente(this);
-            registrado = true;
-
-            enviarMensagem(
-                    "SISTEMA: Conectado como "
-                            + usuario.getNome()
+            enviarLinha(
+                    "SISTEMA: Conectado como " + usuario.getNome()
             );
 
             enviarHistorico();
 
-            Mensagem entradaUsuario = new Mensagem(
-                    "Sistema",
-                    usuario.getNome() + " entrou no chat."
+            System.out.println(
+                    usuario.getNome()
+                            + " entrou. Clientes: "
+                            + chatService.contarClientes()
             );
-
-            servidor.broadcast(entradaUsuario);
 
             String texto;
 
@@ -107,16 +122,31 @@ public class ClienteHandler implements Runnable {
                     continue;
                 }
 
-                Mensagem mensagem = new Mensagem(
-                        usuario.getNome(),
-                        texto
-                );
+                try {
 
-                repositorio.salvar(mensagem);
+                    chatService.enviarMensagem(
+                            usuario,
+                            texto
+                    );
 
-                servidor.broadcast(mensagem);
+                } catch (IllegalArgumentException e) {
 
-                System.out.println(mensagem);
+                    enviarLinha(
+                            "SISTEMA: Mensagem inválida: "
+                                    + e.getMessage()
+                    );
+
+                } catch (IllegalStateException e) {
+
+                    enviarLinha(
+                            "SISTEMA: Não foi possível salvar a mensagem."
+                    );
+
+                    System.err.println(
+                            "Erro de persistência: "
+                                    + e.getMessage()
+                    );
+                }
             }
 
         } catch (IOException e) {
@@ -129,21 +159,20 @@ public class ClienteHandler implements Runnable {
 
             if (registrado) {
 
-                servidor.removerCliente(this);
+                chatService.removerCliente(this);
 
-                Mensagem saidaUsuario = new Mensagem(
-                        "Sistema",
-                        usuario.getNome() + " saiu do chat."
+                System.out.println(
+                        usuario.getNome()
+                                + " saiu. Clientes: "
+                                + chatService.contarClientes()
                 );
-
-                servidor.broadcast(saidaUsuario);
             }
 
             try {
                 socket.close();
             } catch (IOException e) {
                 System.err.println(
-                        "Erro ao fechar conexão: " + e.getMessage()
+                        "Erro ao fechar socket: " + e.getMessage()
                 );
             }
         }
@@ -152,22 +181,22 @@ public class ClienteHandler implements Runnable {
     private void enviarHistorico() throws IOException {
 
         List<Mensagem> historico =
-                repositorio.buscarUltimas(20);
+                chatService.buscarHistorico(20);
 
-        enviarMensagem(
+        enviarLinha(
                 "SISTEMA: ===== HISTÓRICO RECENTE ====="
         );
 
         for (Mensagem mensagem : historico) {
-            enviarMensagem(mensagem.toString());
+            enviar(mensagem);
         }
 
-        enviarMensagem(
+        enviarLinha(
                 "SISTEMA: ===== FIM DO HISTÓRICO ====="
         );
     }
 
-    public synchronized void enviarMensagem(String texto)
+    private synchronized void enviarLinha(String texto)
             throws IOException {
 
         if (saida == null) {
@@ -181,12 +210,13 @@ public class ClienteHandler implements Runnable {
         saida.flush();
     }
 
-    public String getNomeUsuario() {
+    @Override
+    public void enviar(Mensagem mensagem) throws IOException {
+        enviarLinha(mensagem.formatar());
+    }
 
-        if (usuario == null) {
-            return "Desconhecido";
-        }
-
-        return usuario.getNome();
+    @Override
+    public Usuario getUsuario() {
+        return usuario;
     }
 }

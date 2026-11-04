@@ -57,24 +57,11 @@ public final class ChatService {
 
         synchronized (bloqueioMensagens) {
 
+            // Persiste antes de distribuir; o mesmo bloqueio garante
+            // a ordem das mensagens e o histórico atômico na conexão.
             Mensagem persistida = repositorio.salvar(mensagem);
 
-            List<ConexaoCliente> destinatarios =
-                    registro.listarClientes();
-
-            for (ConexaoCliente cliente : destinatarios) {
-
-                try {
-                    cliente.enviar(persistida);
-                } catch (Exception e) {
-                    System.err.println(
-                            "Falha no envio para "
-                                    + cliente.getUsuario().getNome()
-                                    + ": "
-                                    + e.getMessage()
-                    );
-                }
-            }
+            registro.transmitir(persistida);
 
             return persistida;
         }

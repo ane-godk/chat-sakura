@@ -1,7 +1,9 @@
 
 package br.unicesumar.chat;
 
-import br.unicesumar.chat.domain.Mensagem;
+import br.unicesumar.chat.model.Mensagem;
+import br.unicesumar.chat.model.MensagemInvalidaException;
+import br.unicesumar.chat.model.Usuario;
 
 import org.junit.jupiter.api.Test;
 
@@ -11,87 +13,127 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MensagemTest {
 
+    private static final LocalDateTime HORARIO =
+            LocalDateTime.of(2026, 11, 3, 15, 30);
+
     @Test
     void deveCriarMensagemValida() {
 
-        LocalDateTime horario =
-                LocalDateTime.of(2026, 11, 3, 14, 30, 0);
-
         Mensagem mensagem = new Mensagem(
-                "Kelly",
-                "Olá, mundo!",
-                horario
+                new Usuario("Ana"),
+                "Olá, Sakura!",
+                HORARIO
         );
 
-        assertEquals("Kelly", mensagem.getRemetente());
-        assertEquals("Olá, mundo!", mensagem.getTexto());
-        assertEquals(horario, mensagem.getHorario());
+        assertEquals("Ana", mensagem.getRemetente().getNome());
+        assertEquals("Olá, Sakura!", mensagem.getConteudo());
+        assertEquals(HORARIO, mensagem.getHorario());
+        assertNull(mensagem.getId());
     }
 
     @Test
-    void naoDeveAceitarRemetenteVazio() {
+    void deveRejeitarConteudoNulo() {
 
         assertThrows(
-                IllegalArgumentException.class,
-                () -> new Mensagem("", "Olá")
-        );
-
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new Mensagem(null, "Olá")
+                MensagemInvalidaException.class,
+                () -> new Mensagem(
+                        new Usuario("Ana"),
+                        null,
+                        HORARIO
+                )
         );
     }
 
     @Test
-    void naoDeveAceitarTextoVazio() {
+    void deveRejeitarConteudoEmBranco() {
 
         assertThrows(
-                IllegalArgumentException.class,
-                () -> new Mensagem("Ana", "")
+                MensagemInvalidaException.class,
+                () -> new Mensagem(
+                        new Usuario("Ana"),
+                        "   ",
+                        HORARIO
+                )
         );
+    }
+
+    @Test
+    void deveRejeitarRemetenteNulo() {
 
         assertThrows(
-                IllegalArgumentException.class,
-                () -> new Mensagem("Ana", null)
+                MensagemInvalidaException.class,
+                () -> new Mensagem(
+                        null,
+                        "Mensagem de teste",
+                        HORARIO
+                )
         );
+    }
+
+    @Test
+    void deveRejeitarHorarioNulo() {
+
+        assertThrows(
+                MensagemInvalidaException.class,
+                () -> new Mensagem(
+                        new Usuario("Ana"),
+                        "Mensagem de teste",
+                        null
+                )
+        );
+    }
+
+    @Test
+    void deveCompararMensagensComMesmoConteudo() {
+
+        Mensagem primeira = new Mensagem(
+                new Usuario("Ana"),
+                "Olá!",
+                HORARIO
+        );
+
+        Mensagem segunda = new Mensagem(
+                new Usuario("Ana"),
+                "Olá!",
+                HORARIO
+        );
+
+        assertEquals(primeira, segunda);
+        assertEquals(primeira.hashCode(), segunda.hashCode());
+    }
+
+    @Test
+    void deveDiferenciarMensagensComIdsDistintos() {
+
+        Mensagem primeira = new Mensagem(
+                1L,
+                new Usuario("Ana"),
+                "Olá!",
+                HORARIO
+        );
+
+        Mensagem segunda = new Mensagem(
+                2L,
+                new Usuario("Ana"),
+                "Olá!",
+                HORARIO
+        );
+
+        assertNotEquals(primeira, segunda);
     }
 
     @Test
     void deveFormatarMensagemCorretamente() {
 
-        LocalDateTime horario =
-                LocalDateTime.of(2026, 11, 3, 15, 45, 12);
-
         Mensagem mensagem = new Mensagem(
-                "Ana",
+                new Usuario("Bia"),
                 "Bom dia!",
-                horario
+                HORARIO
         );
 
         assertEquals(
-                "[15:45:12] Ana: Bom dia!",
-                mensagem.toString()
-        );
-    }
-
-    @Test
-    void mensagensComMesmoConteudoDevemSerIguais() {
-
-        LocalDateTime horario =
-                LocalDateTime.of(2026, 11, 3, 10, 0);
-
-        Mensagem primeira = new Mensagem(
-                "Ana", "Olá", horario
-        );
-
-        Mensagem segunda = new Mensagem(
-                "Ana", "Olá", horario
-        );
-
-        assertEquals(primeira, segunda);
-        assertEquals(
-                primeira.hashCode(),
-                segunda.hashCode()
+                "[03/11 15:30] Bia: Bom dia!",
+                mensagem.formatar()
         );
     }
 }

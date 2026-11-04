@@ -1,14 +1,16 @@
 
 package br.unicesumar.chat;
 
-import br.unicesumar.chat.domain.Mensagem;
+import br.unicesumar.chat.model.Mensagem;
+import br.unicesumar.chat.model.Usuario;
 import br.unicesumar.chat.persistence.MensagemRepositoryEmMemoria;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -19,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ConcorrenciaTest {
 
     @Test
-    void deveSalvarMilMensagensSemPerdas()
+    void deveSalvarTodasAsMensagensConcorrentemente()
             throws Exception {
 
         MensagemRepositoryEmMemoria repositorio =
@@ -27,71 +29,73 @@ class ConcorrenciaTest {
 
         int quantidadeThreads = 10;
         int mensagensPorThread = 100;
-
-        int totalEsperado =
-                quantidadeThreads * mensagensPorThread;
+        int totalEsperado = quantidadeThreads * mensagensPorThread;
 
         ExecutorService executor =
                 Executors.newFixedThreadPool(quantidadeThreads);
 
-        List<Callable<Void>> tarefas = new ArrayList<>();
+        CountDownLatch inicio = new CountDownLatch(1);
 
-        for (int i = 0; i < quantidadeThreads; i++) {
-
-            final int numeroThread = i;
-
-            tarefas.add(() -> {
-
-                for (int j = 0; j < mensagensPorThread; j++) {
-
-                    Mensagem mensagem = new Mensagem(
-                            "Usuario-" + numeroThread,
-                            "Mensagem-" + j
-                    );
-
-                    repositorio.salvar(mensagem);
-                }
-
-                return null;
-            });
-        }
-
-        List<Future<Void>> resultados;
+        List<Future<?>> tarefas = new ArrayList<>();
 
         try {
 
-            resultados = new ArrayList<>();
+            for (int i = 0; i < quantidadeThreads; i++) {
 
-            for (Callable<Void> tarefa : tarefas) {
-                resultados.add(executor.submit(tarefa));
+                final int numeroThread = i;
+
+                tarefas.add(executor.submit(() -> {
+
+                    inicio.await();
+
+                    for (int j = 0; j < mensagensPorThread; j++) {
+
+                        Mensagem mensagem = new Mensagem(
+                                new Usuario("Usuario" + numeroThread),
+                                "Mensagem " + j,
+                                LocalDateTime.of(2026, 11, 3, 15, 0)
+                        );
+
+                        repositorio.salvar(mensagem);
+                    }
+
+                    return null;
+                }));
+            }
+
+            inicio.countDown();
+
+            executor.shutdown();
+
+            assertTrue(
+                    executor.awaitTermination(
+                            30,
+                            TimeUnit.SECONDS
+                    ),
+                    "As tarefas não terminaram no prazo."
+            );
+
+            // Propaga possíveis erros ocorridos nas threads.
+            for (Future<?> tarefa : tarefas) {
+                tarefa.get();
+            }
+
+            List<Mensagem> mensagens =
+                    repositorio.buscarUltimas(totalEsperado);
+
+            assertEquals(totalEsperado, mensagens.size());
+
+            // Os IDs devem ser únicos e sequenciais.
+            for (int i = 0; i < totalEsperado; i++) {
+
+                assertEquals(
+                        (long) i + 1,
+                        mensagens.get(i).getId()
+                );
             }
 
         } finally {
-            executor.shutdown();
-        }
-
-        boolean terminou = executor.awaitTermination(
-                30,
-                TimeUnit.SECONDS
-        );
-
-        if (!terminou) {
             executor.shutdownNow();
         }
-
-        assertTrue(
-                terminou,
-                "As threads não terminaram no tempo esperado."
-        );
-
-        for (Future<Void> resultado : resultados) {
-            resultado.get();
-        }
-
-        assertEquals(
-                totalEsperado,
-                repositorio.contarMensagens(),
-                "Nenhuma mensagem pode ser perdida."
-        );
     }
 }

@@ -1,33 +1,42 @@
 
 package br.unicesumar.chat.persistence;
 
-import br.unicesumar.chat.domain.Mensagem;
-import br.unicesumar.chat.domain.MensagemRepository;
+import br.unicesumar.chat.model.Mensagem;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
-public class MensagemRepositoryEmMemoria
+public final class MensagemRepositoryEmMemoria
         implements MensagemRepository {
 
-    private final List<Mensagem> mensagens =
-            Collections.synchronizedList(new ArrayList<>());
+    private final List<Mensagem> mensagens = new ArrayList<>();
+
+    private long proximoId = 1L;
 
     @Override
-    public void salvar(Mensagem mensagem) {
+    public synchronized Mensagem salvar(Mensagem mensagem) {
 
-        if (mensagem == null) {
+        Objects.requireNonNull(
+                mensagem,
+                "A mensagem é obrigatória."
+        );
+
+        if (mensagem.getId() != null) {
             throw new IllegalArgumentException(
-                    "A mensagem não pode ser nula."
+                    "A mensagem já possui um identificador."
             );
         }
 
-        mensagens.add(mensagem);
+        Mensagem persistida = mensagem.comId(proximoId++);
+
+        mensagens.add(persistida);
+
+        return persistida;
     }
 
     @Override
-    public List<Mensagem> buscarUltimas(int quantidade) {
+    public synchronized List<Mensagem> buscarUltimas(int quantidade) {
 
         if (quantidade < 0) {
             throw new IllegalArgumentException(
@@ -35,32 +44,13 @@ public class MensagemRepositoryEmMemoria
             );
         }
 
-        synchronized (mensagens) {
+        int inicio = Math.max(
+                0,
+                mensagens.size() - quantidade
+        );
 
-            int total = mensagens.size();
-
-            int inicio = Math.max(
-                    0,
-                    total - quantidade
-            );
-
-            return new ArrayList<>(
-                    mensagens.subList(inicio, total)
-            );
-        }
-    }
-
-    public int contarMensagens() {
-
-        synchronized (mensagens) {
-            return mensagens.size();
-        }
-    }
-
-    public void limpar() {
-
-        synchronized (mensagens) {
-            mensagens.clear();
-        }
+        return new ArrayList<>(
+                mensagens.subList(inicio, mensagens.size())
+        );
     }
 }

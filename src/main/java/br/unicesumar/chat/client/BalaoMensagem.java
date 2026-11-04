@@ -1,6 +1,9 @@
 package br.unicesumar.chat.client;
 
 import javax.swing.JComponent;
+import javax.swing.JPopupMenu;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -40,6 +43,12 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
     private final Color corNome;
     private final Font fonteNome;
 
+    private transient MenuMensagem.Copiador copiador =
+            MenuMensagem.AREA_DE_TRANSFERENCIA;
+    private transient MenuMensagem.ExibidorMenu exibidorMenu =
+            MenuMensagem.EXIBIR_NA_TELA;
+    private transient JPopupMenu menu;
+
     BalaoMensagem(FormatoLinhaChat.Linha linha, boolean propria) {
 
         if (linha.tipo() != FormatoLinhaChat.Tipo.MENSAGEM) {
@@ -61,6 +70,51 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
         this.fonteNome = TemaSakura.fonteQueExibe(TemaSakura.FONTE_NOME, remetente);
 
         setOpaque(false);
+
+        // Menu de contexto em qualquer ponto do balão (nome, horário ou
+        // texto). O gatilho varia por plataforma: no Windows ocorre ao
+        // soltar o botão direito; em outras, ao pressionar.
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                verificarMenu(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                verificarMenu(e);
+            }
+        });
+    }
+
+    private void verificarMenu(MouseEvent evento) {
+        if (evento.isPopupTrigger()) {
+            exibidorMenu.exibir(menuDeContexto(), this, evento.getX(), evento.getY());
+            evento.consume();
+        }
+    }
+
+    JPopupMenu menuDeContexto() {
+        if (menu == null) {
+            menu = MenuMensagem.criar(this::copiarMensagem);
+        }
+        return menu;
+    }
+
+    /**
+     * Copia somente o conteúdo da mensagem (sem nome, horário ou
+     * prefixos do protocolo), exatamente como recebido.
+     */
+    boolean copiarMensagem() {
+        return MenuMensagem.copiarComSeguranca(copiador, conteudo);
+    }
+
+    void definirCopiador(MenuMensagem.Copiador novoCopiador) {
+        this.copiador = novoCopiador;
+    }
+
+    void definirExibidorMenu(MenuMensagem.ExibidorMenu novoExibidor) {
+        this.exibidorMenu = novoExibidor;
     }
 
     Font fonteNome() {

@@ -39,6 +39,23 @@ class ModeloTest {
     }
 
     @Test
+    void deveRejeitarNomeComMaisDeTrintaCaracteres() {
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Usuario("a".repeat(31))
+        );
+    }
+
+    @Test
+    void deveAceitarNomeComExatamenteTrintaCaracteres() {
+
+        String nome = "a".repeat(Usuario.TAMANHO_MAXIMO_NOME);
+
+        assertEquals(nome, new Usuario(nome).getNome());
+    }
+
+    @Test
     void deveConsiderarNomesIguaisSemDiferenciarMaiusculas() {
 
         Usuario primeiro = new Usuario("Ana");

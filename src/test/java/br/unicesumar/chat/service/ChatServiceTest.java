@@ -208,4 +208,108 @@ class ChatServiceTest {
 
         assertEquals(0, servico.contarClientes());
     }
+
+    @Test
+    void naoDeveDistribuirMensagemQuandoPersistenciaFalhar() {
+
+        MensagemRepository repositorioComFalha =
+                new RepositorioFalso() {
+                    @Override
+                    public synchronized Mensagem salvar(Mensagem mensagem) {
+                        throw new IllegalStateException(
+                                "Banco indisponível."
+                        );
+                    }
+                };
+
+        ChatService servico = new ChatService(
+                repositorioComFalha,
+                new ClientRegistry(),
+                RELOGIO_FIXO
+        );
+
+        ClienteFalso ana = new ClienteFalso("Ana");
+        ClienteFalso bia = new ClienteFalso("Bia");
+
+        servico.registrarCliente(ana);
+        servico.registrarCliente(bia);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> servico.enviarMensagem(
+                        ana.getUsuario(),
+                        "Não deve ser distribuída"
+                )
+        );
+
+        assertTrue(ana.recebidas.isEmpty());
+        assertTrue(bia.recebidas.isEmpty());
+    }
+
+    @Test
+    void naoDevePersistirNemDistribuirMensagemInvalida() {
+
+        RepositorioFalso repositorio = new RepositorioFalso();
+
+        ChatService servico = new ChatService(
+                repositorio,
+                new ClientRegistry(),
+                RELOGIO_FIXO
+        );
+
+        ClienteFalso ana = new ClienteFalso("Ana");
+        servico.registrarCliente(ana);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> servico.enviarMensagem(ana.getUsuario(), "   ")
+        );
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> servico.enviarMensagem(
+                        ana.getUsuario(),
+                        "a".repeat(501)
+                )
+        );
+
+        assertTrue(repositorio.mensagens.isEmpty());
+        assertTrue(ana.recebidas.isEmpty());
+    }
+
+    @Test
+    void deveRespeitarLimiteDoHistorico() {
+
+        RepositorioFalso repositorio = new RepositorioFalso();
+
+        ChatService servico = new ChatService(
+                repositorio,
+                new ClientRegistry(),
+                RELOGIO_FIXO
+        );
+
+        Usuario ana = new Usuario("Ana");
+
+        for (int i = 1; i <= 30; i++) {
+            servico.enviarMensagem(ana, "Mensagem " + i);
+        }
+
+        List<Mensagem> ultimas = servico.buscarHistorico(20);
+
+        assertEquals(20, ultimas.size());
+        assertEquals("Mensagem 11", ultimas.get(0).getConteudo());
+        assertEquals("Mensagem 30", ultimas.get(19).getConteudo());
+
+        List<Mensagem> naConexao = servico.registrarClienteComHistorico(
+                new ClienteFalso("Bia"),
+                5
+        );
+
+        assertEquals(5, naConexao.size());
+        assertEquals("Mensagem 26", naConexao.get(0).getConteudo());
+        assertEquals("Mensagem 30", naConexao.get(4).getConteudo());
+
+        assertTrue(servico.buscarHistorico(0).isEmpty());
+        assertEquals(30, servico.buscarHistorico(100).size());
+    }
 }

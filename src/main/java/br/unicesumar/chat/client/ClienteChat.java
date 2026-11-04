@@ -3,6 +3,7 @@ package br.unicesumar.chat.client;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import java.awt.image.BufferedImage;
 import javax.swing.event.AncestorEvent;
 import javax.swing.event.AncestorListener;
 import javax.swing.event.DocumentEvent;
@@ -40,7 +41,8 @@ public final class ClienteChat extends JFrame {
     private final CampoTextoSakura campoMensagem = new CampoTextoSakura(
             20,
             "Digite sua mensagem...",
-            "Conecte-se para enviar mensagens"
+            "Conecte-se para enviar mensagens",
+            true
     );
 
     private final JLabel contador = new JLabel();
@@ -284,12 +286,26 @@ public final class ClienteChat extends JFrame {
         contador.setFont(TemaSakura.FONTE_PEQUENA);
         contador.setHorizontalAlignment(SwingConstants.RIGHT);
 
+        // Pequena flor ao lado do contador, como detalhe decorativo.
+        int iconeContador = 0;
+        BufferedImage flor = RecursosSakura.flor().orElse(null);
+        if (flor != null) {
+            iconeContador = 13;
+            contador.setIcon(new ImageIcon(
+                    RecursosSakura.redimensionar(flor, iconeContador, iconeContador)
+            ));
+            contador.setIconTextGap(4);
+        }
+
         // Largura fixa para o campo não "pular" ao digitar.
         FontMetrics metricas = contador.getFontMetrics(contador.getFont());
         contador.setPreferredSize(new Dimension(
-                metricas.stringWidth("000/" + LIMITE_MENSAGEM) + 4,
+                metricas.stringWidth("000/" + LIMITE_MENSAGEM)
+                        + iconeContador + 8,
                 metricas.getHeight()
         ));
+
+        botaoEnviar.definirIcone(IconesDesenhados::aviaoDePapel);
 
         JPanel direita = new JPanel(
                 new BorderLayout(TemaSakura.ESPACO_P, 0)
@@ -298,14 +314,18 @@ public final class ClienteChat extends JFrame {
         direita.add(contador, BorderLayout.WEST);
         direita.add(botaoEnviar, BorderLayout.EAST);
 
-        JPanel barra = new JPanel(
-                new BorderLayout(TemaSakura.ESPACO_P, 0)
+        PainelArredondado cartao = new PainelArredondado(
+                new BorderLayout(TemaSakura.ESPACO_P, 0),
+                TemaSakura.CARTAO,
+                TemaSakura.ROSA_HOVER_CLARO,
+                TemaSakura.ROSA_BORDA,
+                TemaSakura.RAIO_CARTAO
         );
-        barra.setOpaque(false);
-        barra.add(campoMensagem, BorderLayout.CENTER);
-        barra.add(direita, BorderLayout.EAST);
+        cartao.setBorder(new EmptyBorder(5, 6, 5, 6));
+        cartao.add(campoMensagem, BorderLayout.CENTER);
+        cartao.add(direita, BorderLayout.EAST);
 
-        return barra;
+        return cartao;
     }
 
     private void atualizarContador() {

@@ -45,6 +45,18 @@ final class RecursosSakura {
         return Imagens.FLOR_CARREGADA;
     }
 
+    // Flores já redimensionadas, por tamanho em pixels (uso na EDT).
+    private static final java.util.Map<Integer, BufferedImage> FLORES_AJUSTADAS =
+            new java.util.HashMap<>();
+
+    /** Flor no tamanho pedido (em pixels), ou vazio se faltar a imagem. */
+    static Optional<BufferedImage> florEmPixels(int pixels) {
+        return flor().map(original -> FLORES_AJUSTADAS.computeIfAbsent(
+                Math.max(1, pixels),
+                tamanho -> redimensionar(original, tamanho, tamanho)
+        ));
+    }
+
     static Optional<BufferedImage> carregarImagem(String caminho) {
 
         try (InputStream entrada =

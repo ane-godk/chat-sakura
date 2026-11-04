@@ -67,6 +67,7 @@ final class IndicadorConexao extends JLabel {
 
     void mostrar(Estado novoEstado, String texto) {
         this.estado = novoEstado;
+        setFont(TemaSakura.fonteQueExibe(TemaSakura.FONTE_STATUS, texto));
         setText(texto);
         setToolTipText(texto);
         repaint();

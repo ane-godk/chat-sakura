@@ -30,7 +30,7 @@ public final class ClienteChat extends JFrame {
     /** Distância do fim (px) em que a rolagem automática continua ativa. */
     private static final int TOLERANCIA_ROLAGEM = 24;
 
-    private final AreaConversa areaMensagens = new AreaConversa();
+    private final PainelConversa areaMensagens = new PainelConversa();
     private final JScrollPane rolagem = new JScrollPane(areaMensagens);
 
     // Estado da rolagem automática; acessado somente na EDT.

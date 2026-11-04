@@ -7,6 +7,7 @@ import java.awt.Graphics2D;
 import java.awt.GraphicsEnvironment;
 import java.awt.RenderingHints;
 import java.awt.Toolkit;
+import javax.swing.text.StyleContext;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -65,6 +66,16 @@ final class TemaSakura {
     static final int RAIO_CONTROLE = 14;
     static final int RAIO_CARTAO = 18;
 
+    /** Horário dos balões (contraste ~5,4:1 sobre o balão rosado). */
+    static final Color TEXTO_HORARIO = new Color(110, 86, 100);
+
+    // Balões
+    static final Color BALAO_PROPRIO_TOPO = new Color(255, 232, 241);
+    static final Color BALAO_PROPRIO_BASE = new Color(252, 218, 232);
+    static final Color BALAO_PROPRIO_BORDA = new Color(244, 196, 216);
+    static final Color BALAO_OUTRO_BASE = new Color(255, 250, 252);
+    static final Color SOMBRA_SUAVE = new Color(142, 40, 84, 18);
+
     /** Texto secundário sobre a ilustração do cabeçalho (contraste ~5,7:1). */
     static final Color TEXTO_CABECALHO = new Color(110, 70, 95);
 
@@ -87,8 +98,10 @@ final class TemaSakura {
     static final Font FONTE_BOTAO = destaque(NUNITO_BOLD, Font.BOLD, 13f);
     static final Font FONTE_STATUS = destaque(NUNITO_BOLD, Font.BOLD, 13f);
     static final Font FONTE_PEQUENA_NEGRITO = destaque(NUNITO_BOLD, Font.BOLD, 12.5f);
+    static final Font FONTE_NOME = destaque(NUNITO_BOLD, Font.BOLD, 13f);
     static final Font FONTE_TEXTO = fonte(Font.PLAIN, 14f);
     static final Font FONTE_PEQUENA = fonte(Font.PLAIN, 12f);
+    static final Font FONTE_SISTEMA = fonte(Font.ITALIC, 12.5f);
 
     private TemaSakura() {
     }
@@ -103,8 +116,25 @@ final class TemaSakura {
                 : Font.SANS_SERIF;
     }
 
+    /**
+     * Fonte do sistema em versão composta (com fontes de reserva), que
+     * exibe também emojis e símbolos ausentes da família principal.
+     */
     static Font fonte(int estilo, float tamanho) {
-        return new Font(FAMILIA, estilo, 1).deriveFont(estilo, tamanho);
+        return StyleContext.getDefaultStyleContext()
+                .getFont(FAMILIA, estilo, Math.round(tamanho))
+                .deriveFont(estilo, tamanho);
+    }
+
+    /**
+     * A fonte preferida, se ela exibir todo o texto; senão, a fonte
+     * composta do sistema com o mesmo estilo e tamanho (por exemplo,
+     * para nomes com emoji, ausentes na Nunito).
+     */
+    static Font fonteQueExibe(Font preferida, String texto) {
+        return texto == null || preferida.canDisplayUpTo(texto) < 0
+                ? preferida
+                : fonte(preferida.getStyle(), preferida.getSize2D());
     }
 
     /** Fonte de destaque (Nunito) ou, na falta dela, a do sistema. */

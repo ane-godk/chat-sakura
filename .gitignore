@@ -1,6 +1,7 @@
 
 # Maven
 target/
+*.class
 
 # Banco de dados
 *.db

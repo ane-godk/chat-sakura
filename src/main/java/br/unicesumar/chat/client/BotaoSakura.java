@@ -126,6 +126,12 @@ final class BotaoSakura extends JButton {
         animador.iniciar();
     }
 
+    /** Sem texto (botão só com ícone), o ícone fica centralizado. */
+    private int espacoIcone() {
+        String texto = getText();
+        return texto == null || texto.isEmpty() ? 0 : ESPACO_ICONE;
+    }
+
     double progressoHover() {
         return hover.valor(Transicao.agora());
     }
@@ -143,7 +149,7 @@ final class BotaoSakura extends JButton {
     @Override
     public Dimension getPreferredSize() {
         Dimension tamanho = super.getPreferredSize();
-        int extraIcone = icone == null ? 0 : TAMANHO_ICONE + ESPACO_ICONE;
+        int extraIcone = icone == null ? 0 : TAMANHO_ICONE + espacoIcone();
         return new Dimension(
                 tamanho.width + 2 * MARGEM + extraIcone,
                 tamanho.height + 2 * MARGEM + SOMBRA
@@ -236,7 +242,7 @@ final class BotaoSakura extends JButton {
 
         String texto = getText();
         int larguraTexto = metricas.stringWidth(texto);
-        int larguraIcone = icone == null ? 0 : TAMANHO_ICONE + ESPACO_ICONE;
+        int larguraIcone = icone == null ? 0 : TAMANHO_ICONE + espacoIcone();
 
         float inicio = x + (largura - larguraTexto - larguraIcone) / 2f;
 

@@ -34,6 +34,13 @@ public final class ClienteChat extends JFrame {
     private final JScrollPane rolagem = new JScrollPane(areaMensagens);
     private final FundoConversa fundoConversa = new FundoConversa(new BorderLayout());
 
+    // Sons de notificação (reprodução em thread própria, sem bloquear a EDT).
+    private final NotificacoesSonoras notificacoes =
+            new NotificacoesSonoras(new ReprodutorJavaSound(), Transicao::agora);
+
+    private final BotaoSakura botaoSom =
+            new BotaoSakura("", BotaoSakura.Estilo.SECUNDARIO);
+
     // Estado da rolagem automática; acessado somente na EDT.
     private boolean acompanhandoFim = true;
     private int extensaoAnterior = -1;
@@ -87,6 +94,12 @@ public final class ClienteChat extends JFrame {
             @Override
             public void windowClosing(WindowEvent e) {
                 desconectar();
+            }
+
+            @Override
+            public void windowClosed(WindowEvent e) {
+                // Libera os recursos de áudio ao encerrar.
+                notificacoes.fechar();
             }
 
             // Pétalas pausadas com a janela inativa ou minimizada.
@@ -332,6 +345,7 @@ public final class ClienteChat extends JFrame {
         );
         direita.setOpaque(false);
         direita.add(contador, BorderLayout.WEST);
+        direita.add(criarBotaoSom(), BorderLayout.CENTER);
         direita.add(botaoEnviar, BorderLayout.EAST);
 
         PainelArredondado cartao = new PainelArredondado(
@@ -346,6 +360,28 @@ public final class ClienteChat extends JFrame {
         cartao.add(direita, BorderLayout.EAST);
 
         return cartao;
+    }
+
+    /** Botão "Sons: Ligados / Silenciados" (alterna durante o uso). */
+    private BotaoSakura criarBotaoSom() {
+        botaoSom.setBorder(new EmptyBorder(9, 11, 9, 11));
+        botaoSom.addActionListener(e -> {
+            notificacoes.definirSilenciado(!notificacoes.silenciado());
+            atualizarBotaoSom();
+        });
+        atualizarBotaoSom();
+        return botaoSom;
+    }
+
+    private void atualizarBotaoSom() {
+        boolean silenciado = notificacoes.silenciado();
+        String estado = silenciado ? "Sons: Silenciados" : "Sons: Ligados";
+        botaoSom.definirIcone(silenciado
+                ? IconesDesenhados::somSilenciado
+                : IconesDesenhados::somLigado);
+        botaoSom.setToolTipText(estado + (silenciado
+                ? " (clique para ligar)" : " (clique para silenciar)"));
+        botaoSom.getAccessibleContext().setAccessibleName(estado);
     }
 
     private void atualizarContador() {
@@ -635,6 +671,9 @@ public final class ClienteChat extends JFrame {
             conectado.set(true);
             conectando.set(false);
 
+            // Conexão confirmada pelo servidor.
+            notificacoes.conexaoConfirmada();
+
             adicionarMensagem(confirmacao);
             atualizarEstado();
 
@@ -656,6 +695,10 @@ public final class ClienteChat extends JFrame {
 
             conectado.set(false);
             conectando.set(false);
+
+            // Fim da sessão (Sair ou queda): toca uma única vez, e só se
+            // a conexão chegou a ser confirmada.
+            notificacoes.sessaoEncerrada();
 
             try {
                 novaConexao.close();
@@ -720,8 +763,9 @@ public final class ClienteChat extends JFrame {
             try {
                 escreverLinha(texto);
 
-                // Envio bem-sucedido: pequeno voo do avião de papel.
+                // Envio bem-sucedido: pequeno voo do avião de papel e som.
                 SwingUtilities.invokeLater(botaoEnviar::animarEnvio);
+                notificacoes.mensagemEnviada();
 
             } catch (IOException e) {
 
@@ -810,6 +854,13 @@ public final class ClienteChat extends JFrame {
             // A rolagem até a nova linha é feita por
             // atualizarAcompanhamentoDoFim, se o usuário estiver no fim.
             areaMensagens.adicionarLinha(mensagem);
+
+            // Som apenas para mensagens novas de outros participantes.
+            notificacoes.linhaRecebida(
+                    mensagem,
+                    nomeUsuario,
+                    areaMensagens.historicoConcluido()
+            );
 
             botaoExportar.setEnabled(true);
         });

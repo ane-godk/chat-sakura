@@ -11,6 +11,37 @@ final class IconesDesenhados {
     private IconesDesenhados() {
     }
 
+    /** Lua crescente (ativar o Sakura Noturno). */
+    static void lua(Graphics2D g2, double x, double y, double tamanho, Color cor) {
+        java.awt.geom.Area lua = new java.awt.geom.Area(new java.awt.geom.Ellipse2D.Double(
+                x + tamanho * 0.12, y + tamanho * 0.10, tamanho * 0.76, tamanho * 0.76));
+        lua.subtract(new java.awt.geom.Area(new java.awt.geom.Ellipse2D.Double(
+                x + tamanho * 0.36, y + tamanho * 0.00, tamanho * 0.64, tamanho * 0.64)));
+        g2.setColor(cor);
+        g2.fill(lua);
+    }
+
+    /** Sol com raios (voltar ao Sakura Claro). */
+    static void sol(Graphics2D g2, double x, double y, double tamanho, Color cor) {
+        double centroX = x + tamanho / 2;
+        double centroY = y + tamanho / 2;
+        double raio = tamanho * 0.22;
+
+        g2.setColor(cor);
+        g2.fill(new java.awt.geom.Ellipse2D.Double(centroX - raio, centroY - raio, raio * 2, raio * 2));
+
+        g2.setStroke(new BasicStroke((float) Math.max(1.2, tamanho * 0.09),
+                BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        for (int i = 0; i < 8; i++) {
+            double angulo = Math.PI / 4 * i;
+            double interno = tamanho * 0.33;
+            double externo = tamanho * 0.47;
+            g2.draw(new java.awt.geom.Line2D.Double(
+                    centroX + Math.cos(angulo) * interno, centroY + Math.sin(angulo) * interno,
+                    centroX + Math.cos(angulo) * externo, centroY + Math.sin(angulo) * externo));
+        }
+    }
+
     /** Alto-falante com ondas (sons ligados). */
     static void somLigado(Graphics2D g2, double x, double y, double tamanho, Color cor) {
         altoFalante(g2, x, y, tamanho, cor);

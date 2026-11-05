@@ -40,6 +40,9 @@ public final class ClienteChat extends JFrame {
     private final BotaoSakura botaoSom =
             new BotaoSakura("", BotaoSakura.Estilo.SECUNDARIO);
 
+    private final BotaoSakura botaoTema =
+            new BotaoSakura("", BotaoSakura.Estilo.SECUNDARIO);
+
     // Estado da rolagem automática; acessado somente na EDT.
     private boolean acompanhandoFim = true;
     private int extensaoAnterior = -1;
@@ -76,15 +79,38 @@ public final class ClienteChat extends JFrame {
     private volatile String nomeUsuario = "";
 
     public ClienteChat() {
-        // Registra-se antes de montar a interface: o tema inicial
-        // (-Dchat.sakura.tema) já vale para todos os componentes.
+        this(PreferenciasSakura.padrao());
+    }
+
+    /** @param preferencias arquivo de preferências (substituível nos testes) */
+    ClienteChat(PreferenciasSakura preferencias) {
+        this.preferencias = preferencias;
+        this.aoMudarAnimacoes = () -> preferencias.salvarAnimacoes(ConfiguracaoAnimacoes.modo());
+
+        // 1. Preferências aplicadas antes de montar a interface, para a janela
+        //    já aparecer no tema certo (-D válida > arquivo > padrão).
+        aplicarPreferenciasIniciais();
+
+        // 2. Só depois as mudanças passam a ser salvas: assim uma -D não
+        //    sobrescreve o arquivo; apenas escolhas do usuário são gravadas.
         GerenciadorTema.aoMudar(aoMudarTema);
+        ConfiguracaoAnimacoes.aoMudar(aoMudarAnimacoes);
+
         configurarJanela();
         montarInterface();
         atualizarEstado();
     }
 
+    private final transient PreferenciasSakura preferencias;
     private final transient Runnable aoMudarTema = this::aplicarTema;
+    private final transient Runnable aoMudarAnimacoes;
+
+    private void aplicarPreferenciasIniciais() {
+        PreferenciasSakura.Valores valores = preferencias.valoresIniciais();
+        GerenciadorTema.definir(valores.tema());
+        ConfiguracaoAnimacoes.definirModo(valores.animacoes());
+        notificacoes.definirSilenciado(valores.silenciado());
+    }
 
     /**
      * Troca de tema (na EDT): os componentes leem a paleta ao pintar, então
@@ -93,7 +119,23 @@ public final class ClienteChat extends JFrame {
      */
     private void aplicarTema() {
         atualizarContador();
+        atualizarBotaoTema();
+        preferencias.salvarTema(GerenciadorTema.atual());
         getRootPane().repaint();
+    }
+
+    /**
+     * Libera áudio e ouvintes globais e conclui as gravações pendentes.
+     * Feito aqui (e não em windowClosed) porque uma janela nunca exibida
+     * não recebe esse evento. Chamadas repetidas são inofensivas.
+     */
+    @Override
+    public void dispose() {
+        super.dispose();
+        notificacoes.fechar();
+        GerenciadorTema.removerOuvinte(aoMudarTema);
+        ConfiguracaoAnimacoes.removerOuvinte(aoMudarAnimacoes);
+        preferencias.aguardarGravacoes(1000);
     }
 
     private void configurarJanela() {
@@ -108,13 +150,6 @@ public final class ClienteChat extends JFrame {
             @Override
             public void windowClosing(WindowEvent e) {
                 desconectar();
-            }
-
-            @Override
-            public void windowClosed(WindowEvent e) {
-                // Libera os recursos de áudio ao encerrar.
-                notificacoes.fechar();
-                GerenciadorTema.removerOuvinte(aoMudarTema);
             }
 
             // Pétalas pausadas com a janela inativa ou minimizada.
@@ -248,6 +283,7 @@ public final class ClienteChat extends JFrame {
                 new FlowLayout(FlowLayout.RIGHT, 6, 0)
         );
         linhaStatus.setOpaque(false);
+        linhaStatus.add(criarBotaoTema());
         linhaStatus.add(indicador);
 
         JPanel acoes = new JPanel(
@@ -260,8 +296,10 @@ public final class ClienteChat extends JFrame {
 
         // O selo nunca fica mais largo que a fileira de botões,
         // para não cobrir o título em janelas estreitas.
+        // Descontado também o botão de tema, ao lado do selo.
         indicador.definirLarguraMaxima(
                 acoes.getPreferredSize().width - 12
+                        - botaoTema.getPreferredSize().width - 6
         );
 
         JPanel lateral = new JPanel(new BorderLayout(0, 6));
@@ -405,11 +443,35 @@ public final class ClienteChat extends JFrame {
         return cartao;
     }
 
+    /** Botão de tema no cabeçalho: lua (ativar Noturno) ou sol (voltar ao Claro). */
+    private BotaoSakura criarBotaoTema() {
+        botaoTema.setBorder(new EmptyBorder(4, 7, 4, 7));
+        // Sem texto, a altura viria só das margens: alinha com o selo de conexão.
+        int altura = indicador.getPreferredSize().height;
+        botaoTema.setPreferredSize(new Dimension(altura + 8, altura));
+        botaoTema.addActionListener(e -> GerenciadorTema.alternar());
+        atualizarBotaoTema();
+        return botaoTema;
+    }
+
+    /** Ícone, dica e nome acessível conforme o tema ativo. */
+    private void atualizarBotaoTema() {
+        boolean noturno = GerenciadorTema.atual() == GerenciadorTema.Tema.NOTURNO;
+        String acao = noturno ? ROTULO_VOLTAR_CLARO : ROTULO_ATIVAR_NOTURNO;
+        botaoTema.definirIcone(noturno ? IconesDesenhados::sol : IconesDesenhados::lua);
+        botaoTema.setToolTipText(acao);
+        botaoTema.getAccessibleContext().setAccessibleName(acao);
+    }
+
+    static final String ROTULO_ATIVAR_NOTURNO = "Ativar Sakura Noturno";
+    static final String ROTULO_VOLTAR_CLARO = "Voltar ao Sakura Claro";
+
     /** Botão "Sons: Ligados / Silenciados" (alterna durante o uso). */
     private BotaoSakura criarBotaoSom() {
         botaoSom.setBorder(new EmptyBorder(9, 11, 9, 11));
         botaoSom.addActionListener(e -> {
             notificacoes.definirSilenciado(!notificacoes.silenciado());
+            preferencias.salvarSons(notificacoes.silenciado());
             atualizarBotaoSom();
         });
         atualizarBotaoSom();

@@ -78,7 +78,7 @@ final class PainelConversa extends JPanel implements Scrollable {
 
     private void mostrarOpcoes(MouseEvent evento) {
         if (evento.isPopupTrigger() && isShowing()) {
-            MenuAnimacoes.criar().show(this, evento.getX(), evento.getY());
+            MenuConversa.criar().show(this, evento.getX(), evento.getY());
             evento.consume();
         }
     }

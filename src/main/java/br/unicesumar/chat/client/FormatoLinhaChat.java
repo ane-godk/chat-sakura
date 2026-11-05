@@ -33,17 +33,33 @@ final class FormatoLinhaChat {
             Pattern.DOTALL
     );
 
+    /**
+     * Aviso de presença produzido pelo servidor:
+     * {@code SISTEMA: [dd/MM HH:mm] Nome se conectou|se desconectou}.
+     * Só o servidor gera linhas iniciadas por "SISTEMA: ".
+     */
+    private static final Pattern AVISO_PRESENCA = Pattern.compile(
+            "^SISTEMA: (\\[\\d{2}/\\d{2} \\d{2}:\\d{2}\\]) (\\S{1,30}) "
+                    + "(se conectou|se desconectou)$"
+    );
+
+    static final String ACAO_ENTRADA = "se conectou";
+    static final String ACAO_SAIDA = "se desconectou";
+
     enum Tipo {
         MENSAGEM,
         SISTEMA,
         SEPARADOR_HISTORICO,
+        AVISO_PRESENCA,
         OUTRO
     }
 
     /**
      * Resultado da análise. Para {@link Tipo#MENSAGEM}, os trechos são:
-     * {@code horario + " " + remetente + ": " + conteudo}. Para os demais
-     * tipos, apenas {@code texto} é preenchido.
+     * {@code horario + " " + remetente + ": " + conteudo}. Para
+     * {@link Tipo#AVISO_PRESENCA}, {@code remetente} é o participante e
+     * {@code conteudo} a ação ("se conectou" ou "se desconectou"). Para os
+     * demais tipos, apenas {@code texto} é preenchido.
      */
     record Linha(
             Tipo tipo,
@@ -74,6 +90,19 @@ final class FormatoLinhaChat {
         // Somente linhas que COMEÇAM com o prefixo são do sistema.
         // Mensagens de usuários sempre começam pelo horário.
         if (texto.startsWith(PREFIXO_SISTEMA)) {
+
+            Matcher aviso = AVISO_PRESENCA.matcher(texto);
+
+            if (aviso.matches()) {
+                return new Linha(
+                        Tipo.AVISO_PRESENCA,
+                        texto,
+                        aviso.group(1),
+                        aviso.group(2),
+                        aviso.group(3)
+                );
+            }
+
             return new Linha(Tipo.SISTEMA, texto, null, null, null);
         }
 

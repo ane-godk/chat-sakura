@@ -75,6 +75,7 @@ final class PainelConversa extends JPanel implements Scrollable {
             case MENSAGEM -> new BalaoMensagem(linha, linha.enviadaPor(usuarioAtual));
             case SISTEMA -> new LinhaTexto(linha.texto(), LinhaTexto.Estilo.SISTEMA);
             case SEPARADOR_HISTORICO -> new SeparadorHistorico(linha.texto());
+            case AVISO_PRESENCA -> new AvisoPresenca(linha);
             default -> new LinhaTexto(linha.texto(), LinhaTexto.Estilo.PADRAO);
         };
     }

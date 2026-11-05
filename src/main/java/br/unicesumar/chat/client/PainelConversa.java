@@ -4,14 +4,22 @@ import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JViewport;
 import javax.swing.Scrollable;
+import java.awt.AlphaComposite;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.LayoutManager;
 import java.awt.Rectangle;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.LongSupplier;
 
 /**
  * Conversa exibida em componentes individuais (balões, linhas do sistema
@@ -30,13 +38,147 @@ final class PainelConversa extends JPanel implements Scrollable {
     static final int MARGEM_V = 12;
     static final int ESPACO = 7;
 
+    static final int DURACAO_ENTRADA_MS = 180;
+    static final int DESLOCAMENTO_ENTRADA = 8;
+
+    /** Em rajadas, no máximo 3 entradas animadas a cada 600 ms. */
+    static final int MAXIMO_ANIMADAS = 3;
+    static final long JANELA_RAJADA_MS = 600;
+
     private final List<String> linhas = new ArrayList<>();
     private String usuarioAtual = "";
+
+    // Animação de entrada: somente para itens que chegam após o histórico.
+    private boolean historicoConcluido;
+    private final transient Map<Component, Long> entradas = new IdentityHashMap<>();
+    private final transient LimitadorRajada limitador =
+            new LimitadorRajada(MAXIMO_ANIMADAS, JANELA_RAJADA_MS);
+    private transient LongSupplier relogio = Transicao::agora;
+    private final transient AnimadorSwing animador =
+            new AnimadorSwing(15, this::passoEntradas);
 
     PainelConversa() {
         setLayout(new LayoutConversa());
         // Transparente: o fundo floral fica no cartão da conversa.
         setOpaque(false);
+
+        // Clique direito em área vazia: opções de animação.
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                mostrarOpcoes(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                mostrarOpcoes(e);
+            }
+        });
+    }
+
+    private void mostrarOpcoes(MouseEvent evento) {
+        if (evento.isPopupTrigger() && isShowing()) {
+            MenuAnimacoes.criar().show(this, evento.getX(), evento.getY());
+            evento.consume();
+        }
+    }
+
+    void definirRelogio(LongSupplier novoRelogio) {
+        this.relogio = novoRelogio;
+    }
+
+    boolean historicoConcluido() {
+        return historicoConcluido;
+    }
+
+    boolean animandoEntrada(Component item) {
+        return entradas.containsKey(item);
+    }
+
+    /** Progresso da entrada (0 a 1); 1 para itens sem animação. */
+    double progressoEntrada(Component item, long agora) {
+        Long inicio = entradas.get(item);
+        if (inicio == null) {
+            return 1;
+        }
+        double t = (agora - inicio) / (double) DURACAO_ENTRADA_MS;
+        return t >= 1 ? 1 : Transicao.suavizar(Math.max(0, t));
+    }
+
+    private void registrarEntrada(JComponent item, FormatoLinhaChat.Linha linha) {
+
+        if (linha.tipo() == FormatoLinhaChat.Tipo.SEPARADOR_HISTORICO
+                && FormatoLinhaChat.FIM_HISTORICO.equals(linha.texto())) {
+            historicoConcluido = true;
+            return;
+        }
+
+        boolean animavel = item instanceof BalaoMensagem || item instanceof AvisoPresenca;
+        long agora = relogio.getAsLong();
+
+        if (historicoConcluido
+                && animavel
+                && ConfiguracaoAnimacoes.transicoesAtivas()
+                && limitador.permitir(agora)) {
+            entradas.put(item, agora);
+            animador.iniciar();
+        }
+    }
+
+    private boolean passoEntradas() {
+
+        long agora = relogio.getAsLong();
+
+        entradas.entrySet().removeIf(entrada -> {
+            Component item = entrada.getKey();
+            repaint(item.getX(), item.getY() - 2,
+                    item.getWidth(), item.getHeight() + DESLOCAMENTO_ENTRADA + 4);
+            return agora - entrada.getValue() >= DURACAO_ENTRADA_MS;
+        });
+
+        return !entradas.isEmpty();
+    }
+
+    /**
+     * Itens em animação de entrada são pintados com opacidade e um pequeno
+     * deslocamento vertical. O layout não muda: a rolagem não é afetada.
+     */
+    @Override
+    protected void paintChildren(Graphics g) {
+
+        if (entradas.isEmpty()) {
+            super.paintChildren(g);
+            return;
+        }
+
+        long agora = relogio.getAsLong();
+        Rectangle recorte = g.getClipBounds();
+
+        for (Component item : getComponents()) {
+
+            Rectangle area = item.getBounds();
+
+            if (!item.isVisible()
+                    || (recorte != null && !recorte.intersects(
+                    area.x, area.y, area.width, area.height + DESLOCAMENTO_ENTRADA))) {
+                continue;
+            }
+
+            double progresso = progressoEntrada(item, agora);
+            int deslocamento = (int) Math.round((1 - progresso) * DESLOCAMENTO_ENTRADA);
+
+            Graphics2D gi = (Graphics2D) g.create(
+                    area.x, area.y + deslocamento, area.width, area.height);
+
+            try {
+                if (progresso < 1) {
+                    gi.setComposite(AlphaComposite.SrcOver.derive((float) progresso));
+                }
+                item.paint(gi);
+            } finally {
+                gi.dispose();
+            }
+        }
     }
 
     void definirUsuarioAtual(String nome) {
@@ -45,6 +187,9 @@ final class PainelConversa extends JPanel implements Scrollable {
 
     void limpar() {
         linhas.clear();
+        entradas.clear();
+        limitador.limpar();
+        historicoConcluido = false;
         removeAll();
         revalidate();
         repaint();
@@ -64,7 +209,11 @@ final class PainelConversa extends JPanel implements Scrollable {
         String original = Objects.requireNonNullElse(linha, "");
         linhas.add(original);
 
-        add(criarItem(FormatoLinhaChat.analisar(original)));
+        FormatoLinhaChat.Linha analisada = FormatoLinhaChat.analisar(original);
+        JComponent item = criarItem(analisada);
+
+        add(item);
+        registrarEntrada(item, analisada);
 
         revalidate();
         repaint();

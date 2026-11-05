@@ -144,6 +144,23 @@ final class TemaSakura {
                 : fonte(estiloAlternativo, tamanho);
     }
 
+    /** Mistura duas cores (t = 0 → a; t = 1 → b), inclusive a transparência. */
+    static Color misturar(Color a, Color b, double t) {
+
+        if (a == null || b == null) {
+            return t < 0.5 ? a : b;
+        }
+
+        double p = Math.max(0, Math.min(1, t));
+
+        return new Color(
+                (int) Math.round(a.getRed() + (b.getRed() - a.getRed()) * p),
+                (int) Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * p),
+                (int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * p),
+                (int) Math.round(a.getAlpha() + (b.getAlpha() - a.getAlpha()) * p)
+        );
+    }
+
     /** Indica se as fontes de destaque internas foram carregadas. */
     static boolean fontesDestaqueCarregadas() {
         return NUNITO_SEMIBOLD != null

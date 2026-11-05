@@ -32,6 +32,7 @@ public final class ClienteChat extends JFrame {
 
     private final PainelConversa areaMensagens = new PainelConversa();
     private final JScrollPane rolagem = new JScrollPane(areaMensagens);
+    private final FundoConversa fundoConversa = new FundoConversa(new BorderLayout());
 
     // Estado da rolagem automática; acessado somente na EDT.
     private boolean acompanhandoFim = true;
@@ -86,6 +87,27 @@ public final class ClienteChat extends JFrame {
             @Override
             public void windowClosing(WindowEvent e) {
                 desconectar();
+            }
+
+            // Pétalas pausadas com a janela inativa ou minimizada.
+            @Override
+            public void windowActivated(WindowEvent e) {
+                fundoConversa.definirJanelaAtiva(true);
+            }
+
+            @Override
+            public void windowDeactivated(WindowEvent e) {
+                fundoConversa.definirJanelaAtiva(false);
+            }
+
+            @Override
+            public void windowIconified(WindowEvent e) {
+                fundoConversa.definirJanelaAtiva(false);
+            }
+
+            @Override
+            public void windowDeiconified(WindowEvent e) {
+                fundoConversa.definirJanelaAtiva(isActive());
             }
         });
     }
@@ -233,11 +255,10 @@ public final class ClienteChat extends JFrame {
                 e -> atualizarAcompanhamentoDoFim()
         );
 
-        FundoConversa cartao = new FundoConversa(new BorderLayout());
-        cartao.setBorder(new EmptyBorder(6, 6, 6, 6));
-        cartao.add(rolagem, BorderLayout.CENTER);
+        fundoConversa.setBorder(new EmptyBorder(6, 6, 6, 6));
+        fundoConversa.add(rolagem, BorderLayout.CENTER);
 
-        return cartao;
+        return fundoConversa;
     }
 
     /**
@@ -698,6 +719,9 @@ public final class ClienteChat extends JFrame {
 
             try {
                 escreverLinha(texto);
+
+                // Envio bem-sucedido: pequeno voo do avião de papel.
+                SwingUtilities.invokeLater(botaoEnviar::animarEnvio);
 
             } catch (IOException e) {
 

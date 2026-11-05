@@ -8,6 +8,8 @@ import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.LayoutManager;
+import java.awt.Rectangle;
+import java.util.List;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Ellipse2D;
@@ -38,9 +40,109 @@ final class FundoConversa extends JPanel {
     private int alturaComposta;
     private double escalaComposta;
 
+    // Pétalas caindo (animação contínua e lenta, 10 quadros por segundo).
+    static final int QUANTIDADE_PETALAS = 5;
+    static final int INTERVALO_PETALAS_MS = 100;
+    private static final float OPACIDADE_PETALAS_CAINDO = 0.32f;
+
+    private final transient CampoPetalas petalas =
+            new CampoPetalas(QUANTIDADE_PETALAS, System.nanoTime());
+    private final transient AnimadorSwing animadorPetalas =
+            new AnimadorSwing(INTERVALO_PETALAS_MS, this::passoPetalas);
+    private final transient Runnable aoMudarAnimacoes = this::atualizarPetalas;
+
+    private boolean janelaAtiva = true;
+    private long ultimoPasso;
+
     FundoConversa(LayoutManager layout) {
         super(layout);
         setOpaque(false);
+    }
+
+    /**
+     * Regra de execução das pétalas: somente no modo completo, com a
+     * janela ativa (não minimizada nem em segundo plano) e visível.
+     */
+    static boolean petalasDevemRodar(
+            ConfiguracaoAnimacoes.Modo modo,
+            boolean janelaAtiva,
+            boolean visivel
+    ) {
+        return modo == ConfiguracaoAnimacoes.Modo.COMPLETAS && janelaAtiva && visivel;
+    }
+
+    /** Informado pela janela: ativa, inativa ou minimizada. */
+    void definirJanelaAtiva(boolean ativa) {
+        this.janelaAtiva = ativa;
+        atualizarPetalas();
+    }
+
+    boolean petalasRodando() {
+        return animadorPetalas.rodando();
+    }
+
+    private void atualizarPetalas() {
+        if (petalasDevemRodar(ConfiguracaoAnimacoes.modo(), janelaAtiva, isShowing())) {
+            ultimoPasso = 0;
+            animadorPetalas.iniciar();
+        } else {
+            animadorPetalas.parar();
+        }
+        repaint();
+    }
+
+    private boolean passoPetalas() {
+
+        if (!petalasDevemRodar(ConfiguracaoAnimacoes.modo(), janelaAtiva, isShowing())) {
+            return false;
+        }
+
+        long agora = Transicao.agora();
+        long passo = ultimoPasso == 0 ? 0 : Math.min(agora - ultimoPasso, 200);
+        ultimoPasso = agora;
+
+        petalas.ajustarArea(getWidth(), getHeight());
+
+        List<CampoPetalas.Petala> antes = petalas.petalas();
+        petalas.avancar(passo);
+        List<CampoPetalas.Petala> depois = petalas.petalas();
+
+        // Redesenha só a área de cada pétala (posição antiga e nova),
+        // em vez do cartão inteiro com todas as mensagens.
+        Rectangle limites = new Rectangle(0, 0, getWidth(), getHeight());
+
+        for (int i = 0; i < depois.size(); i++) {
+            Rectangle area = areaDa(antes.get(i)).union(areaDa(depois.get(i)));
+            Rectangle visivel = area.intersection(limites);
+            if (!visivel.isEmpty()) {
+                paintImmediately(visivel);
+            }
+        }
+        return true;
+    }
+
+    private static Rectangle areaDa(CampoPetalas.Petala p) {
+        int margem = (int) Math.ceil(p.tamanho() / 2) + 2;
+        return new Rectangle(
+                (int) Math.floor(p.x()) - margem,
+                (int) Math.floor(p.y()) - margem,
+                2 * margem + 1,
+                2 * margem + 1
+        );
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        ConfiguracaoAnimacoes.aoMudar(aoMudarAnimacoes);
+        atualizarPetalas();
+    }
+
+    @Override
+    public void removeNotify() {
+        ConfiguracaoAnimacoes.removerOuvinte(aoMudarAnimacoes);
+        animadorPetalas.parar();
+        super.removeNotify();
     }
 
     @Override
@@ -63,20 +165,82 @@ final class FundoConversa extends JPanel {
                     || altura != alturaComposta
                     || escala != escalaComposta) {
 
-                composicao = compor(largura, altura, escala);
+                composicao = compatibilizar(compor(largura, altura, escala));
                 larguraComposta = largura;
                 alturaComposta = altura;
                 escalaComposta = escala;
             }
 
-            g2.setRenderingHint(
-                    RenderingHints.KEY_INTERPOLATION,
-                    RenderingHints.VALUE_INTERPOLATION_BILINEAR
-            );
-            g2.drawImage(composicao, 0, 0, largura, altura, null);
+            if (composicao.getWidth() == largura && composicao.getHeight() == altura) {
+                // Sem escala: cópia direta, a forma mais rápida.
+                g2.drawImage(composicao, 0, 0, null);
+            } else {
+                g2.setRenderingHint(
+                        RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BILINEAR
+                );
+                g2.drawImage(composicao, 0, 0, largura, altura, null);
+            }
+
+            if (animadorPetalas.rodando()) {
+                desenharPetalasCaindo(g2, largura, altura);
+            }
 
         } finally {
             g2.dispose();
+        }
+    }
+
+    /**
+     * Copia a composição para uma imagem compatível com a tela, que o
+     * Java2D pode acelerar ao desenhar (importante com as pétalas).
+     */
+    private BufferedImage compatibilizar(BufferedImage imagem) {
+
+        java.awt.GraphicsConfiguration configuracao = getGraphicsConfiguration();
+
+        if (configuracao == null) {
+            return imagem;
+        }
+
+        BufferedImage compativel = configuracao.createCompatibleImage(
+                imagem.getWidth(), imagem.getHeight(), java.awt.Transparency.TRANSLUCENT);
+
+        Graphics2D g = compativel.createGraphics();
+        try {
+            g.setComposite(AlphaComposite.Src);
+            g.drawImage(imagem, 0, 0, null);
+        } finally {
+            g.dispose();
+        }
+        return compativel;
+    }
+
+    /** Pétalas em movimento, por trás das mensagens e dentro do cartão. */
+    private void desenharPetalasCaindo(Graphics2D g2, int largura, int altura) {
+
+        Graphics2D gp = (Graphics2D) g2.create();
+
+        try {
+            gp.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            // Recorte retangular (rápido); pétalas nos cantos arredondados
+            // são omitidas para não ultrapassar a borda do cartão.
+            gp.clipRect(2, 2, largura - 4, altura - 4);
+            gp.setComposite(AlphaComposite.SrcOver.derive(OPACIDADE_PETALAS_CAINDO));
+            gp.setColor(TemaSakura.ROSA_FLOR);
+
+            int canto = TemaSakura.RAIO_CARTAO;
+
+            for (CampoPetalas.Petala p : petalas.petalas()) {
+                boolean noCanto = (p.x() < canto || p.x() > largura - canto)
+                        && (p.y() < canto || p.y() > altura - canto);
+                if (!noCanto) {
+                    petala(gp, p.x(), p.y(), p.tamanho(), p.angulo());
+                }
+            }
+        } finally {
+            gp.dispose();
         }
     }
 

@@ -70,12 +70,20 @@ final class LinhaTexto extends JComponent implements ItemConversa {
                 : larguraTotal;
     }
 
+    // Cache da quebra: só é refeita quando a largura muda.
+    private transient List<String> linhasEmCache;
+    private int larguraEmCache = -1;
+
     List<String> linhasPara(int larguraTotal) {
-        return QuebraTexto.quebrar(
-                textoExibido,
-                getFontMetrics(fonte()),
-                larguraTexto(larguraTotal)
-        );
+        if (linhasEmCache == null || larguraTotal != larguraEmCache) {
+            linhasEmCache = QuebraTexto.quebrar(
+                    textoExibido,
+                    getFontMetrics(fonte()),
+                    larguraTexto(larguraTotal)
+            );
+            larguraEmCache = larguraTotal;
+        }
+        return linhasEmCache;
     }
 
     @Override

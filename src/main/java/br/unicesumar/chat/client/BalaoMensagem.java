@@ -174,10 +174,17 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
                 (int) (larguraDisponivel * FRACAO_MAXIMA) - 2 * PREENCHIMENTO_H
         );
 
-        int natural = Math.max(larguraCabecalho(), texto.stringWidth(conteudo));
+        if (larguraNatural < 0) {
+            larguraNatural = Math.max(larguraCabecalho(), texto.stringWidth(conteudo));
+        }
 
-        return Math.min(maxima, natural);
+        return Math.min(maxima, larguraNatural);
     }
+
+    // Caches de medição: o texto é imutável; a quebra só muda com a largura.
+    private int larguraNatural = -1;
+    private transient List<String> linhasEmCache;
+    private int larguraEmCache = -1;
 
     private int larguraCabecalho() {
         return getFontMetrics(fonteNome).stringWidth(remetente)
@@ -186,11 +193,15 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
     }
 
     List<String> linhasPara(int larguraInterna) {
-        return QuebraTexto.quebrar(
-                conteudo,
-                getFontMetrics(TemaSakura.FONTE_TEXTO),
-                larguraInterna
-        );
+        if (linhasEmCache == null || larguraInterna != larguraEmCache) {
+            linhasEmCache = QuebraTexto.quebrar(
+                    conteudo,
+                    getFontMetrics(TemaSakura.FONTE_TEXTO),
+                    larguraInterna
+            );
+            larguraEmCache = larguraInterna;
+        }
+        return linhasEmCache;
     }
 
     private int alturaPara(int quantidadeLinhas) {

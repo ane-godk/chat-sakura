@@ -37,6 +37,16 @@ final class IndicadorConexao extends JLabel {
 
     private int larguraMaxima = Integer.MAX_VALUE;
 
+    static final int DURACAO_COR_MS = 260;
+
+    // Transição gradual da cor do ponto entre estados.
+    private Color corAnterior = Estado.DESCONECTADO.ponto;
+    private final transient Transicao mudancaCor = new Transicao(1, DURACAO_COR_MS);
+    private final transient AnimadorSwing animador = new AnimadorSwing(15, () -> {
+        repaint();
+        return mudancaCor.emAndamento(Transicao.agora());
+    });
+
     IndicadorConexao() {
         super("Desconectado");
         setFont(TemaSakura.FONTE_STATUS);
@@ -66,11 +76,26 @@ final class IndicadorConexao extends JLabel {
     }
 
     void mostrar(Estado novoEstado, String texto) {
+        if (novoEstado != estado) {
+            long agora = Transicao.agora();
+            corAnterior = corDoPonto(agora);
+            mudancaCor.definir(0);
+            mudancaCor.irPara(1, agora);
+            if (mudancaCor.emAndamento(agora)) {
+                animador.iniciar();
+            }
+        }
+
         this.estado = novoEstado;
         setFont(TemaSakura.fonteQueExibe(TemaSakura.FONTE_STATUS, texto));
         setText(texto);
         setToolTipText(texto);
         repaint();
+    }
+
+    /** Cor atual do ponto (durante a transição, mistura das duas cores). */
+    Color corDoPonto(long agora) {
+        return TemaSakura.misturar(corAnterior, estado.ponto, mudancaCor.valor(agora));
     }
 
     @Override
@@ -92,7 +117,7 @@ final class IndicadorConexao extends JLabel {
             g2.draw(pilula);
 
             double y = (getHeight() - DIAMETRO_PONTO) / 2.0;
-            g2.setColor(estado.ponto);
+            g2.setColor(corDoPonto(Transicao.agora()));
             g2.fill(new Ellipse2D.Double(
                     MARGEM, y, DIAMETRO_PONTO, DIAMETRO_PONTO
             ));

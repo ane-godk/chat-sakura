@@ -78,10 +78,20 @@ record PaletaSakura(
         Color veuCabecalho,
         Color haloTitulo,
         Color brilhoFocoCampo,
-        Color dobraAviao
+        Color dobraAviao,
+
+        /** Nome do próprio usuário dentro do balão (contraste ≥ 4,5:1). */
+        Color nomeProprio,
+
+        /** Indica tema escuro: imagens (banner, flor) recebem ajuste noturno. */
+        boolean noturno
 ) {
 
-    /** Sakura Claro: as cores originais da interface, sem alterações. */
+    /**
+     * Sakura Claro: as cores originais da interface. Única mudança: o nome
+     * do próprio usuário passou de rosaEscuro para (165, 50, 98), elevando
+     * o contraste sobre o balão rosa de ~3,9:1 para ~5:1.
+     */
     static final PaletaSakura CLARO = new PaletaSakura(
             new Color(214, 84, 136),
             new Color(190, 64, 116),
@@ -146,7 +156,92 @@ record PaletaSakura(
             new Color(255, 255, 255, 150),
             new Color(255, 255, 255, 170),
             new Color(248, 187, 208, 150),
-            new Color(120, 30, 70, 110)
+            new Color(120, 30, 70, 110),
+
+            new Color(165, 50, 98),
+            false
+    );
+
+    /**
+     * Sakura Noturno: ameixa escuro, vinho suave e rosa antigo, sem preto
+     * puro nem cores neon. Textos claros e rosados, nunca branco puro.
+     */
+    static final PaletaSakura NOTURNO = new PaletaSakura(
+            // Rosas de destaque
+            new Color(0xC4, 0x6E, 0x96),     // rosa (bordas, anel de foco)
+            new Color(0xF2, 0xA7, 0xC3),     // rosaEscuro → rosa antigo claro (título, separador)
+            new Color(0xF2, 0xC4, 0xD7),     // rosaHover (texto do botão secundário, nome no aviso)
+            new Color(0xF7, 0xD2, 0xE1),     // rosaPressionado
+            new Color(0x4A, 0x2A, 0x40),     // rosaPetala (seleção, destaque de menu)
+            new Color(0x4A, 0x32, 0x47),     // rosaBorda
+            new Color(0xE8, 0xA3, 0xBF),     // rosaFlor (pétalas)
+            new Color(0x3A, 0x28, 0x36),     // rosaHoverClaro (pílulas)
+
+            // Fundos e textos
+            new Color(0x1E, 0x14, 0x20),     // fundo da janela (ameixa profundo)
+            new Color(0x2A, 0x1C, 0x2B),     // cartao (menus, campo)
+            new Color(0x26, 0x1A, 0x27),     // campoDesabilitado
+            new Color(0xF3, 0xE6, 0xEE),     // texto
+            new Color(0xC9, 0xB3, 0xC2),     // textoSuave
+            new Color(0xBF, 0xA6, 0xB7),     // textoHorario
+            new Color(0xEB, 0xD7, 0xE2),     // textoCabecalho
+
+            // Estados
+            new Color(0x7F, 0xC8, 0xA9),
+            new Color(0xE8, 0xB6, 0x6B),
+            new Color(0xF0, 0xC2, 0x7A),
+            new Color(0xE5, 0x8C, 0x8C),
+            new Color(0xF2, 0xA0, 0xA0),
+
+            // Balões
+            new Color(0x5A, 0x2D, 0x48),     // próprio (vinho suave)
+            new Color(0x4E, 0x27, 0x40),
+            new Color(0x6E, 0x3A, 0x58),
+            new Color(0x34, 0x23, 0x3A),     // dos outros
+            new Color(0x2F, 0x20, 0x35),
+            new Color(0, 0, 0, 60),          // sombra suave
+
+            List.of(
+                    new Color(0xC9, 0xA7, 0xF0),
+                    new Color(0x7C, 0xC6, 0xD6),
+                    new Color(0xF0, 0xA9, 0x79),
+                    new Color(0x9A, 0xD3, 0xA0),
+                    new Color(0xA9, 0xAE, 0xF2)
+            ),
+
+            // Botão principal
+            new Color(0xB2, 0x4D, 0x7E),
+            new Color(0x96, 0x40, 0x6B),
+            new Color(0xA0, 0x42, 0x6F),
+            new Color(0x86, 0x37, 0x60),
+            new Color(0x8A, 0x38, 0x62),
+            new Color(0x74, 0x30, 0x4F),
+            new Color(0xFF, 0xF4, 0xF8),
+
+            // Botão secundário
+            new Color(0x34, 0x23, 0x3A),
+            new Color(0x2F, 0x20, 0x35),
+            new Color(0x3E, 0x2A, 0x40),
+            new Color(0x38, 0x25, 0x3A),
+            new Color(0x4A, 0x2A, 0x40),
+            new Color(0x43, 0x26, 0x39),
+
+            // Efeitos dos botões
+            new Color(0, 0, 0),
+            new Color(255, 255, 255, 40),
+            new Color(255, 255, 255, 22),
+
+            // Superfícies decoradas
+            new Color(0x2A, 0x1C, 0x2B, 225),   // selo de status translúcido
+            new Color(0x2A, 0x1C, 0x2B),
+            new Color(0x24, 0x18, 0x26),
+            new Color(0x1E, 0x14, 0x20, 175),   // véu escuro atrás do título
+            new Color(0x1E, 0x14, 0x20, 190),   // halo escuro do título
+            new Color(0xE8, 0xA3, 0xBF, 90),
+            new Color(120, 30, 70, 110),
+
+            new Color(0xF2, 0xA7, 0xC3),
+            true
     );
 
     PaletaSakura {

@@ -36,6 +36,7 @@ final class FundoConversa extends JPanel {
     private int larguraComposta;
     private int alturaComposta;
     private double escalaComposta;
+    private transient PaletaSakura paletaComposta;
 
     // Pétalas caindo (animação contínua e lenta, 10 quadros por segundo).
     static final int QUANTIDADE_PETALAS = 5;
@@ -160,12 +161,14 @@ final class FundoConversa extends JPanel {
             if (composicao == null
                     || largura != larguraComposta
                     || altura != alturaComposta
-                    || escala != escalaComposta) {
+                    || escala != escalaComposta
+                    || TemaSakura.cores() != paletaComposta) {
 
                 composicao = compatibilizar(compor(largura, altura, escala));
                 larguraComposta = largura;
                 alturaComposta = altura;
                 escalaComposta = escala;
+                paletaComposta = TemaSakura.cores();
             }
 
             if (composicao.getWidth() == largura && composicao.getHeight() == altura) {

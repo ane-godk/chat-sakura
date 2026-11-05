@@ -62,7 +62,7 @@ final class BarraRolagemSakura extends BasicScrollBarUI {
         try {
             g2.setColor(isThumbRollover() || isDragging
                     ? TemaSakura.cores().rosaFlor()
-                    : thumbColor);
+                    : TemaSakura.cores().rosaBorda());
 
             float margem = 2f;
             float largura = area.width - 2 * margem;

@@ -32,9 +32,6 @@ final class IconeSakura extends JComponent {
         setOpaque(false);
     }
 
-    // Flor PNG já redimensionada para o tamanho em pixels da tela.
-    private transient BufferedImage florAjustada;
-
     @Override
     protected void paintComponent(Graphics g) {
 
@@ -63,21 +60,12 @@ final class IconeSakura extends JComponent {
         }
     }
 
-    private BufferedImage florNoTamanho(int lado, double escala) {
-
-        BufferedImage original = RecursosSakura.flor().orElse(null);
-
-        if (original == null || lado <= 0) {
+    /** Flor do tema ativo, já no tamanho em pixels da tela (em cache). */
+    private static BufferedImage florNoTamanho(int lado, double escala) {
+        if (lado <= 0) {
             return null;
         }
-
-        int pixels = (int) Math.ceil(lado * escala);
-
-        if (florAjustada == null || florAjustada.getWidth() != pixels) {
-            florAjustada = RecursosSakura.redimensionar(original, pixels, pixels);
-        }
-
-        return florAjustada;
+        return RecursosSakura.florEmPixels((int) Math.ceil(lado * escala)).orElse(null);
     }
 
     static void desenhar(

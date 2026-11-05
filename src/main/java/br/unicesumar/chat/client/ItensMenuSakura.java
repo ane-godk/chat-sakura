@@ -46,6 +46,8 @@ final class ItensMenuSakura {
             super.installDefaults();
             selectionBackground = TemaSakura.cores().rosaPetala();
             selectionForeground = TemaSakura.cores().texto();
+            // O ícone do Metal tem cores fixas (claras); este segue a paleta.
+            checkIcon = new IconeOpcao();
         }
 
         Color fundoSelecao() {
@@ -72,6 +74,11 @@ final class ItensMenuSakura {
         }
 
         @Override
+        public java.awt.Color getForeground() {
+            return TemaSakura.cores().texto();
+        }
+
+        @Override
         protected void paintComponent(Graphics g) {
             pintarDestaque(this, g);
             super.paintComponent(g);
@@ -93,9 +100,46 @@ final class ItensMenuSakura {
         }
 
         @Override
+        public java.awt.Color getForeground() {
+            return TemaSakura.cores().texto();
+        }
+
+        @Override
         protected void paintComponent(Graphics g) {
             pintarDestaque(this, g);
             super.paintComponent(g);
+        }
+    }
+
+    /** Círculo de opção desenhado com a paleta ativa (ponto quando selecionado). */
+    static final class IconeOpcao implements javax.swing.Icon {
+
+        private static final int TAMANHO = 12;
+
+        @Override
+        public void paintIcon(java.awt.Component c, Graphics g, int x, int y) {
+            Graphics2D g2 = TemaSakura.suavizar(g);
+            try {
+                g2.setStroke(new java.awt.BasicStroke(1.4f));
+                g2.setColor(TemaSakura.cores().rosa());
+                g2.draw(new java.awt.geom.Ellipse2D.Float(x + 0.7f, y + 0.7f, TAMANHO - 1.4f, TAMANHO - 1.4f));
+                if (c instanceof javax.swing.AbstractButton botao && botao.isSelected()) {
+                    g2.setColor(TemaSakura.cores().rosaEscuro());
+                    g2.fill(new java.awt.geom.Ellipse2D.Float(x + 3.2f, y + 3.2f, TAMANHO - 6.4f, TAMANHO - 6.4f));
+                }
+            } finally {
+                g2.dispose();
+            }
+        }
+
+        @Override
+        public int getIconWidth() {
+            return TAMANHO;
+        }
+
+        @Override
+        public int getIconHeight() {
+            return TAMANHO;
         }
     }
 

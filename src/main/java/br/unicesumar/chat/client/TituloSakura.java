@@ -15,11 +15,20 @@ final class TituloSakura extends JLabel {
 
     private static final long serialVersionUID = 1L;
 
-    TituloSakura(String texto, java.awt.Font fonte, Color cor) {
+    private final transient java.util.function.Supplier<Color> cor;
+
+    /** @param cor cor lida da paleta ativa a cada pintura */
+    TituloSakura(String texto, java.awt.Font fonte, java.util.function.Supplier<Color> cor) {
         super(texto);
+        this.cor = cor;
         setFont(fonte);
-        setForeground(cor);
         setOpaque(false);
+    }
+
+    @Override
+    public Color getForeground() {
+        // Durante a construção do JLabel, o fornecedor ainda não existe.
+        return cor == null ? super.getForeground() : cor.get();
     }
 
     @Override

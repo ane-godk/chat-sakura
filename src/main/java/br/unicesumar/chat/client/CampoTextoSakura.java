@@ -34,7 +34,6 @@ final class CampoTextoSakura extends JTextField {
     private final String placeholderDesabilitado;
     private final boolean comFlor;
 
-    private transient BufferedImage florAjustada;
 
     CampoTextoSakura(
             int colunas,
@@ -80,6 +79,33 @@ final class CampoTextoSakura extends JTextField {
                 repaint();
             }
         });
+    }
+
+    // Cores lidas da paleta ativa (trocam junto com o tema).
+
+    @Override
+    public Color getForeground() {
+        return TemaSakura.cores().texto();
+    }
+
+    @Override
+    public Color getDisabledTextColor() {
+        return TemaSakura.cores().textoSuave();
+    }
+
+    @Override
+    public Color getCaretColor() {
+        return TemaSakura.cores().rosaEscuro();
+    }
+
+    @Override
+    public Color getSelectionColor() {
+        return TemaSakura.cores().rosaPetala();
+    }
+
+    @Override
+    public Color getSelectedTextColor() {
+        return TemaSakura.cores().texto();
     }
 
     @Override
@@ -129,7 +155,12 @@ final class CampoTextoSakura extends JTextField {
         int x = MARGEM_ESQUERDA - 2;
         int y = (getHeight() - TAMANHO_FLOR) / 2;
 
-        BufferedImage flor = RecursosSakura.flor().orElse(null);
+        int pixels = (int) Math.ceil(
+                TAMANHO_FLOR * g2.getTransform().getScaleX()
+        );
+
+        // Flor do tema ativo, já redimensionada (cache em RecursosSakura).
+        BufferedImage flor = RecursosSakura.florEmPixels(pixels).orElse(null);
 
         if (flor == null) {
             IconeSakura.desenhar(
@@ -141,14 +172,6 @@ final class CampoTextoSakura extends JTextField {
             return;
         }
 
-        int pixels = (int) Math.ceil(
-                TAMANHO_FLOR * g2.getTransform().getScaleX()
-        );
-
-        if (florAjustada == null || florAjustada.getWidth() != pixels) {
-            florAjustada = RecursosSakura.redimensionar(flor, pixels, pixels);
-        }
-
         if (!isEnabled()) {
             g2.setComposite(java.awt.AlphaComposite.getInstance(
                     java.awt.AlphaComposite.SRC_OVER, 0.5f));
@@ -158,7 +181,7 @@ final class CampoTextoSakura extends JTextField {
                 RenderingHints.KEY_INTERPOLATION,
                 RenderingHints.VALUE_INTERPOLATION_BILINEAR
         );
-        g2.drawImage(florAjustada, x, y, TAMANHO_FLOR, TAMANHO_FLOR, null);
+        g2.drawImage(flor, x, y, TAMANHO_FLOR, TAMANHO_FLOR, null);
     }
 
     @Override

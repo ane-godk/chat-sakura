@@ -27,6 +27,11 @@ final class TemaSakura {
         return paletaAtiva;
     }
 
+    /** Usado pelo {@link GerenciadorTema}. */
+    static void definirPaleta(PaletaSakura paleta) {
+        paletaAtiva = paleta;
+    }
+
     // Espaçamentos e raios
     static final int ESPACO_P = 8;
     static final int ESPACO_M = 12;

@@ -34,6 +34,7 @@ final class PainelCabecalho extends JPanel {
     private int larguraComposta;
     private int alturaComposta;
     private double escalaComposta;
+    private transient PaletaSakura paletaComposta;
 
     PainelCabecalho(LayoutManager layout) {
         super(layout);
@@ -67,12 +68,14 @@ final class PainelCabecalho extends JPanel {
             if (composicao == null
                     || largura != larguraComposta
                     || altura != alturaComposta
-                    || escala != escalaComposta) {
+                    || escala != escalaComposta
+                    || TemaSakura.cores() != paletaComposta) {
 
                 composicao = compor(largura, altura, escala);
                 larguraComposta = largura;
                 alturaComposta = altura;
                 escalaComposta = escala;
+                paletaComposta = TemaSakura.cores();
             }
 
             g2.setRenderingHint(
@@ -149,7 +152,7 @@ final class PainelCabecalho extends JPanel {
             double escala
     ) {
 
-        BufferedImage banner = RecursosSakura.banner().orElse(null);
+        BufferedImage banner = RecursosSakura.bannerNoTema().orElse(null);
 
         if (banner == null) {
             g.setPaint(new GradientPaint(

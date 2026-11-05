@@ -103,6 +103,16 @@ final class IndicadorConexao extends JLabel {
     }
 
     @Override
+    public Color getForeground() {
+        return TemaSakura.cores().texto();
+    }
+
+    @Override
+    public javax.swing.JToolTip createToolTip() {
+        return new TooltipSakura(this);
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
 
         Graphics2D g2 = TemaSakura.suavizar(g);

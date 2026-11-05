@@ -8,18 +8,22 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.LayoutManager;
 import java.awt.geom.RoundRectangle2D;
+import java.util.function.Function;
 
 /**
  * Painel com cantos arredondados, fundo liso ou em degradê horizontal
  * e borda opcional.
+ *
+ * As cores são papéis da paleta, lidos a cada pintura: o painel acompanha
+ * a troca de tema sem precisar ser recriado.
  */
 final class PainelArredondado extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    private final Color corInicio;
-    private final Color corFim;
-    private final Color corBorda;
+    private final transient Function<PaletaSakura, Color> corInicio;
+    private final transient Function<PaletaSakura, Color> corFim;
+    private final transient Function<PaletaSakura, Color> corBorda;
     private final int raio;
 
     /**
@@ -28,9 +32,9 @@ final class PainelArredondado extends JPanel {
      */
     PainelArredondado(
             LayoutManager layout,
-            Color corInicio,
-            Color corFim,
-            Color corBorda,
+            Function<PaletaSakura, Color> corInicio,
+            Function<PaletaSakura, Color> corFim,
+            Function<PaletaSakura, Color> corBorda,
             int raio
     ) {
         super(layout);
@@ -44,6 +48,7 @@ final class PainelArredondado extends JPanel {
     @Override
     protected void paintComponent(Graphics g) {
 
+        PaletaSakura cores = TemaSakura.cores();
         Graphics2D g2 = TemaSakura.suavizar(g);
 
         try {
@@ -53,13 +58,14 @@ final class PainelArredondado extends JPanel {
             );
 
             g2.setPaint(corFim == null
-                    ? corInicio
-                    : new GradientPaint(0, 0, corInicio, getWidth(), 0, corFim));
+                    ? corInicio.apply(cores)
+                    : new GradientPaint(0, 0, corInicio.apply(cores),
+                            getWidth(), 0, corFim.apply(cores)));
             g2.fill(forma);
 
             if (corBorda != null) {
                 g2.setStroke(new BasicStroke(1.2f));
-                g2.setColor(corBorda);
+                g2.setColor(corBorda.apply(cores));
                 g2.draw(forma);
             }
         } finally {

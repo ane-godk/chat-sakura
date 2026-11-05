@@ -3,7 +3,6 @@ package br.unicesumar.chat.client;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import java.awt.image.BufferedImage;
 import javax.swing.event.AncestorEvent;
 import javax.swing.event.AncestorListener;
 import javax.swing.event.DocumentEvent;
@@ -77,9 +76,24 @@ public final class ClienteChat extends JFrame {
     private volatile String nomeUsuario = "";
 
     public ClienteChat() {
+        // Registra-se antes de montar a interface: o tema inicial
+        // (-Dchat.sakura.tema) já vale para todos os componentes.
+        GerenciadorTema.aoMudar(aoMudarTema);
         configurarJanela();
         montarInterface();
         atualizarEstado();
+    }
+
+    private final transient Runnable aoMudarTema = this::aplicarTema;
+
+    /**
+     * Troca de tema (na EDT): os componentes leem a paleta ao pintar, então
+     * basta recalcular o que depende de estado e repintar. A conversa, a
+     * rolagem e a conexão não são tocadas.
+     */
+    private void aplicarTema() {
+        atualizarContador();
+        getRootPane().repaint();
     }
 
     private void configurarJanela() {
@@ -100,6 +114,7 @@ public final class ClienteChat extends JFrame {
             public void windowClosed(WindowEvent e) {
                 // Libera os recursos de áudio ao encerrar.
                 notificacoes.fechar();
+                GerenciadorTema.removerOuvinte(aoMudarTema);
             }
 
             // Pétalas pausadas com a janela inativa ou minimizada.
@@ -129,8 +144,15 @@ public final class ClienteChat extends JFrame {
 
         int espaco = TemaSakura.ESPACO_M;
 
-        JPanel principal = new JPanel(new BorderLayout(0, espaco));
-        principal.setBackground(TemaSakura.cores().fundo());
+        // Fundo da janela lido da paleta ativa a cada pintura.
+        JPanel principal = new JPanel(new BorderLayout(0, espaco)) {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public Color getBackground() {
+                return TemaSakura.cores().fundo();
+            }
+        };
         principal.setBorder(
                 new EmptyBorder(espaco, espaco, espaco, espaco)
         );
@@ -193,12 +215,18 @@ public final class ClienteChat extends JFrame {
         TituloSakura titulo = new TituloSakura(
                 "Chat Sakura",
                 TemaSakura.FONTE_TITULO,
-                TemaSakura.cores().rosaEscuro()
+                () -> TemaSakura.cores().rosaEscuro()
         );
 
-        JLabel subtitulo = new JLabel("Converse em tempo real");
+        JLabel subtitulo = new JLabel("Converse em tempo real") {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public Color getForeground() {
+                return TemaSakura.cores().textoCabecalho();
+            }
+        };
         subtitulo.setFont(TemaSakura.FONTE_SUBTITULO);
-        subtitulo.setForeground(TemaSakura.cores().textoCabecalho());
 
         JPanel titulos = new JPanel(new BorderLayout(0, 0));
         titulos.setOpaque(false);
@@ -320,13 +348,28 @@ public final class ClienteChat extends JFrame {
         contador.setHorizontalAlignment(SwingConstants.RIGHT);
 
         // Pequena flor ao lado do contador, como detalhe decorativo.
+        // O ícone desenha a flor do tema ativo a cada pintura.
         int iconeContador = 0;
-        BufferedImage flor = RecursosSakura.flor().orElse(null);
-        if (flor != null) {
+        if (RecursosSakura.flor().isPresent()) {
             iconeContador = 13;
-            contador.setIcon(new ImageIcon(
-                    RecursosSakura.redimensionar(flor, iconeContador, iconeContador)
-            ));
+            int lado = iconeContador;
+            contador.setIcon(new Icon() {
+                @Override
+                public void paintIcon(Component c, Graphics g, int x, int y) {
+                    RecursosSakura.florEmPixels(lado).ifPresent(
+                            imagem -> g.drawImage(imagem, x, y, lado, lado, null));
+                }
+
+                @Override
+                public int getIconWidth() {
+                    return lado;
+                }
+
+                @Override
+                public int getIconHeight() {
+                    return lado;
+                }
+            });
             contador.setIconTextGap(4);
         }
 
@@ -350,9 +393,9 @@ public final class ClienteChat extends JFrame {
 
         PainelArredondado cartao = new PainelArredondado(
                 new BorderLayout(TemaSakura.ESPACO_P, 0),
-                TemaSakura.cores().cartao(),
-                TemaSakura.cores().rosaHoverClaro(),
-                TemaSakura.cores().rosaBorda(),
+                PaletaSakura::cartao,
+                PaletaSakura::rosaHoverClaro,
+                PaletaSakura::rosaBorda,
                 TemaSakura.RAIO_CARTAO
         );
         cartao.setBorder(new EmptyBorder(5, 6, 5, 6));

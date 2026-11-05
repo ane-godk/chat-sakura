@@ -90,11 +90,15 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
     }
 
     JPopupMenu menuDeContexto() {
-        if (menu == null) {
+        // Recriado após uma troca de tema, para seguir a paleta ativa.
+        if (menu == null || paletaDoMenu != TemaSakura.cores()) {
             menu = MenuMensagem.criar(this::copiarMensagem);
+            paletaDoMenu = TemaSakura.cores();
         }
         return menu;
     }
+
+    private transient PaletaSakura paletaDoMenu;
 
     /**
      * Copia somente o conteúdo da mensagem (sem nome, horário ou
@@ -119,7 +123,7 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
     /** Cor do nome, lida da paleta ativa no momento da pintura. */
     Color corNome() {
         PaletaSakura cores = TemaSakura.cores();
-        return propria ? cores.rosaEscuro() : cores.corParticipante(remetente);
+        return propria ? cores.nomeProprio() : cores.corParticipante(remetente);
     }
 
     /** "[04/11 15:02]" é exibido como "04/11 15:02". */

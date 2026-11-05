@@ -22,14 +22,18 @@ final class IndicadorConexao extends JLabel {
     private static final int MARGEM = 14;
 
     enum Estado {
-        CONECTADO(TemaSakura.VERDE),
-        CONECTANDO(TemaSakura.AMBAR),
-        DESCONECTADO(TemaSakura.CORAL);
+        CONECTADO,
+        CONECTANDO,
+        DESCONECTADO;
 
-        private final Color ponto;
-
-        Estado(Color ponto) {
-            this.ponto = ponto;
+        /** Cor do ponto, lida da paleta ativa. */
+        Color ponto() {
+            PaletaSakura cores = TemaSakura.cores();
+            return switch (this) {
+                case CONECTADO -> cores.verde();
+                case CONECTANDO -> cores.ambar();
+                case DESCONECTADO -> cores.coral();
+            };
         }
     }
 
@@ -40,7 +44,7 @@ final class IndicadorConexao extends JLabel {
     static final int DURACAO_COR_MS = 260;
 
     // Transição gradual da cor do ponto entre estados.
-    private Color corAnterior = Estado.DESCONECTADO.ponto;
+    private Color corAnterior = Estado.DESCONECTADO.ponto();
     private final transient Transicao mudancaCor = new Transicao(1, DURACAO_COR_MS);
     private final transient AnimadorSwing animador = new AnimadorSwing(15, () -> {
         repaint();
@@ -50,7 +54,7 @@ final class IndicadorConexao extends JLabel {
     IndicadorConexao() {
         super("Desconectado");
         setFont(TemaSakura.FONTE_STATUS);
-        setForeground(TemaSakura.TEXTO);
+        setForeground(TemaSakura.cores().texto());
         setOpaque(false);
         setBorder(new EmptyBorder(
                 6, MARGEM + DIAMETRO_PONTO + 8, 6, MARGEM
@@ -95,7 +99,7 @@ final class IndicadorConexao extends JLabel {
 
     /** Cor atual do ponto (durante a transição, mistura das duas cores). */
     Color corDoPonto(long agora) {
-        return TemaSakura.misturar(corAnterior, estado.ponto, mudancaCor.valor(agora));
+        return TemaSakura.misturar(corAnterior, estado.ponto(), mudancaCor.valor(agora));
     }
 
     @Override
@@ -109,11 +113,11 @@ final class IndicadorConexao extends JLabel {
                     0.75f, 0.75f, getWidth() - 1.5f, altura, altura, altura
             );
 
-            g2.setColor(TemaSakura.BRANCO_TRANSLUCIDO);
+            g2.setColor(TemaSakura.cores().brancoTranslucido());
             g2.fill(pilula);
 
             g2.setStroke(new BasicStroke(1.2f));
-            g2.setColor(TemaSakura.ROSA_BORDA);
+            g2.setColor(TemaSakura.cores().rosaBorda());
             g2.draw(pilula);
 
             double y = (getHeight() - DIAMETRO_PONTO) / 2.0;

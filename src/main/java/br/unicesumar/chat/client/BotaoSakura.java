@@ -182,10 +182,11 @@ final class BotaoSakura extends JButton {
             // Sombra suave em duas camadas, que some ao pressionar.
             if (isEnabled() && p < 1) {
                 double fator = 1 - p;
-                g2.setColor(new Color(142, 40, 84, (int) (22 * fator)));
+                Color sombra = TemaSakura.cores().sombraBotao();
+                g2.setColor(TemaSakura.comAlfa(sombra, (int) (22 * fator)));
                 g2.fill(new RoundRectangle2D.Float(
                         x, y + 2.5f, largura, altura, RAIO, RAIO));
-                g2.setColor(new Color(142, 40, 84, (int) (30 * fator)));
+                g2.setColor(TemaSakura.comAlfa(sombra, (int) (30 * fator)));
                 g2.fill(new RoundRectangle2D.Float(
                         x, y + 1.2f, largura, altura, RAIO, RAIO));
             }
@@ -199,8 +200,9 @@ final class BotaoSakura extends JButton {
             // Brilho interno no topo, para dar volume.
             if (isEnabled()) {
                 g2.setStroke(new BasicStroke(1f));
-                g2.setColor(new Color(255, 255, 255,
-                        estilo == Estilo.PRINCIPAL ? 60 : 200));
+                g2.setColor(estilo == Estilo.PRINCIPAL
+                        ? TemaSakura.cores().brilhoBotaoPrincipal()
+                        : TemaSakura.cores().brilhoBotaoSecundario());
                 g2.draw(new RoundRectangle2D.Float(
                         x + 1f, y + 1f, largura - 2f, altura - 2f,
                         RAIO - 2f, RAIO - 2f));
@@ -214,7 +216,7 @@ final class BotaoSakura extends JButton {
 
             if (isFocusOwner() && isEnabled()) {
                 g2.setStroke(new BasicStroke(2f));
-                g2.setColor(TemaSakura.ROSA);
+                g2.setColor(TemaSakura.cores().rosa());
                 g2.draw(new RoundRectangle2D.Float(
                         x - 2f, y - 2f, largura + 4f, altura + 4f,
                         RAIO + 4f, RAIO + 4f));
@@ -270,35 +272,38 @@ final class BotaoSakura extends JButton {
     // --- Aparências por estado ---
 
     private Aparencia normal() {
+        PaletaSakura c = TemaSakura.cores();
         return estilo == Estilo.PRINCIPAL
-                ? new Aparencia(new Color(198, 70, 122), new Color(170, 52, 102),
-                        null, Color.WHITE)
-                : new Aparencia(Color.WHITE, new Color(255, 240, 246),
-                        TemaSakura.ROSA, TemaSakura.ROSA_HOVER);
+                ? new Aparencia(c.botaoPrincipalTopo(), c.botaoPrincipalBase(),
+                        null, c.textoBotaoPrincipal())
+                : new Aparencia(c.botaoSecundarioTopo(), c.botaoSecundarioBase(),
+                        c.rosa(), c.rosaHover());
     }
 
     private Aparencia destacado() {
+        PaletaSakura c = TemaSakura.cores();
         return estilo == Estilo.PRINCIPAL
-                ? new Aparencia(new Color(180, 58, 110), new Color(155, 44, 92),
-                        null, Color.WHITE)
-                : new Aparencia(new Color(255, 240, 246), new Color(253, 226, 237),
-                        TemaSakura.ROSA_ESCURO, TemaSakura.ROSA_PRESSIONADO);
+                ? new Aparencia(c.botaoPrincipalHoverTopo(), c.botaoPrincipalHoverBase(),
+                        null, c.textoBotaoPrincipal())
+                : new Aparencia(c.botaoSecundarioHoverTopo(), c.botaoSecundarioHoverBase(),
+                        c.rosaEscuro(), c.rosaPressionado());
     }
 
     private Aparencia pressionado() {
+        PaletaSakura c = TemaSakura.cores();
         return estilo == Estilo.PRINCIPAL
-                ? new Aparencia(new Color(150, 42, 88), new Color(132, 36, 78),
-                        null, Color.WHITE)
-                : new Aparencia(new Color(252, 222, 234), new Color(250, 214, 228),
-                        TemaSakura.ROSA_ESCURO, TemaSakura.ROSA_PRESSIONADO);
+                ? new Aparencia(c.botaoPrincipalPressionadoTopo(), c.botaoPrincipalPressionadoBase(),
+                        null, c.textoBotaoPrincipal())
+                : new Aparencia(c.botaoSecundarioPressionadoTopo(), c.botaoSecundarioPressionadoBase(),
+                        c.rosaEscuro(), c.rosaPressionado());
     }
 
     private Aparencia desabilitado() {
         return estilo == Estilo.PRINCIPAL
-                ? new Aparencia(TemaSakura.ROSA_PETALA, TemaSakura.ROSA_PETALA,
-                        TemaSakura.ROSA_BORDA, TemaSakura.TEXTO_SUAVE)
-                : new Aparencia(TemaSakura.CARTAO, TemaSakura.CARTAO,
-                        TemaSakura.ROSA_BORDA, TemaSakura.TEXTO_SUAVE);
+                ? new Aparencia(TemaSakura.cores().rosaPetala(), TemaSakura.cores().rosaPetala(),
+                        TemaSakura.cores().rosaBorda(), TemaSakura.cores().textoSuave())
+                : new Aparencia(TemaSakura.cores().cartao(), TemaSakura.cores().cartao(),
+                        TemaSakura.cores().rosaBorda(), TemaSakura.cores().textoSuave());
     }
 
     private static Aparencia misturar(Aparencia a, Aparencia b, double t) {

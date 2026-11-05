@@ -104,13 +104,13 @@ final class AvisoPresenca extends JComponent implements ItemConversa {
 
         AttributedString atribuido = new AttributedString(texto);
         atribuido.addAttribute(TextAttribute.FONT, FONTE_ACAO);
-        atribuido.addAttribute(TextAttribute.FOREGROUND, TemaSakura.TEXTO_SUAVE);
+        atribuido.addAttribute(TextAttribute.FOREGROUND, TemaSakura.cores().textoSuave());
 
         atribuido.addAttribute(TextAttribute.FONT, fonteNome, 0, fimNome);
         // ROSA_HOVER sobre a pílula: contraste ~5,8:1.
-        atribuido.addAttribute(TextAttribute.FOREGROUND, TemaSakura.ROSA_HOVER, 0, fimNome);
+        atribuido.addAttribute(TextAttribute.FOREGROUND, TemaSakura.cores().rosaHover(), 0, fimNome);
 
-        atribuido.addAttribute(TextAttribute.FOREGROUND, TemaSakura.TEXTO_HORARIO,
+        atribuido.addAttribute(TextAttribute.FOREGROUND, TemaSakura.cores().textoHorario(),
                 inicioHora, texto.length());
 
         return new TextLayout(atribuido.getIterator(), contexto);
@@ -137,10 +137,10 @@ final class AvisoPresenca extends JComponent implements ItemConversa {
             RoundRectangle2D pilula = new RoundRectangle2D.Float(
                     x, y, largura, altura, altura, altura);
 
-            g2.setColor(TemaSakura.ROSA_HOVER_CLARO);
+            g2.setColor(TemaSakura.cores().rosaHoverClaro());
             g2.fill(pilula);
             g2.setStroke(new BasicStroke(1f));
-            g2.setColor(TemaSakura.ROSA_BORDA);
+            g2.setColor(TemaSakura.cores().rosaBorda());
             g2.draw(pilula);
 
             int xFlor = Math.round(x) + PREENCHIMENTO_H;

@@ -77,7 +77,7 @@ final class SeparadorHistorico extends JComponent implements ItemConversa {
             // Linhas finas que se estendem a partir das flores.
             int margem = (int) (largura * 0.08);
             g2.setStroke(new BasicStroke(1.2f));
-            g2.setColor(TemaSakura.ROSA_BORDA);
+            g2.setColor(TemaSakura.cores().rosaBorda());
 
             if (florEsquerda - ESPACO > margem) {
                 g2.draw(new Line2D.Float(margem, centroY, florEsquerda - ESPACO, centroY));
@@ -91,7 +91,7 @@ final class SeparadorHistorico extends JComponent implements ItemConversa {
             desenharFlor(g2, florEsquerda, centroY - TAMANHO_FLOR / 2);
             desenharFlor(g2, florDireita, centroY - TAMANHO_FLOR / 2);
 
-            g2.setColor(TemaSakura.ROSA_ESCURO);
+            g2.setColor(TemaSakura.cores().rosaEscuro());
             layout.draw(
                     g2,
                     inicioTexto,

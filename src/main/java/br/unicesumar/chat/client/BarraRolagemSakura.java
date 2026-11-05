@@ -16,8 +16,8 @@ final class BarraRolagemSakura extends BasicScrollBarUI {
 
     @Override
     protected void configureScrollBarColors() {
-        thumbColor = TemaSakura.ROSA_BORDA;
-        trackColor = TemaSakura.CARTAO;
+        thumbColor = TemaSakura.cores().rosaBorda();
+        trackColor = TemaSakura.cores().cartao();
     }
 
     @Override
@@ -61,7 +61,7 @@ final class BarraRolagemSakura extends BasicScrollBarUI {
 
         try {
             g2.setColor(isThumbRollover() || isDragging
-                    ? TemaSakura.ROSA_FLOR
+                    ? TemaSakura.cores().rosaFlor()
                     : thumbColor);
 
             float margem = 2f;

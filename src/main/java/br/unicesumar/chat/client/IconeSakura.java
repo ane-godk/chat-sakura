@@ -111,23 +111,23 @@ final class IconeSakura extends JComponent {
             g2.translate(centroX, centroY);
             g2.rotate(Math.toRadians(360.0 / PETALAS * i));
 
-            g2.setColor(TemaSakura.ROSA_FLOR);
+            g2.setColor(TemaSakura.cores().rosaFlor());
             g2.fill(petala);
 
-            g2.setColor(TemaSakura.ROSA);
+            g2.setColor(TemaSakura.cores().rosa());
             g2.draw(petala);
         }
 
         g2.setTransform(original);
 
         double miolo = raio * 0.22;
-        g2.setColor(TemaSakura.ROSA_ESCURO);
+        g2.setColor(TemaSakura.cores().rosaEscuro());
         g2.fill(new Ellipse2D.Double(
                 centroX - miolo, centroY - miolo, miolo * 2, miolo * 2
         ));
 
         double polen = raio * 0.09;
-        g2.setColor(TemaSakura.AMBAR);
+        g2.setColor(TemaSakura.cores().ambar());
         g2.fill(new Ellipse2D.Double(
                 centroX - polen, centroY - polen, polen * 2, polen * 2
         ));

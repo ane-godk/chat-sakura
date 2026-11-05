@@ -130,7 +130,7 @@ public final class ClienteChat extends JFrame {
         int espaco = TemaSakura.ESPACO_M;
 
         JPanel principal = new JPanel(new BorderLayout(0, espaco));
-        principal.setBackground(TemaSakura.FUNDO);
+        principal.setBackground(TemaSakura.cores().fundo());
         principal.setBorder(
                 new EmptyBorder(espaco, espaco, espaco, espaco)
         );
@@ -193,12 +193,12 @@ public final class ClienteChat extends JFrame {
         TituloSakura titulo = new TituloSakura(
                 "Chat Sakura",
                 TemaSakura.FONTE_TITULO,
-                TemaSakura.ROSA_ESCURO
+                TemaSakura.cores().rosaEscuro()
         );
 
         JLabel subtitulo = new JLabel("Converse em tempo real");
         subtitulo.setFont(TemaSakura.FONTE_SUBTITULO);
-        subtitulo.setForeground(TemaSakura.TEXTO_CABECALHO);
+        subtitulo.setForeground(TemaSakura.cores().textoCabecalho());
 
         JPanel titulos = new JPanel(new BorderLayout(0, 0));
         titulos.setOpaque(false);
@@ -350,9 +350,9 @@ public final class ClienteChat extends JFrame {
 
         PainelArredondado cartao = new PainelArredondado(
                 new BorderLayout(TemaSakura.ESPACO_P, 0),
-                TemaSakura.CARTAO,
-                TemaSakura.ROSA_HOVER_CLARO,
-                TemaSakura.ROSA_BORDA,
+                TemaSakura.cores().cartao(),
+                TemaSakura.cores().rosaHoverClaro(),
+                TemaSakura.cores().rosaBorda(),
                 TemaSakura.RAIO_CARTAO
         );
         cartao.setBorder(new EmptyBorder(5, 6, 5, 6));
@@ -391,11 +391,11 @@ public final class ClienteChat extends JFrame {
         contador.setText(tamanho + "/" + LIMITE_MENSAGEM);
 
         if (tamanho > LIMITE_MENSAGEM) {
-            contador.setForeground(TemaSakura.CORAL_TEXTO);
+            contador.setForeground(TemaSakura.cores().coralTexto());
         } else if (tamanho >= LIMITE_MENSAGEM * 9 / 10) {
-            contador.setForeground(TemaSakura.AMBAR_TEXTO);
+            contador.setForeground(TemaSakura.cores().ambarTexto());
         } else {
-            contador.setForeground(TemaSakura.TEXTO_SUAVE);
+            contador.setForeground(TemaSakura.cores().textoSuave());
         }
     }
 
@@ -425,7 +425,7 @@ public final class ClienteChat extends JFrame {
                 this,
                 "Conectar ao Chat Sakura"
         );
-        dialogo.getContentPane().setBackground(TemaSakura.FUNDO);
+        dialogo.getContentPane().setBackground(TemaSakura.cores().fundo());
 
         // Enter confirma, como no diálogo padrão; Esc continua cancelando.
         dialogo.getRootPane().setDefaultButton(
@@ -506,7 +506,7 @@ public final class ClienteChat extends JFrame {
 
         JLabel titulo = new JLabel("Entrar no Chat Sakura");
         titulo.setFont(TemaSakura.FONTE_TITULO_DIALOGO);
-        titulo.setForeground(TemaSakura.ROSA_ESCURO);
+        titulo.setForeground(TemaSakura.cores().rosaEscuro());
 
         JPanel topo = new JPanel(new BorderLayout(TemaSakura.ESPACO_M, 0));
         topo.setOpaque(false);
@@ -565,7 +565,7 @@ public final class ClienteChat extends JFrame {
                 e -> painel.setValue(JOptionPane.CANCEL_OPTION)
         );
 
-        aplicarFundo(painel, TemaSakura.FUNDO);
+        aplicarFundo(painel, TemaSakura.cores().fundo());
 
         return painel;
     }
@@ -579,7 +579,7 @@ public final class ClienteChat extends JFrame {
 
         JLabel legenda = new JLabel(rotulo);
         legenda.setFont(TemaSakura.FONTE_PEQUENA_NEGRITO);
-        legenda.setForeground(TemaSakura.TEXTO);
+        legenda.setForeground(TemaSakura.cores().texto());
         legenda.setLabelFor(campo);
 
         posicao.gridy++;

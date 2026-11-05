@@ -30,8 +30,6 @@ final class CampoTextoSakura extends JTextField {
     private static final int TAMANHO_FLOR = 20;
     private static final int MARGEM_ESQUERDA = 16;
 
-    private static final Color BRILHO_FOCO = new Color(248, 187, 208, 150);
-
     private final String placeholder;
     private final String placeholderDesabilitado;
     private final boolean comFlor;
@@ -59,11 +57,11 @@ final class CampoTextoSakura extends JTextField {
 
         setOpaque(false);
         setFont(TemaSakura.FONTE_TEXTO);
-        setForeground(TemaSakura.TEXTO);
-        setDisabledTextColor(TemaSakura.TEXTO_SUAVE);
-        setCaretColor(TemaSakura.ROSA_ESCURO);
-        setSelectionColor(TemaSakura.ROSA_PETALA);
-        setSelectedTextColor(TemaSakura.TEXTO);
+        setForeground(TemaSakura.cores().texto());
+        setDisabledTextColor(TemaSakura.cores().textoSuave());
+        setCaretColor(TemaSakura.cores().rosaEscuro());
+        setSelectionColor(TemaSakura.cores().rosaPetala());
+        setSelectedTextColor(TemaSakura.cores().texto());
 
         int esquerda = comFlor
                 ? MARGEM_ESQUERDA + TAMANHO_FLOR + 8
@@ -91,8 +89,8 @@ final class CampoTextoSakura extends JTextField {
 
         try {
             g2.setColor(isEnabled()
-                    ? TemaSakura.CARTAO
-                    : TemaSakura.CAMPO_DESABILITADO);
+                    ? TemaSakura.cores().cartao()
+                    : TemaSakura.cores().campoDesabilitado());
             g2.fill(contorno());
 
             if (comFlor) {
@@ -118,7 +116,7 @@ final class CampoTextoSakura extends JTextField {
                         + metricas.getAscent();
 
                 gt.setFont(getFont());
-                gt.setColor(TemaSakura.TEXTO_SUAVE);
+                gt.setColor(TemaSakura.cores().textoSuave());
                 gt.drawString(orientacao, margens.left, y);
             } finally {
                 gt.dispose();
@@ -173,12 +171,12 @@ final class CampoTextoSakura extends JTextField {
 
             if (emFoco) {
                 g2.setStroke(new BasicStroke(5f));
-                g2.setColor(BRILHO_FOCO);
+                g2.setColor(TemaSakura.cores().brilhoFocoCampo());
                 g2.draw(contorno());
             }
 
             g2.setStroke(new BasicStroke(emFoco ? 2f : 1.5f));
-            g2.setColor(emFoco ? TemaSakura.ROSA : TemaSakura.ROSA_BORDA);
+            g2.setColor(emFoco ? TemaSakura.cores().rosa() : TemaSakura.cores().rosaBorda());
             g2.draw(contorno());
         } finally {
             g2.dispose();

@@ -4,15 +4,10 @@ import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
-import javax.swing.UIManager;
-import javax.swing.plaf.ColorUIResource;
 import java.awt.Component;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.KeyEvent;
-import java.awt.geom.RoundRectangle2D;
 
 /**
  * Menu de contexto dos balões ("Copiar mensagem") e acesso seguro à
@@ -50,14 +45,6 @@ final class MenuMensagem {
         }
     };
 
-    static {
-        // Destaque do item em rosa-pétala, com texto escuro legível.
-        UIManager.put("MenuItem.selectionBackground",
-                new ColorUIResource(TemaSakura.ROSA_PETALA));
-        UIManager.put("MenuItem.selectionForeground",
-                new ColorUIResource(TemaSakura.TEXTO));
-    }
-
     private MenuMensagem() {
     }
 
@@ -83,34 +70,14 @@ final class MenuMensagem {
     static JPopupMenu criar(Runnable acaoCopiar) {
 
         JPopupMenu menu = new JPopupMenu();
-        menu.setBackground(TemaSakura.CARTAO);
+        menu.setBackground(TemaSakura.cores().cartao());
         menu.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(TemaSakura.ROSA_BORDA, 1, true),
+                BorderFactory.createLineBorder(TemaSakura.cores().rosaBorda(), 1, true),
                 BorderFactory.createEmptyBorder(4, 4, 4, 4)
         ));
 
-        JMenuItem copiar = new JMenuItem(ROTULO_COPIAR) {
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            protected void paintComponent(Graphics g) {
-                if (getModel().isArmed()) {
-                    Graphics2D g2 = TemaSakura.suavizar(g);
-                    try {
-                        g2.setColor(TemaSakura.ROSA_PETALA);
-                        g2.fill(new RoundRectangle2D.Float(
-                                0, 0, getWidth(), getHeight(), 10, 10));
-                    } finally {
-                        g2.dispose();
-                    }
-                }
-                super.paintComponent(g);
-            }
-        };
-
-        copiar.setOpaque(false);
-        copiar.setFont(TemaSakura.FONTE_STATUS);
-        copiar.setForeground(TemaSakura.TEXTO);
+        // Item com cores próprias (sem alterar o UIManager).
+        JMenuItem copiar = new ItensMenuSakura.Item(ROTULO_COPIAR);
         copiar.setMnemonic(KeyEvent.VK_C);
         copiar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 12));
         RecursosSakura.florEmPixels(14)

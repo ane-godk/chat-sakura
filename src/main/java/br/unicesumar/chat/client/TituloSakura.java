@@ -15,8 +15,6 @@ final class TituloSakura extends JLabel {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Color HALO = new Color(255, 255, 255, 170);
-
     TituloSakura(String texto, java.awt.Font fonte, Color cor) {
         super(texto);
         setFont(fonte);
@@ -43,7 +41,7 @@ final class TituloSakura extends JLabel {
 
             String texto = getText();
 
-            g2.setColor(HALO);
+            g2.setColor(TemaSakura.cores().haloTitulo());
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 2; dy++) {
                     if (dx != 0 || dy != 0) {

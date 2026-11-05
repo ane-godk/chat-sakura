@@ -12,52 +12,20 @@ import java.util.Arrays;
 import java.util.Map;
 
 /**
- * Identidade visual Sakura: cores, fontes e espaçamentos da interface.
+ * Identidade visual Sakura: paleta ativa, fontes e espaçamentos.
  *
- * Os pares de texto e fundo foram escolhidos com contraste de pelo
- * menos 4,5:1 para textos pequenos (por exemplo, branco sobre
- * {@link #ROSA_ESCURO}).
+ * As cores ficam em {@link PaletaSakura}; os componentes as consultam por
+ * {@link #cores()} no momento da pintura. Os pares de texto e fundo têm
+ * contraste de pelo menos 4,5:1 para textos pequenos (verificado em teste).
  */
 final class TemaSakura {
 
-    // Rosas
-    static final Color ROSA = new Color(214, 84, 136);
-    static final Color ROSA_ESCURO = new Color(190, 64, 116);
-    static final Color ROSA_HOVER = new Color(165, 50, 98);
-    static final Color ROSA_PRESSIONADO = new Color(142, 40, 84);
-    static final Color ROSA_PETALA = new Color(255, 228, 238);
-    static final Color ROSA_BORDA = new Color(246, 205, 222);
-    static final Color ROSA_FLOR = new Color(248, 187, 208);
-    static final Color ROSA_HOVER_CLARO = new Color(255, 240, 246);
+    private static volatile PaletaSakura paletaAtiva = PaletaSakura.CLARO;
 
-    // Fundos e textos
-    static final Color FUNDO = new Color(255, 248, 251);
-    static final Color CARTAO = Color.WHITE;
-    static final Color CAMPO_DESABILITADO = new Color(252, 242, 246);
-    static final Color TEXTO = new Color(74, 52, 66);
-    static final Color TEXTO_SUAVE = new Color(125, 100, 115);
-
-    // Estados
-    static final Color VERDE = new Color(64, 160, 120);
-    static final Color AMBAR = new Color(230, 160, 60);
-    static final Color AMBAR_TEXTO = new Color(160, 95, 15);
-    static final Color CORAL = new Color(214, 92, 92);
-    static final Color CORAL_TEXTO = new Color(184, 60, 60);
-
-    /** Fundo translúcido de selos e controles sobre a ilustração. */
-    static final Color BRANCO_TRANSLUCIDO = new Color(255, 255, 255, 220);
-
-    /**
-     * Cores dos nomes de outros participantes (contraste acima de 4,5:1
-     * sobre branco). O próprio usuário usa {@link #ROSA_ESCURO}.
-     */
-    static final Color[] CORES_PARTICIPANTES = {
-            new Color(122, 74, 160),
-            new Color(36, 115, 135),
-            new Color(165, 85, 35),
-            new Color(50, 120, 70),
-            new Color(90, 90, 160)
-    };
+    /** Paleta do tema ativo. */
+    static PaletaSakura cores() {
+        return paletaAtiva;
+    }
 
     // Espaçamentos e raios
     static final int ESPACO_P = 8;
@@ -66,18 +34,6 @@ final class TemaSakura {
     static final int RAIO_CONTROLE = 14;
     static final int RAIO_CARTAO = 18;
 
-    /** Horário dos balões (contraste ~5,4:1 sobre o balão rosado). */
-    static final Color TEXTO_HORARIO = new Color(110, 86, 100);
-
-    // Balões
-    static final Color BALAO_PROPRIO_TOPO = new Color(255, 232, 241);
-    static final Color BALAO_PROPRIO_BASE = new Color(252, 218, 232);
-    static final Color BALAO_PROPRIO_BORDA = new Color(244, 196, 216);
-    static final Color BALAO_OUTRO_BASE = new Color(255, 250, 252);
-    static final Color SOMBRA_SUAVE = new Color(142, 40, 84, 18);
-
-    /** Texto secundário sobre a ilustração do cabeçalho (contraste ~5,7:1). */
-    static final Color TEXTO_CABECALHO = new Color(110, 70, 95);
 
     private static final String FAMILIA = escolherFamilia();
 
@@ -159,6 +115,30 @@ final class TemaSakura {
                 (int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * p),
                 (int) Math.round(a.getAlpha() + (b.getAlpha() - a.getAlpha()) * p)
         );
+    }
+
+    /** A mesma cor com outra opacidade (0 a 255). */
+    static Color comAlfa(Color cor, int alfa) {
+        return new Color(cor.getRed(), cor.getGreen(), cor.getBlue(),
+                Math.max(0, Math.min(255, alfa)));
+    }
+
+    /** Razão de contraste WCAG 2.x entre duas cores opacas (1 a 21). */
+    static double contraste(Color a, Color b) {
+        double la = luminancia(a);
+        double lb = luminancia(b);
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+    }
+
+    private static double luminancia(Color c) {
+        return 0.2126 * linear(c.getRed())
+                + 0.7152 * linear(c.getGreen())
+                + 0.0722 * linear(c.getBlue());
+    }
+
+    private static double linear(int canal) {
+        double v = canal / 255.0;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
     }
 
     /** Indica se as fontes de destaque internas foram carregadas. */

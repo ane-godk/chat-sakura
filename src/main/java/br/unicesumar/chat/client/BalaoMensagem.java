@@ -40,7 +40,6 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
     private final String horario;
     private final String conteudo;
     private final boolean propria;
-    private final Color corNome;
     private final Font fonteNome;
 
     private transient MenuMensagem.Copiador copiador =
@@ -60,10 +59,6 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
         this.conteudo = linha.conteudo();
         this.propria = propria;
 
-        Color[] cores = TemaSakura.CORES_PARTICIPANTES;
-        this.corNome = propria
-                ? TemaSakura.ROSA_ESCURO
-                : cores[FormatoLinhaChat.indiceCor(remetente, cores.length)];
 
         // Nunito para o nome; fonte composta se o nome tiver, por
         // exemplo, um emoji que a Nunito não possui.
@@ -119,6 +114,12 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
 
     Font fonteNome() {
         return fonteNome;
+    }
+
+    /** Cor do nome, lida da paleta ativa no momento da pintura. */
+    Color corNome() {
+        PaletaSakura cores = TemaSakura.cores();
+        return propria ? cores.rosaEscuro() : cores.corParticipante(remetente);
     }
 
     /** "[04/11 15:02]" é exibido como "04/11 15:02". */
@@ -226,22 +227,22 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
                     0.5f, 0.5f, largura - 0.5f, altura, RAIO, RAIO
             );
 
-            g2.setColor(TemaSakura.SOMBRA_SUAVE);
+            g2.setColor(TemaSakura.cores().sombraSuave());
             g2.fill(new RoundRectangle2D.Float(
                     0.5f, 0.5f + SOMBRA, largura - 0.5f, altura, RAIO, RAIO
             ));
 
             g2.setPaint(propria
-                    ? new GradientPaint(0, 0, TemaSakura.BALAO_PROPRIO_TOPO,
-                            0, altura, TemaSakura.BALAO_PROPRIO_BASE)
-                    : new GradientPaint(0, 0, Color.WHITE,
-                            0, altura, TemaSakura.BALAO_OUTRO_BASE));
+                    ? new GradientPaint(0, 0, TemaSakura.cores().balaoProprioTopo(),
+                            0, altura, TemaSakura.cores().balaoProprioBase())
+                    : new GradientPaint(0, 0, TemaSakura.cores().balaoOutroTopo(),
+                            0, altura, TemaSakura.cores().balaoOutroBase()));
             g2.fill(corpo);
 
             g2.setStroke(new BasicStroke(1.1f));
             g2.setColor(propria
-                    ? TemaSakura.BALAO_PROPRIO_BORDA
-                    : TemaSakura.ROSA_BORDA);
+                    ? TemaSakura.cores().balaoProprioBorda()
+                    : TemaSakura.cores().rosaBorda());
             g2.draw(corpo);
 
             desenharCabecalho(g2);
@@ -265,11 +266,11 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
         int espacoNome = Math.max(0, direita - esquerda - larguraHora - ESPACO_NOME_HORARIO);
 
         g2.setFont(fonteNome);
-        g2.setColor(corNome);
+        g2.setColor(corNome());
         g2.drawString(abreviar(remetente, nome, espacoNome), esquerda, linhaBase);
 
         g2.setFont(TemaSakura.FONTE_PEQUENA);
-        g2.setColor(TemaSakura.TEXTO_HORARIO);
+        g2.setColor(TemaSakura.cores().textoHorario());
         g2.drawString(horario, direita - larguraHora, linhaBase);
     }
 
@@ -282,7 +283,7 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
         int y = PREENCHIMENTO_V + nome.getHeight() + ESPACO_CABECALHO + texto.getAscent();
 
         g2.setFont(TemaSakura.FONTE_TEXTO);
-        g2.setColor(TemaSakura.TEXTO);
+        g2.setColor(TemaSakura.cores().texto());
 
         for (String linha : linhasPara(interno)) {
             g2.drawString(linha, PREENCHIMENTO_H, y);

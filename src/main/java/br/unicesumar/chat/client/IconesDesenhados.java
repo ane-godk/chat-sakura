@@ -77,7 +77,7 @@ final class IconesDesenhados {
                 BasicStroke.CAP_ROUND,
                 BasicStroke.JOIN_ROUND
         ));
-        g2.setColor(new Color(120, 30, 70, 110));
+        g2.setColor(TemaSakura.cores().dobraAviao());
         g2.draw(dobra);
     }
 }

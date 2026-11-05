@@ -29,9 +29,6 @@ final class FundoConversa extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    static final Color DEGRADE_TOPO = Color.WHITE;
-    static final Color DEGRADE_BASE = new Color(255, 241, 247);
-
     private static final float OPACIDADE_FLORES = 0.30f;
     private static final float OPACIDADE_PETALAS = 0.30f;
 
@@ -228,7 +225,7 @@ final class FundoConversa extends JPanel {
             // são omitidas para não ultrapassar a borda do cartão.
             gp.clipRect(2, 2, largura - 4, altura - 4);
             gp.setComposite(AlphaComposite.SrcOver.derive(OPACIDADE_PETALAS_CAINDO));
-            gp.setColor(TemaSakura.ROSA_FLOR);
+            gp.setColor(TemaSakura.cores().rosaFlor());
 
             int canto = TemaSakura.RAIO_CARTAO;
 
@@ -267,10 +264,10 @@ final class FundoConversa extends JPanel {
             );
 
             // Máscara arredondada e degradê.
-            g.setColor(Color.WHITE);
+            g.setColor(Color.WHITE);   // máscara de recorte (não é cor do tema)
             g.fill(forma);
             g.setComposite(AlphaComposite.SrcIn);
-            g.setPaint(new GradientPaint(0, 0, DEGRADE_TOPO, 0, altura, DEGRADE_BASE));
+            g.setPaint(new GradientPaint(0, 0, TemaSakura.cores().degradeConversaTopo(), 0, altura, TemaSakura.cores().degradeConversaBase()));
             g.fillRect(0, 0, largura, altura);
 
             // Decoração somente dentro do cartão.
@@ -285,7 +282,7 @@ final class FundoConversa extends JPanel {
             // Borda.
             g.setComposite(AlphaComposite.SrcOver);
             g.setStroke(new BasicStroke(1.2f));
-            g.setColor(TemaSakura.ROSA_BORDA);
+            g.setColor(TemaSakura.cores().rosaBorda());
             g.draw(forma);
 
         } finally {
@@ -331,7 +328,7 @@ final class FundoConversa extends JPanel {
     /** Pétalas soltas perto das bordas, longe do centro da leitura. */
     private static void desenharPetalas(Graphics2D g, int largura, int altura) {
 
-        g.setColor(TemaSakura.ROSA_FLOR);
+        g.setColor(TemaSakura.cores().rosaFlor());
 
         petala(g, 20, altura - 34, 13, 25);
         petala(g, 44, altura - 18, 9, -35);

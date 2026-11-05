@@ -17,15 +17,15 @@ final class MenuAnimacoes {
     static JPopupMenu criar() {
 
         JPopupMenu menu = new JPopupMenu();
-        menu.setBackground(TemaSakura.CARTAO);
+        menu.setBackground(TemaSakura.cores().cartao());
         menu.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(TemaSakura.ROSA_BORDA, 1, true),
+                BorderFactory.createLineBorder(TemaSakura.cores().rosaBorda(), 1, true),
                 BorderFactory.createEmptyBorder(4, 4, 4, 4)
         ));
 
         JLabel titulo = new JLabel(TITULO);
         titulo.setFont(TemaSakura.FONTE_PEQUENA_NEGRITO);
-        titulo.setForeground(TemaSakura.ROSA_HOVER);
+        titulo.setForeground(TemaSakura.cores().rosaHover());
         titulo.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
         menu.add(titulo);
 
@@ -33,9 +33,7 @@ final class MenuAnimacoes {
 
         for (ConfiguracaoAnimacoes.Modo modo : ConfiguracaoAnimacoes.Modo.values()) {
 
-            JRadioButtonMenuItem item = new JRadioButtonMenuItem(modo.rotulo());
-            item.setFont(TemaSakura.FONTE_STATUS);
-            item.setForeground(TemaSakura.TEXTO);
+            JRadioButtonMenuItem item = new ItensMenuSakura.ItemRadio(modo.rotulo());
             item.setSelected(ConfiguracaoAnimacoes.modo() == modo);
             item.addActionListener(e -> ConfiguracaoAnimacoes.definirModo(modo));
 

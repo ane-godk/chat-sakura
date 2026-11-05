@@ -114,7 +114,7 @@ final class PainelCabecalho extends JPanel {
             );
 
             // 1. Máscara arredondada (bordas suavizadas).
-            g.setColor(Color.WHITE);
+            g.setColor(Color.WHITE);   // máscara de recorte (não é cor do tema)
             g.fill(forma);
 
             // 2. Ilustração somente dentro da máscara.
@@ -124,15 +124,15 @@ final class PainelCabecalho extends JPanel {
             // 3. Véu claro à esquerda, atrás do título.
             g.setComposite(AlphaComposite.SrcAtop);
             g.setPaint(new GradientPaint(
-                    0, 0, new Color(255, 255, 255, 150),
-                    largura * 0.5f, 0, new Color(255, 255, 255, 0)
+                    0, 0, TemaSakura.cores().veuCabecalho(),
+                    largura * 0.5f, 0, TemaSakura.comAlfa(TemaSakura.cores().veuCabecalho(), 0)
             ));
             g.fillRect(0, 0, largura, altura);
 
             // 4. Borda.
             g.setComposite(AlphaComposite.SrcOver);
             g.setStroke(new BasicStroke(1.2f));
-            g.setColor(TemaSakura.ROSA_BORDA);
+            g.setColor(TemaSakura.cores().rosaBorda());
             g.draw(forma);
 
         } finally {
@@ -153,8 +153,8 @@ final class PainelCabecalho extends JPanel {
 
         if (banner == null) {
             g.setPaint(new GradientPaint(
-                    0, 0, TemaSakura.ROSA_PETALA,
-                    largura, 0, TemaSakura.CARTAO
+                    0, 0, TemaSakura.cores().rosaPetala(),
+                    largura, 0, TemaSakura.cores().cartao()
             ));
             g.fillRect(0, 0, largura, altura);
             return;

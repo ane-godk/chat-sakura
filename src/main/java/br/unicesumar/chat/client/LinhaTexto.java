@@ -109,7 +109,7 @@ final class LinhaTexto extends JComponent implements ItemConversa {
             int y = PREENCHIMENTO_V + metricas.getAscent();
 
             if (estilo == Estilo.PADRAO) {
-                g2.setColor(TemaSakura.TEXTO);
+                g2.setColor(TemaSakura.cores().texto());
                 for (String linha : linhas) {
                     g2.drawString(linha, 0, y);
                     y += metricas.getHeight();
@@ -125,14 +125,14 @@ final class LinhaTexto extends JComponent implements ItemConversa {
             float larguraPilula = maiorLinha + 2f * PREENCHIMENTO_H;
             float altura = getHeight() - 1f;
 
-            g2.setColor(TemaSakura.ROSA_HOVER_CLARO);
+            g2.setColor(TemaSakura.cores().rosaHoverClaro());
             g2.fill(new RoundRectangle2D.Float(
                     (getWidth() - larguraPilula) / 2f, 0.5f,
                     larguraPilula, altura,
                     Math.min(altura, 22f), Math.min(altura, 22f)
             ));
 
-            g2.setColor(TemaSakura.TEXTO_SUAVE);
+            g2.setColor(TemaSakura.cores().textoSuave());
             for (String linha : linhas) {
                 int x = (getWidth() - metricas.stringWidth(linha)) / 2;
                 g2.drawString(linha, x, y);

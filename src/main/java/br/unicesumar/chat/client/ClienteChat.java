@@ -253,24 +253,10 @@ public final class ClienteChat extends JFrame {
                 () -> TemaSakura.cores().rosaEscuro()
         );
 
-        JLabel subtitulo = new JLabel("Converse em tempo real") {
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            public Color getForeground() {
-                return TemaSakura.cores().textoCabecalho();
-            }
-        };
-        subtitulo.setFont(TemaSakura.FONTE_SUBTITULO);
-
-        JPanel titulos = new JPanel(new BorderLayout(0, 0));
-        titulos.setOpaque(false);
-        titulos.add(titulo, BorderLayout.CENTER);
-        titulos.add(subtitulo, BorderLayout.SOUTH);
-
+        // Título centralizado verticalmente ao lado da flor.
         JPanel blocoTitulos = new JPanel(new GridBagLayout());
         blocoTitulos.setOpaque(false);
-        blocoTitulos.add(titulos);
+        blocoTitulos.add(titulo);
 
         JPanel marca = new JPanel(
                 new BorderLayout(TemaSakura.ESPACO_M, 0)

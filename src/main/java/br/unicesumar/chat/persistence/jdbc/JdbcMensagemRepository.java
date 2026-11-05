@@ -2,6 +2,7 @@
 package br.unicesumar.chat.persistence.jdbc;
 
 import br.unicesumar.chat.model.Mensagem;
+import br.unicesumar.chat.model.TipoMensagem;
 import br.unicesumar.chat.model.Usuario;
 import br.unicesumar.chat.persistence.MensagemRepository;
 
@@ -41,7 +42,8 @@ public final class JdbcMensagemRepository
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     remetente TEXT NOT NULL,
                     texto TEXT NOT NULL,
-                    horario TEXT NOT NULL
+                    horario TEXT NOT NULL,
+                    tipo TEXT NOT NULL DEFAULT 'MENSAGEM'
                 )
                 """;
 
@@ -55,12 +57,53 @@ public final class JdbcMensagemRepository
 
             comando.executeUpdate(sql);
 
+            migrarColunaTipo(comando);
+
         } catch (SQLException e) {
 
             throw new IllegalStateException(
                     "Erro ao inicializar o banco de dados.",
                     e
             );
+        }
+    }
+
+    /**
+     * Bancos criados antes dos avisos de presença não têm a coluna
+     * {@code tipo}. Ela é acrescentada com valor padrão 'MENSAGEM':
+     * os registros antigos são preservados e nenhum evento é inventado.
+     * SQL fixo, sem dados externos.
+     */
+    private static void migrarColunaTipo(Statement comando)
+            throws SQLException {
+
+        boolean possuiTipo = false;
+
+        try (ResultSet colunas = comando.executeQuery(
+                "PRAGMA table_info(mensagem)")) {
+
+            while (colunas.next()) {
+                if ("tipo".equalsIgnoreCase(colunas.getString("name"))) {
+                    possuiTipo = true;
+                }
+            }
+        }
+
+        if (!possuiTipo) {
+            comando.executeUpdate(
+                    "ALTER TABLE mensagem ADD COLUMN "
+                            + "tipo TEXT NOT NULL DEFAULT 'MENSAGEM'"
+            );
+        }
+    }
+
+    private static TipoMensagem lerTipo(String valor) {
+        try {
+            return valor == null
+                    ? TipoMensagem.MENSAGEM
+                    : TipoMensagem.valueOf(valor);
+        } catch (IllegalArgumentException e) {
+            return TipoMensagem.MENSAGEM;
         }
     }
 
@@ -82,9 +125,10 @@ public final class JdbcMensagemRepository
                 INSERT INTO mensagem (
                     remetente,
                     texto,
-                    horario
+                    horario,
+                    tipo
                 )
-                VALUES (?, ?, ?)
+                VALUES (?, ?, ?, ?)
                 """;
 
         try (
@@ -111,6 +155,11 @@ public final class JdbcMensagemRepository
             comando.setString(
                     3,
                     mensagem.getHorario().toString()
+            );
+
+            comando.setString(
+                    4,
+                    mensagem.getTipo().name()
             );
 
             int linhasAfetadas = comando.executeUpdate();
@@ -177,7 +226,7 @@ public final class JdbcMensagemRepository
         }
 
         String sql = """
-                SELECT id, remetente, texto, horario
+                SELECT id, remetente, texto, horario, tipo
                 FROM mensagem
                 ORDER BY id DESC
                 LIMIT ?
@@ -221,7 +270,8 @@ public final class JdbcMensagemRepository
                                     id,
                                     remetente,
                                     conteudo,
-                                    horario
+                                    horario,
+                                    lerTipo(resultado.getString("tipo"))
                             )
                     );
                 }

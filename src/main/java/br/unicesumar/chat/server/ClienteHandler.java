@@ -95,7 +95,7 @@ public final class ClienteHandler
             List<Mensagem> historico;
 
             try {
-                historico = chatService.registrarClienteComHistorico(
+                historico = chatService.conectarCliente(
                         this,
                         QUANTIDADE_HISTORICO
                 );
@@ -183,7 +183,8 @@ public final class ClienteHandler
 
             if (registrado) {
 
-                chatService.removerCliente(this);
+                // Também emite o aviso de saída (uma única vez).
+                chatService.desconectarCliente(this);
 
                 System.out.println(
                         usuario.getNome()

@@ -45,9 +45,13 @@ public final class ClientRegistry {
         }
     }
 
-    public void remover(ConexaoCliente cliente) {
+    /**
+     * @return {@code true} se o cliente estava registrado (permite
+     *         emitir um único aviso de saída por cliente)
+     */
+    public boolean remover(ConexaoCliente cliente) {
         synchronized (clientes) {
-            clientes.remove(cliente);
+            return clientes.remove(cliente);
         }
     }
 
@@ -73,12 +77,24 @@ public final class ClientRegistry {
      * durante a iteração.
      */
     public void transmitir(Mensagem mensagem) {
+        transmitirExceto(mensagem, null);
+    }
+
+    /**
+     * Igual a {@link #transmitir}, sem enviar ao cliente indicado
+     * ({@code null} para enviar a todos).
+     */
+    public void transmitirExceto(Mensagem mensagem, ConexaoCliente excluido) {
 
         Objects.requireNonNull(mensagem, "Mensagem obrigatória.");
 
         synchronized (clientes) {
 
             for (ConexaoCliente cliente : clientes) {
+
+                if (cliente == excluido) {
+                    continue;
+                }
 
                 try {
                     cliente.enviar(mensagem);

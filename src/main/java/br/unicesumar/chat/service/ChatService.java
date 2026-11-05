@@ -101,6 +101,84 @@ public final class ChatService {
         registro.remover(cliente);
     }
 
+    /**
+     * Conexão completa de um participante: lê o histórico, registra o
+     * cliente e avisa os demais sobre a entrada — tudo sob o mesmo
+     * bloqueio das mensagens. Assim o histórico e o registro continuam
+     * atômicos, e o aviso ocupa a posição correta na ordem da conversa.
+     *
+     * Um nome duplicado falha no registro, antes do aviso: conexões
+     * recusadas não geram entrada. O próprio cliente não recebe o seu
+     * aviso (ele já recebe a confirmação de conexão).
+     */
+    public List<Mensagem> conectarCliente(
+            ConexaoCliente cliente,
+            int quantidadeHistorico
+    ) {
+
+        synchronized (bloqueioMensagens) {
+
+            List<Mensagem> historico =
+                    repositorio.buscarUltimas(quantidadeHistorico);
+
+            registro.registrar(cliente);
+
+            registrarAvisoDePresenca(
+                    Mensagem.entrada(cliente.getUsuario(), LocalDateTime.now(relogio)),
+                    cliente
+            );
+
+            return historico;
+        }
+    }
+
+    /**
+     * Desconexão de um participante (normal ou inesperada). O aviso de
+     * saída só é emitido se o cliente ainda estava registrado, o que evita
+     * avisos duplicados. Nunca lança exceção, para não impedir o
+     * fechamento do socket.
+     */
+    public void desconectarCliente(ConexaoCliente cliente) {
+
+        synchronized (bloqueioMensagens) {
+
+            if (!registro.remover(cliente)) {
+                return;
+            }
+
+            registrarAvisoDePresenca(
+                    Mensagem.saida(cliente.getUsuario(), LocalDateTime.now(relogio)),
+                    null
+            );
+        }
+    }
+
+    /**
+     * Grava o aviso e, somente se a gravação der certo, transmite-o.
+     * Uma falha de persistência é registrada e não interrompe a conexão
+     * nem a desconexão. Chamado sob {@code bloqueioMensagens}.
+     */
+    private void registrarAvisoDePresenca(
+            Mensagem aviso,
+            ConexaoCliente excluido
+    ) {
+
+        Mensagem persistido;
+
+        try {
+            persistido = repositorio.salvar(aviso);
+        } catch (RuntimeException e) {
+            System.err.println(
+                    "Não foi possível registrar o aviso \""
+                            + aviso.getRemetente().getNome() + " "
+                            + aviso.getConteudo() + "\": " + e.getMessage()
+            );
+            return;
+        }
+
+        registro.transmitirExceto(persistido, excluido);
+    }
+
     public int contarClientes() {
         return registro.quantidade();
     }

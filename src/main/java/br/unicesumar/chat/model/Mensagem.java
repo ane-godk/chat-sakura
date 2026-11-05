@@ -9,6 +9,10 @@ public final class Mensagem {
 
     public static final int TAMANHO_MAXIMO_CONTEUDO = 500;
 
+    /** Conteúdo registrado para os avisos de presença. */
+    public static final String TEXTO_ENTRADA = "se conectou";
+    public static final String TEXTO_SAIDA = "se desconectou";
+
     private static final DateTimeFormatter FORMATO =
             DateTimeFormatter.ofPattern("dd/MM HH:mm");
 
@@ -16,13 +20,14 @@ public final class Mensagem {
     private final Usuario remetente;
     private final String conteudo;
     private final LocalDateTime horario;
+    private final TipoMensagem tipo;
 
     public Mensagem(
             Usuario remetente,
             String conteudo,
             LocalDateTime horario
     ) {
-        this(null, remetente, conteudo, horario);
+        this(null, remetente, conteudo, horario, TipoMensagem.MENSAGEM);
     }
 
     public Mensagem(
@@ -30,6 +35,16 @@ public final class Mensagem {
             Usuario remetente,
             String conteudo,
             LocalDateTime horario
+    ) {
+        this(id, remetente, conteudo, horario, TipoMensagem.MENSAGEM);
+    }
+
+    public Mensagem(
+            Long id,
+            Usuario remetente,
+            String conteudo,
+            LocalDateTime horario,
+            TipoMensagem tipo
     ) {
 
         if (id != null && id <= 0) {
@@ -64,10 +79,31 @@ public final class Mensagem {
             );
         }
 
+        if (tipo == null) {
+            throw new MensagemInvalidaException(
+                    "O tipo da mensagem é obrigatório."
+            );
+        }
+
         this.id = id;
         this.remetente = remetente;
         this.conteudo = conteudoTratado;
         this.horario = horario;
+        this.tipo = tipo;
+    }
+
+    /** Aviso de que o participante se conectou. */
+    public static Mensagem entrada(Usuario participante, LocalDateTime horario) {
+        return new Mensagem(
+                null, participante, TEXTO_ENTRADA, horario, TipoMensagem.ENTRADA
+        );
+    }
+
+    /** Aviso de que o participante se desconectou. */
+    public static Mensagem saida(Usuario participante, LocalDateTime horario) {
+        return new Mensagem(
+                null, participante, TEXTO_SAIDA, horario, TipoMensagem.SAIDA
+        );
     }
 
     public Mensagem comId(Long novoId) {
@@ -75,7 +111,8 @@ public final class Mensagem {
                 novoId,
                 remetente,
                 conteudo,
-                horario
+                horario,
+                tipo
         );
     }
 
@@ -95,11 +132,32 @@ public final class Mensagem {
         return horario;
     }
 
+    public TipoMensagem getTipo() {
+        return tipo;
+    }
+
+    public boolean isAvisoDePresenca() {
+        return tipo != TipoMensagem.MENSAGEM;
+    }
+
+    /**
+     * Linha enviada pelo protocolo.
+     *
+     * Mensagens: {@code [dd/MM HH:mm] Nome: conteúdo}.
+     * Avisos: {@code SISTEMA: [dd/MM HH:mm] Nome se conectou}. Como toda
+     * linha de usuário começa com o horário, um participante não consegue
+     * produzir uma linha iniciada por "SISTEMA: ".
+     */
     public String formatar() {
-        return "[" + horario.format(FORMATO) + "] "
-                + remetente.getNome()
-                + ": "
-                + conteudo;
+
+        String quando = "[" + horario.format(FORMATO) + "]";
+
+        if (isAvisoDePresenca()) {
+            return "SISTEMA: " + quando + " "
+                    + remetente.getNome() + " " + conteudo;
+        }
+
+        return quando + " " + remetente.getNome() + ": " + conteudo;
     }
 
     @Override
@@ -121,7 +179,8 @@ public final class Mensagem {
         return Objects.equals(id, outra.id)
                 && remetente.equals(outra.remetente)
                 && conteudo.equals(outra.conteudo)
-                && horario.equals(outra.horario);
+                && horario.equals(outra.horario)
+                && tipo == outra.tipo;
     }
 
     @Override
@@ -130,7 +189,8 @@ public final class Mensagem {
                 id,
                 remetente,
                 conteudo,
-                horario
+                horario,
+                tipo
         );
     }
 }

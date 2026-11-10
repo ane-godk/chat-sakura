@@ -44,12 +44,13 @@ chat-sakura/
 ├── ROTEIRO_VIDEO.md
 ├── AGENTS.md
 ├── sql/
-│   └── criar_tabelas.sql
+│   ├── criar_tabelas.sql
+│   └── MIGRACOES.md
 └── src/
     ├── main/java/br/unicesumar/chat/
     │   ├── model/             Usuario, Mensagem, MensagemInvalidaException
     │   ├── persistence/       MensagemRepository, MensagemRepositoryEmMemoria
-    │   │   └── jdbc/          ConnectionFactory, JdbcMensagemRepository
+    │   │   └── jdbc/          ConnectionFactory, JdbcMensagemRepository, MigradorBanco
     │   ├── service/           ChatService, ClientRegistry, ConexaoCliente
     │   ├── server/            Servidor, ClienteHandler
     │   └── client/            ClienteChat
@@ -145,7 +146,7 @@ Nesse caso, o banco é criado em `chat-sakura-demo\chat-sakura.db`, e o banco do
 ## Porta e banco de dados
 
 - **Porta:** `12345`, fixa no código (`Servidor.PORTA_PADRAO`).
-- **Banco:** `chat-sakura.db`, um arquivo SQLite criado automaticamente no diretório de execução do servidor. A tabela `mensagem` é criada pelo próprio servidor na inicialização, com `CREATE TABLE IF NOT EXISTS`. O arquivo `.db` é ignorado pelo Git.
+- **Banco:** `chat-sakura.db`, um arquivo SQLite criado automaticamente no diretório de execução do servidor. Na inicialização, o `MigradorBanco` cria o esquema ou migra um banco antigo para a versão atual (`PRAGMA user_version`), com backup automático e transação única. Versões, estratégia e restauração de backup estão em [sql/MIGRACOES.md](sql/MIGRACOES.md). Os arquivos `.db` (inclusive os backups) são ignorados pelo Git.
 
 ## Persistência e histórico
 

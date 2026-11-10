@@ -32,69 +32,9 @@ public final class JdbcMensagemRepository
                 "A fábrica de conexões é obrigatória."
         );
 
-        inicializarBanco();
-    }
-
-    private void inicializarBanco() {
-
-        String sql = """
-                CREATE TABLE IF NOT EXISTS mensagem (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    remetente TEXT NOT NULL,
-                    texto TEXT NOT NULL,
-                    horario TEXT NOT NULL,
-                    tipo TEXT NOT NULL DEFAULT 'MENSAGEM'
-                )
-                """;
-
-        try (
-                Connection conexao =
-                        connectionFactory.abrirConexao();
-
-                Statement comando =
-                        conexao.createStatement()
-        ) {
-
-            comando.executeUpdate(sql);
-
-            migrarColunaTipo(comando);
-
-        } catch (SQLException e) {
-
-            throw new IllegalStateException(
-                    "Erro ao inicializar o banco de dados.",
-                    e
-            );
-        }
-    }
-
-    /**
-     * Bancos criados antes dos avisos de presença não têm a coluna
-     * {@code tipo}. Ela é acrescentada com valor padrão 'MENSAGEM':
-     * os registros antigos são preservados e nenhum evento é inventado.
-     * SQL fixo, sem dados externos.
-     */
-    private static void migrarColunaTipo(Statement comando)
-            throws SQLException {
-
-        boolean possuiTipo = false;
-
-        try (ResultSet colunas = comando.executeQuery(
-                "PRAGMA table_info(mensagem)")) {
-
-            while (colunas.next()) {
-                if ("tipo".equalsIgnoreCase(colunas.getString("name"))) {
-                    possuiTipo = true;
-                }
-            }
-        }
-
-        if (!possuiTipo) {
-            comando.executeUpdate(
-                    "ALTER TABLE mensagem ADD COLUMN "
-                            + "tipo TEXT NOT NULL DEFAULT 'MENSAGEM'"
-            );
-        }
+        // Cria ou migra o esquema (MigradorBanco). Em caso de falha lança
+        // MigracaoBancoException e o servidor não inicia.
+        new MigradorBanco(connectionFactory).migrar();
     }
 
     private static TipoMensagem lerTipo(String valor) {
@@ -123,12 +63,13 @@ public final class JdbcMensagemRepository
 
         String sql = """
                 INSERT INTO mensagem (
+                    conversa_id,
                     remetente,
                     texto,
                     horario,
                     tipo
                 )
-                VALUES (?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?)
                 """;
 
         try (
@@ -142,23 +83,30 @@ public final class JdbcMensagemRepository
                         )
         ) {
 
-            comando.setString(
+            // Por enquanto toda mensagem pertence ao Chat Geral;
+            // remetente_id fica NULL até existir login autenticado.
+            comando.setLong(
                     1,
-                    mensagem.getRemetente().getNome()
+                    MigradorBanco.ID_CONVERSA_GERAL
             );
 
             comando.setString(
                     2,
-                    mensagem.getConteudo()
+                    mensagem.getRemetente().getNome()
             );
 
             comando.setString(
                     3,
-                    mensagem.getHorario().toString()
+                    mensagem.getConteudo()
             );
 
             comando.setString(
                     4,
+                    mensagem.getHorario().toString()
+            );
+
+            comando.setString(
+                    5,
                     mensagem.getTipo().name()
             );
 
@@ -228,6 +176,7 @@ public final class JdbcMensagemRepository
         String sql = """
                 SELECT id, remetente, texto, horario, tipo
                 FROM mensagem
+                WHERE conversa_id = ?
                 ORDER BY id DESC
                 LIMIT ?
                 """;
@@ -242,7 +191,10 @@ public final class JdbcMensagemRepository
                         conexao.prepareStatement(sql)
         ) {
 
-            comando.setInt(1, quantidade);
+            // Somente o Chat Geral: mensagens de outras conversas
+            // nunca entram no histórico público.
+            comando.setLong(1, MigradorBanco.ID_CONVERSA_GERAL);
+            comando.setInt(2, quantidade);
 
             try (
                     ResultSet resultado =

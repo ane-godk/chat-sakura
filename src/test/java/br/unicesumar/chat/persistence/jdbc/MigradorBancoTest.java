@@ -164,7 +164,7 @@ class MigradorBancoTest {
         assertEquals(MigradorBanco.VERSAO_ATUAL, resultado.versaoAtual());
         assertNull(resultado.backup());
         assertTrue(backups().isEmpty());
-        assertEquals(2, versao(arquivo));
+        assertEquals(MigradorBanco.VERSAO_ATUAL, versao(arquivo));
 
         for (String tabela : List.of("usuario", "conversa", "conversa_participante",
                 "conversa_privada", "personagem", "mensagem")) {
@@ -188,7 +188,7 @@ class MigradorBancoTest {
 
         assertTrue(resultado.migrou());
         assertEquals(0, resultado.versaoAnterior());
-        assertEquals(2, versao(arquivo));
+        assertEquals(MigradorBanco.VERSAO_ATUAL, versao(arquivo));
 
         // Ids, remetentes, textos (acentos, emojis, aspas) e horários idênticos.
         assertEquals(antes, consultar(arquivo, DADOS_LEGADOS));
@@ -281,7 +281,7 @@ class MigradorBancoTest {
         assertEquals(mensagens, consultar(arquivo, consultaCompleta));
         assertEquals(conversas, consultar(arquivo, "SELECT * FROM conversa"));
         assertEquals(1, backups().size(), "Somente a migração real gera backup");
-        assertEquals(2, versao(arquivo));
+        assertEquals(MigradorBanco.VERSAO_ATUAL, versao(arquivo));
     }
 
     @Test
@@ -317,7 +317,7 @@ class MigradorBancoTest {
 
         // Corrigido o problema, a migração normal funciona.
         migrador(arquivo).migrar();
-        assertEquals(2, versao(arquivo));
+        assertEquals(MigradorBanco.VERSAO_ATUAL, versao(arquivo));
         assertEquals(antes, consultar(arquivo, DADOS_LEGADOS));
     }
 
@@ -447,6 +447,35 @@ class MigradorBancoTest {
 
         assertEquals(esquema(migrado), esquema(documentado));
         assertEquals(versao(migrado), versao(documentado));
+    }
+
+    @Test
+    void bancoV2DeveIrParaV3PreservandoContasConversasEMensagens() throws Exception {
+        Path arquivo = banco("v2.db");
+
+        // Banco no esquema v2 (como ao fim das Etapas 1 e 2), com dados.
+        new MigradorBanco(new ConnectionFactory(arquivo.toString()),
+                MigradorBanco.MIGRACOES.subList(0, 2), RELOGIO).migrar();
+        executar(arquivo,
+                "INSERT INTO usuario (id, login, apelido, senha_hash, senha_sal, criado_em) "
+                        + "VALUES (1, 'ana', 'Ana', 'h', 's', '2026-11-10T12:00')",
+                "INSERT INTO conversa (id, tipo, nome, criador_id, criado_em) "
+                        + "VALUES (2, 'GRUPO', 'Turma', 1, '2026-11-10T12:00')",
+                "INSERT INTO conversa_participante (conversa_id, usuario_id, papel, entrou_em) "
+                        + "VALUES (2, 1, 'ADMIN', '2026-11-10T12:00')",
+                "INSERT INTO mensagem (conversa_id, remetente_id, remetente, texto, horario) "
+                        + "VALUES (2, 1, 'Ana', 'Antes da v3', '2026-11-10T12:01')");
+        assertEquals(2, versao(arquivo));
+        List<List<String>> mensagensAntes = consultar(arquivo, "SELECT * FROM mensagem ORDER BY id");
+
+        MigradorBanco.Resultado resultado = migrador(arquivo).migrar();
+
+        assertEquals(2, resultado.versaoAnterior());
+        assertEquals(3, versao(arquivo));
+        assertTrue(resultado.backup().getFileName().toString().contains(".backup-v2-"));
+        assertEquals(mensagensAntes, consultar(arquivo, "SELECT * FROM mensagem ORDER BY id"));
+        assertEquals(List.of(List.of("2", "1", "ADMIN", "0")), consultar(arquivo,
+                "SELECT conversa_id, usuario_id, papel, ultima_lida_id FROM conversa_participante"));
     }
 
     @Test

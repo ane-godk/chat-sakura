@@ -21,6 +21,7 @@ public final class Mensagem {
     private final String conteudo;
     private final LocalDateTime horario;
     private final TipoMensagem tipo;
+    private final long conversaId;
 
     public Mensagem(
             Usuario remetente,
@@ -46,6 +47,24 @@ public final class Mensagem {
             LocalDateTime horario,
             TipoMensagem tipo
     ) {
+        this(id, remetente, conteudo, horario, tipo, Conversa.ID_GERAL);
+    }
+
+    /** @param conversaId conversa à qual a mensagem pertence */
+    public Mensagem(
+            Long id,
+            Usuario remetente,
+            String conteudo,
+            LocalDateTime horario,
+            TipoMensagem tipo,
+            long conversaId
+    ) {
+
+        if (conversaId <= 0) {
+            throw new MensagemInvalidaException(
+                    "A conversa deve ser positiva."
+            );
+        }
 
         if (id != null && id <= 0) {
             throw new MensagemInvalidaException(
@@ -90,6 +109,7 @@ public final class Mensagem {
         this.conteudo = conteudoTratado;
         this.horario = horario;
         this.tipo = tipo;
+        this.conversaId = conversaId;
     }
 
     /** Aviso de que o participante se conectou. */
@@ -112,8 +132,17 @@ public final class Mensagem {
                 remetente,
                 conteudo,
                 horario,
-                tipo
+                tipo,
+                conversaId
         );
+    }
+
+    public long getConversaId() {
+        return conversaId;
+    }
+
+    public boolean isDoChatGeral() {
+        return conversaId == Conversa.ID_GERAL;
     }
 
     public Long getId() {
@@ -180,7 +209,8 @@ public final class Mensagem {
                 && remetente.equals(outra.remetente)
                 && conteudo.equals(outra.conteudo)
                 && horario.equals(outra.horario)
-                && tipo == outra.tipo;
+                && tipo == outra.tipo
+                && conversaId == outra.conversaId;
     }
 
     @Override
@@ -190,7 +220,8 @@ public final class Mensagem {
                 remetente,
                 conteudo,
                 horario,
-                tipo
+                tipo,
+                conversaId
         );
     }
 }

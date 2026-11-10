@@ -1,6 +1,7 @@
 
 package br.unicesumar.chat.persistence;
 
+import br.unicesumar.chat.model.Conversa;
 import br.unicesumar.chat.model.Mensagem;
 
 import java.util.ArrayList;
@@ -37,6 +38,11 @@ public final class MensagemRepositoryEmMemoria
 
     @Override
     public synchronized List<Mensagem> buscarUltimas(int quantidade) {
+        return buscarHistorico(Conversa.ID_GERAL, null, quantidade);
+    }
+
+    @Override
+    public synchronized List<Mensagem> buscarHistorico(long conversaId, Long antesDeId, int quantidade) {
 
         if (quantidade < 0) {
             throw new IllegalArgumentException(
@@ -44,13 +50,18 @@ public final class MensagemRepositoryEmMemoria
             );
         }
 
+        List<Mensagem> daConversa = mensagens.stream()
+                .filter(m -> m.getConversaId() == conversaId)
+                .filter(m -> antesDeId == null || m.getId() < antesDeId)
+                .toList();
+
         int inicio = Math.max(
                 0,
-                mensagens.size() - quantidade
+                daConversa.size() - quantidade
         );
 
         return new ArrayList<>(
-                mensagens.subList(inicio, mensagens.size())
+                daConversa.subList(inicio, daConversa.size())
         );
     }
 }

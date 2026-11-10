@@ -31,6 +31,11 @@ public interface UsuarioRepository {
     /** {@code true} se o nome é login ou apelido de alguma conta. */
     boolean nomeEmUso(String nome);
 
+    /** Perfis públicos das contas, por apelido (no máximo {@code limite}). */
+    default java.util.List<PerfilUsuario> listar(int limite) {
+        throw new UnsupportedOperationException("Listagem não suportada.");
+    }
+
     /** Conta com as credenciais derivadas; uso exclusivo do servidor. */
     final class ContaArmazenada {
 

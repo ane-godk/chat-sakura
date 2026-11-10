@@ -1,4 +1,4 @@
--- Chat Sakura - esquema atual do banco SQLite (versão 2).
+-- Chat Sakura - esquema atual do banco SQLite (versão 3).
 --
 -- O servidor NÃO executa este arquivo: o esquema é criado e migrado por
 -- br.unicesumar.chat.persistence.jdbc.MigradorBanco na inicialização
@@ -62,6 +62,8 @@ CREATE TABLE conversa_participante (
     papel TEXT NOT NULL DEFAULT 'MEMBRO'
         CHECK (papel IN ('ADMIN', 'MEMBRO')),
     entrou_em TEXT NOT NULL,
+    -- Versão 3: última mensagem lida (contador de não lidas).
+    ultima_lida_id INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (conversa_id, usuario_id)
 );
 
@@ -105,4 +107,4 @@ CREATE INDEX idx_mensagem_remetente ON mensagem (remetente_id);
 INSERT INTO conversa (id, tipo, nome, criado_em)
 VALUES (1, 'GERAL', 'Chat Geral', strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'));
 
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;

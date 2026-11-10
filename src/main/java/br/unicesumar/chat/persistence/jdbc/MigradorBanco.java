@@ -23,6 +23,7 @@ import java.util.Objects;
  *   <li><b>1</b>: tabela {@code mensagem} com a coluna {@code tipo}.</li>
  *   <li><b>2</b>: usuários, conversas, participantes, pares privados e
  *       personagens; toda mensagem pertence a uma conversa.</li>
+ *   <li><b>3</b>: {@code conversa_participante.ultima_lida_id} (não lidas).</li>
  * </ul>
  *
  * Garantias: antes de alterar um banco existente é feito um backup
@@ -46,7 +47,8 @@ public final class MigradorBanco {
     /** Posição {@code i} da lista leva o banco à versão {@code i + 1}. */
     static final List<Migracao> MIGRACOES = List.of(
             MigradorBanco::migrarParaV1,
-            MigradorBanco::migrarParaV2
+            MigradorBanco::migrarParaV2,
+            MigradorBanco::migrarParaV3
     );
 
     public static final int VERSAO_ATUAL = MIGRACOES.size();
@@ -347,6 +349,20 @@ public final class MigradorBanco {
             );
             comando.executeUpdate(
                     "CREATE INDEX idx_mensagem_remetente ON mensagem (remetente_id)"
+            );
+        }
+    }
+
+    /**
+     * Versão 3: última mensagem lida por participante (contador de não
+     * lidas que sobrevive à reconexão). Coluna sem chave estrangeira: 0
+     * significa "nenhuma lida".
+     */
+    static void migrarParaV3(Connection conexao) throws SQLException {
+        try (Statement comando = conexao.createStatement()) {
+            comando.executeUpdate(
+                    "ALTER TABLE conversa_participante ADD COLUMN "
+                            + "ultima_lida_id INTEGER NOT NULL DEFAULT 0"
             );
         }
     }

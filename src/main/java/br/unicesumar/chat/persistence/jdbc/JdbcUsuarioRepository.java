@@ -163,6 +163,29 @@ public final class JdbcUsuarioRepository implements UsuarioRepository {
         }
     }
 
+    @Override
+    public java.util.List<PerfilUsuario> listar(int limite) {
+
+        try (Connection conexao = connectionFactory.abrirConexao();
+             PreparedStatement comando = conexao.prepareStatement(
+                     "SELECT " + COLUNAS_PERFIL + " FROM usuario "
+                             + "ORDER BY apelido COLLATE NOCASE LIMIT ?")) {
+
+            comando.setInt(1, limite);
+            java.util.List<PerfilUsuario> perfis = new java.util.ArrayList<>();
+
+            try (ResultSet resultado = comando.executeQuery()) {
+                while (resultado.next()) {
+                    perfis.add(lerPerfil(resultado));
+                }
+            }
+            return perfis;
+
+        } catch (SQLException e) {
+            throw new IllegalStateException("Erro ao listar contas no SQLite.", e);
+        }
+    }
+
     private static boolean nomeEmUso(Connection conexao, String nome) throws SQLException {
 
         try (PreparedStatement comando = conexao.prepareStatement(

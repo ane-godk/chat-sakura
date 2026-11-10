@@ -11,6 +11,7 @@ O esquema atual está em [criar_tabelas.sql](criar_tabelas.sql). Um teste automa
 | 0 | Banco vazio ou legado. Nenhuma versão anterior gravava `user_version`. Pode ter só a tabela `mensagem`, com ou sem a coluna `tipo`. |
 | 1 | `mensagem` com a coluna `tipo` (`MENSAGEM`, `ENTRADA` ou `SAIDA`). Corresponde à migração que já existia no repositório. |
 | 2 | Tabelas `usuario`, `conversa`, `conversa_participante`, `conversa_privada` e `personagem`. A conversa Geral é criada com `id = 1`. Cada mensagem ganha `conversa_id` e `remetente_id`. |
+| 3 | Coluna `conversa_participante.ultima_lida_id` (padrão 0). Guarda a última mensagem lida por participante, para que o contador de não lidas sobreviva à reconexão e ao reinício. É um `ADD COLUMN` simples, que não altera nenhum dado existente. |
 
 ### O que a migração para a versão 2 faz com o histórico
 

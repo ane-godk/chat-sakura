@@ -85,10 +85,9 @@ public final class JdbcMensagemRepository
                         )
         ) {
 
-            // Por enquanto toda mensagem pertence ao Chat Geral.
             comando.setLong(
                     1,
-                    MigradorBanco.ID_CONVERSA_GERAL
+                    mensagem.getConversaId()
             );
 
             comando.setString(
@@ -171,8 +170,14 @@ public final class JdbcMensagemRepository
         }
     }
 
+    /** Somente o Chat Geral: mensagens de outras conversas nunca entram nele. */
     @Override
     public List<Mensagem> buscarUltimas(int quantidade) {
+        return buscarHistorico(MigradorBanco.ID_CONVERSA_GERAL, null, quantidade);
+    }
+
+    @Override
+    public List<Mensagem> buscarHistorico(long conversaId, Long antesDeId, int quantidade) {
 
         if (quantidade < 0) {
             throw new IllegalArgumentException(
@@ -187,7 +192,7 @@ public final class JdbcMensagemRepository
         String sql = """
                 SELECT id, remetente_id, remetente, texto, horario, tipo
                 FROM mensagem
-                WHERE conversa_id = ?
+                WHERE conversa_id = ? AND id < ?
                 ORDER BY id DESC
                 LIMIT ?
                 """;
@@ -202,10 +207,9 @@ public final class JdbcMensagemRepository
                         conexao.prepareStatement(sql)
         ) {
 
-            // Somente o Chat Geral: mensagens de outras conversas
-            // nunca entram no histórico público.
-            comando.setLong(1, MigradorBanco.ID_CONVERSA_GERAL);
-            comando.setInt(2, quantidade);
+            comando.setLong(1, conversaId);
+            comando.setLong(2, antesDeId == null ? Long.MAX_VALUE : antesDeId);
+            comando.setInt(3, quantidade);
 
             try (
                     ResultSet resultado =
@@ -213,33 +217,7 @@ public final class JdbcMensagemRepository
             ) {
 
                 while (resultado.next()) {
-
-                    Long id = resultado.getLong("id");
-
-                    long remetenteId = resultado.getLong("remetente_id");
-
-                    Usuario remetente = new Usuario(
-                            resultado.wasNull() ? null : remetenteId,
-                            resultado.getString("remetente")
-                    );
-
-                    String conteudo =
-                            resultado.getString("texto");
-
-                    LocalDateTime horario =
-                            LocalDateTime.parse(
-                                    resultado.getString("horario")
-                            );
-
-                    mensagens.add(
-                            new Mensagem(
-                                    id,
-                                    remetente,
-                                    conteudo,
-                                    horario,
-                                    lerTipo(resultado.getString("tipo"))
-                            )
-                    );
+                    mensagens.add(lerMensagem(resultado, conversaId));
                 }
             }
 
@@ -254,5 +232,24 @@ public final class JdbcMensagemRepository
         Collections.reverse(mensagens);
 
         return mensagens;
+    }
+
+    static Mensagem lerMensagem(ResultSet resultado, long conversaId) throws SQLException {
+
+        long remetenteId = resultado.getLong("remetente_id");
+
+        Usuario remetente = new Usuario(
+                resultado.wasNull() ? null : remetenteId,
+                resultado.getString("remetente")
+        );
+
+        return new Mensagem(
+                resultado.getLong("id"),
+                remetente,
+                resultado.getString("texto"),
+                LocalDateTime.parse(resultado.getString("horario")),
+                lerTipo(resultado.getString("tipo")),
+                conversaId
+        );
     }
 }

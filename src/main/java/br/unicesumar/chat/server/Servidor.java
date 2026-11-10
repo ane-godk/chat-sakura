@@ -4,8 +4,11 @@ package br.unicesumar.chat.server;
 import br.unicesumar.chat.persistence.MensagemRepository;
 import br.unicesumar.chat.persistence.jdbc.ConnectionFactory;
 import br.unicesumar.chat.persistence.jdbc.JdbcMensagemRepository;
+import br.unicesumar.chat.persistence.jdbc.JdbcUsuarioRepository;
 import br.unicesumar.chat.service.ChatService;
 import br.unicesumar.chat.service.ClientRegistry;
+import br.unicesumar.chat.service.HashSenha;
+import br.unicesumar.chat.service.ServicoAutenticacao;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -20,7 +23,14 @@ public final class Servidor {
     private final int porta;
     private final ChatService chatService;
 
+    /** Nulo: servidor sem contas (somente apelidos, como antes). */
+    private final ServicoAutenticacao autenticacao;
+
     public Servidor(int porta, ChatService chatService) {
+        this(porta, chatService, null);
+    }
+
+    public Servidor(int porta, ChatService chatService, ServicoAutenticacao autenticacao) {
 
         if (porta < 1 || porta > 65535) {
             throw new IllegalArgumentException(
@@ -33,6 +43,7 @@ public final class Servidor {
                 chatService,
                 "O serviço do chat é obrigatório."
         );
+        this.autenticacao = autenticacao;
     }
 
     public void iniciar() {
@@ -57,7 +68,8 @@ public final class Servidor {
 
                 ClienteHandler handler = new ClienteHandler(
                         socket,
-                        chatService
+                        chatService,
+                        autenticacao
                 );
 
                 new Thread(
@@ -90,9 +102,16 @@ public final class Servidor {
                 Clock.systemDefaultZone()
         );
 
+        ServicoAutenticacao autenticacao = new ServicoAutenticacao(
+                new JdbcUsuarioRepository(fabrica),
+                new HashSenha(),
+                Clock.systemDefaultZone()
+        );
+
         Servidor servidor = new Servidor(
                 PORTA_PADRAO,
-                servico
+                servico,
+                autenticacao
         );
 
         servidor.iniciar();

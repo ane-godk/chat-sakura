@@ -3,8 +3,6 @@ package br.unicesumar.chat.client;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.event.AncestorEvent;
-import javax.swing.event.AncestorListener;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
@@ -482,193 +480,17 @@ public final class ClienteChat extends JFrame {
         }
     }
 
+    /** Entrar com conta, criar conta ou entrar como visitante. */
     private void abrirDialogoConexao() {
 
         if (controlador.estado() != ControladorConversas.EstadoConexao.DESCONECTADO) {
             return;
         }
 
-        CampoTextoSakura campoNome =
-                new CampoTextoSakura(18, "Ex.: Ana", null);
-        CampoTextoSakura campoServidor =
-                new CampoTextoSakura(18, null, null);
-        CampoTextoSakura campoPorta =
-                new CampoTextoSakura(18, null, null);
-
-        campoServidor.setText("localhost");
-        campoPorta.setText("12345");
-
-        JOptionPane painel = criarPainelConexao(
-                campoNome,
-                campoServidor,
-                campoPorta
-        );
-
-        JDialog dialogo = painel.createDialog(
-                this,
-                "Conectar ao Chat Sakura"
-        );
-        dialogo.getContentPane().setBackground(TemaSakura.cores().fundo());
-
-        // Enter confirma, como no diálogo padrão; Esc continua cancelando.
-        dialogo.getRootPane().setDefaultButton(
-                (JButton) painel.getOptions()[0]
-        );
-
-        dialogo.setVisible(true);
-        dialogo.dispose();
-
-        Object valor = painel.getValue();
-
-        int opcao = valor instanceof Integer escolha
-                ? escolha
-                : JOptionPane.CLOSED_OPTION;
-
-        if (opcao != JOptionPane.OK_OPTION) {
-            return;
-        }
-
-        String nome = campoNome.getText().trim();
-        String endereco = campoServidor.getText().trim();
-
-        if (nome.isBlank()
-                || nome.length() > 30
-                || nome.matches(".*\\s+.*")) {
-
-            mostrarErro(
-                    "O nome deve ter entre 1 e 30 caracteres, sem espaços."
-            );
-            return;
-        }
-
-        if (endereco.isBlank()) {
-            mostrarErro("Informe o endereço do servidor.");
-            return;
-        }
-
-        final int porta;
-
-        try {
-            porta = Integer.parseInt(
-                    campoPorta.getText().trim()
-            );
-
-            if (porta < 1 || porta > 65535) {
-                throw new NumberFormatException();
-            }
-
-        } catch (NumberFormatException e) {
-            mostrarErro("Informe uma porta válida.");
-            return;
-        }
-
-        // Retorna imediatamente: a conexão é aberta em segundo plano.
-        controlador.conectar(endereco, porta, nome);
-    }
-
-    private JOptionPane criarPainelConexao(
-            CampoTextoSakura campoNome,
-            CampoTextoSakura campoServidor,
-            CampoTextoSakura campoPorta
-    ) {
-
-        JLabel titulo = new JLabel("Entrar no Chat Sakura");
-        titulo.setFont(TemaSakura.FONTE_TITULO_DIALOGO);
-        titulo.setForeground(TemaSakura.cores().rosaEscuro());
-
-        JPanel topo = new JPanel(new BorderLayout(TemaSakura.ESPACO_M, 0));
-        topo.setOpaque(false);
-        topo.add(new IconeSakura(34), BorderLayout.WEST);
-        topo.add(titulo, BorderLayout.CENTER);
-
-        JPanel formulario = new JPanel(new GridBagLayout());
-        formulario.setOpaque(false);
-
-        GridBagConstraints posicao = new GridBagConstraints();
-        posicao.gridx = 0;
-        posicao.gridy = 0;
-        posicao.weightx = 1;
-        posicao.fill = GridBagConstraints.HORIZONTAL;
-        posicao.insets = new Insets(0, 0, TemaSakura.ESPACO_G, 0);
-        formulario.add(topo, posicao);
-
-        adicionarCampo(formulario, posicao, "Nome de usuário:", campoNome);
-        adicionarCampo(formulario, posicao, "Endereço do servidor:", campoServidor);
-        adicionarCampo(formulario, posicao, "Porta:", campoPorta);
-
-        // Foco inicial no nome quando o diálogo é exibido.
-        campoNome.addAncestorListener(new AncestorListener() {
-            @Override
-            public void ancestorAdded(AncestorEvent e) {
-                SwingUtilities.invokeLater(campoNome::requestFocusInWindow);
-            }
-
-            @Override
-            public void ancestorRemoved(AncestorEvent e) {
-            }
-
-            @Override
-            public void ancestorMoved(AncestorEvent e) {
-            }
-        });
-
-        BotaoSakura botaoOk =
-                new BotaoSakura("Conectar", BotaoSakura.Estilo.PRINCIPAL);
-        BotaoSakura botaoCancelar =
-                new BotaoSakura("Cancelar", BotaoSakura.Estilo.SECUNDARIO);
-
-        JOptionPane painel = new JOptionPane(
-                formulario,
-                JOptionPane.PLAIN_MESSAGE,
-                JOptionPane.OK_CANCEL_OPTION,
-                null,
-                new Object[] {botaoOk, botaoCancelar},
-                botaoOk
-        );
-
-        botaoOk.addActionListener(
-                e -> painel.setValue(JOptionPane.OK_OPTION)
-        );
-        botaoCancelar.addActionListener(
-                e -> painel.setValue(JOptionPane.CANCEL_OPTION)
-        );
-
-        aplicarFundo(painel, TemaSakura.cores().fundo());
-
-        return painel;
-    }
-
-    private static void adicionarCampo(
-            JPanel formulario,
-            GridBagConstraints posicao,
-            String rotulo,
-            JTextField campo
-    ) {
-
-        JLabel legenda = new JLabel(rotulo);
-        legenda.setFont(TemaSakura.FONTE_PEQUENA_NEGRITO);
-        legenda.setForeground(TemaSakura.cores().texto());
-        legenda.setLabelFor(campo);
-
-        posicao.gridy++;
-        posicao.insets = new Insets(0, 0, 4, 0);
-        formulario.add(legenda, posicao);
-
-        posicao.gridy++;
-        posicao.insets = new Insets(0, 0, TemaSakura.ESPACO_M, 0);
-        formulario.add(campo, posicao);
-    }
-
-    /** Aplica a cor de fundo ao painel e aos seus subpainéis. */
-    private static void aplicarFundo(Container container, Color cor) {
-
-        container.setBackground(cor);
-
-        for (Component filho : container.getComponents()) {
-            if (filho instanceof JPanel subpainel) {
-                aplicarFundo(subpainel, cor);
-            }
-        }
+        // Retorna imediatamente: a conexão e a autenticação ocorrem em
+        // segundo plano.
+        DialogoEntrada.exibir(this).ifPresent(escolha -> controlador.conectar(
+                escolha.endereco(), escolha.porta(), escolha.pedido()));
     }
 
     private void enviarMensagem() {
@@ -764,6 +586,16 @@ public final class ClienteChat extends JFrame {
         public void mensagemEnviada() {
             // Envio bem-sucedido: pequeno voo do avião de papel.
             botaoEnviar.animarEnvio();
+        }
+
+        @Override
+        public void usuarioIdentificado(String apelido) {
+            areaMensagens.definirUsuarioAtual(apelido);
+        }
+
+        @Override
+        public void autenticacaoRecusada(String mensagem) {
+            mostrarErro(mensagem);
         }
     }
 

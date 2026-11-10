@@ -8,9 +8,25 @@ public final class Usuario {
 
     public static final int TAMANHO_MAXIMO_NOME = 30;
 
+    private final Long id;
     private final String nome;
 
+    /** Participante sem conta (cliente legado ou visitante). */
     public Usuario(String nome) {
+        this(null, nome);
+    }
+
+    /**
+     * @param id identificador da conta autenticada, atribuído pelo
+     *           servidor; {@code null} para participantes sem conta
+     */
+    public Usuario(Long id, String nome) {
+
+        if (id != null && id <= 0) {
+            throw new IllegalArgumentException(
+                    "O identificador deve ser positivo."
+            );
+        }
 
         if (nome == null || nome.isBlank()) {
             throw new IllegalArgumentException(
@@ -32,12 +48,28 @@ public final class Usuario {
             );
         }
 
+        this.id = id;
         this.nome = nomeTratado;
     }
 
     public String getNome() {
         return nome;
     }
+
+    /** Conta vinculada, ou {@code null} para participantes sem conta. */
+    public Long getId() {
+        return id;
+    }
+
+    public boolean isAutenticado() {
+        return id != null;
+    }
+
+    /*
+     * A igualdade continua pelo nome (sem diferenciar maiúsculas): é a
+     * regra que impede dois participantes ativos com o mesmo nome visível,
+     * tenham ou não conta.
+     */
 
     @Override
     public boolean equals(Object objeto) {

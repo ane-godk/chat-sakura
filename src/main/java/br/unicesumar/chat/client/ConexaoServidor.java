@@ -8,7 +8,10 @@ import java.io.OutputStreamWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Objects;
+
+import br.unicesumar.chat.protocolo.ProtocoloSakura;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -22,7 +25,7 @@ final class ConexaoServidor {
 
     static final int TEMPO_LIMITE_CONEXAO_MS = 5000;
 
-    static final String PREFIXO_CONFIRMACAO = "SISTEMA: Conectado como ";
+    static final String PREFIXO_CONFIRMACAO = ProtocoloSakura.PREFIXO_CONFIRMACAO;
 
     /** Eventos da conexão, chamados fora da EDT. */
     interface Ouvinte {
@@ -41,6 +44,64 @@ final class ConexaoServidor {
 
         /** Fim da sessão: saída voluntária, recusa ou queda. */
         void sessaoEncerrada();
+
+        /** Conta autenticada pelo servidor; o apelido é o nome exibido. */
+        default void identidadeConfirmada(String apelido) {
+        }
+
+        /** Cadastro ou login recusado; mensagem própria para o usuário. */
+        default void autenticacaoRecusada(String mensagem) {
+        }
+    }
+
+    /** Forma de entrada escolhida pelo usuário. */
+    sealed interface PedidoEntrada {
+
+        /** Apaga a senha da memória (quando houver). */
+        default void limpar() {
+        }
+    }
+
+    /** Apelido sem conta, como o cliente legado. */
+    record Visitante(String nome) implements PedidoEntrada {
+        Visitante {
+            Objects.requireNonNull(nome, "Nome obrigatório.");
+        }
+    }
+
+    record Entrar(String login, char[] senha) implements PedidoEntrada {
+        Entrar {
+            Objects.requireNonNull(login, "Login obrigatório.");
+            Objects.requireNonNull(senha, "Senha obrigatória.");
+        }
+
+        @Override
+        public void limpar() {
+            Arrays.fill(senha, '\0');
+        }
+
+        @Override
+        public String toString() {
+            return "Entrar[" + login + ", ****]";
+        }
+    }
+
+    record Cadastrar(String login, String apelido, char[] senha) implements PedidoEntrada {
+        Cadastrar {
+            Objects.requireNonNull(login, "Login obrigatório.");
+            Objects.requireNonNull(apelido, "Apelido obrigatório.");
+            Objects.requireNonNull(senha, "Senha obrigatória.");
+        }
+
+        @Override
+        public void limpar() {
+            Arrays.fill(senha, '\0');
+        }
+
+        @Override
+        public String toString() {
+            return "Cadastrar[" + login + ", " + apelido + ", ****]";
+        }
     }
 
     /** Inicia uma tarefa de rede em segundo plano (substituível nos testes). */
@@ -93,11 +154,22 @@ final class ConexaoServidor {
      * @return {@code false} se já existe uma conexão ativa ou em andamento
      */
     boolean iniciar(String endereco, int porta, String nome) {
+        return iniciar(endereco, porta, new Visitante(nome));
+    }
+
+    /**
+     * Abre a conexão em segundo plano e retorna imediatamente. A senha do
+     * pedido é apagada assim que enviada (ou se a conexão não começar).
+     *
+     * @return {@code false} se já existe uma conexão ativa ou em andamento
+     */
+    boolean iniciar(String endereco, int porta, PedidoEntrada pedido) {
 
         Objects.requireNonNull(endereco, "Endereço obrigatório.");
-        Objects.requireNonNull(nome, "Nome obrigatório.");
+        Objects.requireNonNull(pedido, "Pedido obrigatório.");
 
         if (conectado.get() || !conectando.compareAndSet(false, true)) {
+            pedido.limpar();
             return false;
         }
 
@@ -107,7 +179,7 @@ final class ConexaoServidor {
         socket = novaConexao;
 
         tarefas.iniciar(
-                () -> executarSessao(novaConexao, endereco, porta, nome),
+                () -> executarSessao(novaConexao, endereco, porta, pedido),
                 "sakura-conexao"
         );
 
@@ -118,7 +190,7 @@ final class ConexaoServidor {
             Socket novaConexao,
             String endereco,
             int porta,
-            String nome
+            PedidoEntrada pedido
     ) {
 
         try {
@@ -156,7 +228,11 @@ final class ConexaoServidor {
             ouvinte.linhaRecebida(saudacao);
             ouvinte.linhaRecebida(pedidoNome);
 
-            escreverLinha(nome);
+            if (pedido instanceof Visitante visitante) {
+                escreverLinha(visitante.nome());
+            } else {
+                autenticar(entrada, pedido);
+            }
 
             String confirmacao = entrada.readLine();
 
@@ -192,6 +268,8 @@ final class ConexaoServidor {
 
         } finally {
 
+            pedido.limpar();
+
             conectado.set(false);
             conectando.set(false);
 
@@ -214,6 +292,59 @@ final class ConexaoServidor {
 
             ouvinte.estadoAlterado();
         }
+    }
+
+    /**
+     * Negociação e autenticação (ver {@link ProtocoloSakura}). Uma tentativa
+     * por conexão: em caso de recusa a sessão termina e o usuário tenta de novo.
+     */
+    private void autenticar(BufferedReader entrada, PedidoEntrada pedido) throws IOException {
+
+        escreverLinha(ProtocoloSakura.NEGOCIACAO);
+
+        String negociacao = entrada.readLine();
+
+        if (!ProtocoloSakura.NEGOCIACAO_ACEITA.equals(negociacao)) {
+            String motivo;
+            try {
+                motivo = ProtocoloSakura.lerNegociacaoRecusada(negociacao);
+            } catch (IllegalArgumentException e) {
+                motivo = null;
+            }
+            ouvinte.autenticacaoRecusada(motivo != null
+                    ? motivo
+                    : "Este servidor não oferece contas. Entre como visitante.");
+            throw new IOException("O servidor recusou a conexão.");
+        }
+
+        String comando;
+
+        if (pedido instanceof Entrar entrar) {
+            comando = ProtocoloSakura.comandoEntrar(entrar.login(), entrar.senha());
+        } else if (pedido instanceof Cadastrar cadastro) {
+            comando = ProtocoloSakura.comandoCadastrar(cadastro.login(), cadastro.apelido(), cadastro.senha());
+        } else {
+            throw new IllegalStateException("Pedido de entrada desconhecido.");
+        }
+
+        // A senha só existe a partir daqui na linha codificada.
+        pedido.limpar();
+        escreverLinha(comando);
+
+        ProtocoloSakura.RespostaAutenticacao resposta;
+
+        try {
+            resposta = ProtocoloSakura.lerResposta(entrada.readLine());
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Resposta inválida do servidor.");
+        }
+
+        if (!resposta.sucesso()) {
+            ouvinte.autenticacaoRecusada(resposta.mensagem());
+            throw new IOException("O servidor recusou a conexão.");
+        }
+
+        ouvinte.identidadeConfirmada(resposta.perfil().getApelido());
     }
 
     /**

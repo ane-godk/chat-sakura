@@ -27,7 +27,7 @@ class ConexaoServidorTest {
     private static final long ESPERA_S = 5;
 
     /** Registra os eventos e se algum chegou na EDT (não deveria). */
-    static final class OuvinteGravador implements ConexaoServidor.Ouvinte {
+    static class OuvinteGravador implements ConexaoServidor.Ouvinte {
 
         final LinkedBlockingQueue<String> linhas = new LinkedBlockingQueue<>();
         final List<String> todas = new java.util.concurrent.CopyOnWriteArrayList<>();

@@ -2,9 +2,13 @@
 package br.unicesumar.chat.server;
 
 import br.unicesumar.chat.model.Mensagem;
+import br.unicesumar.chat.model.PerfilUsuario;
 import br.unicesumar.chat.model.Usuario;
+import br.unicesumar.chat.protocolo.ProtocoloSakura;
+import br.unicesumar.chat.service.AutenticacaoException;
 import br.unicesumar.chat.service.ChatService;
 import br.unicesumar.chat.service.ConexaoCliente;
+import br.unicesumar.chat.service.ServicoAutenticacao;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -29,13 +33,31 @@ public final class ClienteHandler
     private final List<Mensagem> pendentes = new ArrayList<>();
     private boolean historicoEnviado;
 
-    private BufferedReader entrada;
+    static final String MENSAGEM_NOME_RESERVADO =
+            "SISTEMA: Não foi possível entrar: este nome pertence a uma conta"
+                    + " cadastrada. Entre com login e senha em um cliente atualizado.";
+
+    /** Pode ser nulo: servidor sem contas (somente modo legado). */
+    private final ServicoAutenticacao autenticacao;
+
+    private LeitorLinhas entrada;
     private BufferedWriter saida;
+
+    // Identidade da sessão: definida somente pelo servidor, uma única vez,
+    // a partir do apelido (modo legado) ou da conta autenticada.
     private Usuario usuario;
 
     public ClienteHandler(
             Socket socket,
             ChatService chatService
+    ) {
+        this(socket, chatService, null);
+    }
+
+    public ClienteHandler(
+            Socket socket,
+            ChatService chatService,
+            ServicoAutenticacao autenticacao
     ) {
         this.socket = Objects.requireNonNull(
                 socket,
@@ -46,6 +68,8 @@ public final class ClienteHandler
                 chatService,
                 "Serviço obrigatório."
         );
+
+        this.autenticacao = autenticacao;
     }
 
     @Override
@@ -55,11 +79,14 @@ public final class ClienteHandler
 
         try {
 
-            entrada = new BufferedReader(
-                    new InputStreamReader(
-                            socket.getInputStream(),
-                            StandardCharsets.UTF_8
-                    )
+            entrada = new LeitorLinhas(
+                    new BufferedReader(
+                            new InputStreamReader(
+                                    socket.getInputStream(),
+                                    StandardCharsets.UTF_8
+                            )
+                    ),
+                    ProtocoloSakura.TAMANHO_MAXIMO_LINHA
             );
 
             saida = new BufferedWriter(
@@ -77,19 +104,46 @@ public final class ClienteHandler
                     "SISTEMA: Informe seu nome de usuário:"
             );
 
-            String nome = entrada.readLine();
+            String nome;
+
+            try {
+                nome = entrada.lerLinha();
+            } catch (LeitorLinhas.LinhaMuitoLongaException e) {
+                enviarLinha("SISTEMA: Nome inválido: linha longa demais.");
+                return;
+            }
 
             if (nome == null) {
                 return;
             }
 
-            try {
-                usuario = new Usuario(nome);
-            } catch (IllegalArgumentException e) {
-                enviarLinha(
-                        "SISTEMA: Nome inválido: " + e.getMessage()
-                );
-                return;
+            if (ProtocoloSakura.NEGOCIACAO.equals(nome)) {
+
+                // Cliente atualizado: a identidade vem da conta.
+                usuario = autenticarSessao();
+
+                if (usuario == null) {
+                    return;
+                }
+
+            } else {
+
+                // Cliente legado ou visitante: o apelido não pode ser
+                // o nome de uma conta cadastrada.
+                try {
+                    usuario = new Usuario(nome);
+                } catch (IllegalArgumentException e) {
+                    enviarLinha(
+                            "SISTEMA: Nome inválido: " + e.getMessage()
+                    );
+                    return;
+                }
+
+                if (autenticacao != null
+                        && autenticacao.nomeReservado(usuario.getNome())) {
+                    enviarLinha(MENSAGEM_NOME_RESERVADO);
+                    return;
+                }
             }
 
             List<Mensagem> historico;
@@ -132,9 +186,25 @@ public final class ClienteHandler
                             + chatService.contarClientes()
             );
 
-            String texto;
+            while (true) {
 
-            while ((texto = entrada.readLine()) != null) {
+                // Depois da entrada, toda linha é conteúdo do chat: comandos
+                // de autenticação não trocam a identidade da sessão.
+                String texto;
+
+                try {
+                    texto = entrada.lerLinha();
+                } catch (LeitorLinhas.LinhaMuitoLongaException e) {
+                    enviarLinha(
+                            "SISTEMA: Mensagem inválida: a linha excede o"
+                                    + " limite do protocolo."
+                    );
+                    continue;
+                }
+
+                if (texto == null) {
+                    break;
+                }
 
                 texto = texto.trim();
 
@@ -201,6 +271,70 @@ public final class ClienteHandler
                 );
             }
         }
+    }
+
+    /**
+     * Fase de autenticação (ver {@link ProtocoloSakura}). Permite novas
+     * tentativas até o limite; a senha recebida é apagada após cada uma.
+     *
+     * @return o participante da conta autenticada, ou {@code null} se a
+     *         conexão deve ser encerrada
+     */
+    private Usuario autenticarSessao() throws IOException {
+
+        if (autenticacao == null) {
+            enviarLinha(ProtocoloSakura.negociacaoRecusada(
+                    "Este servidor não oferece contas. Entre como visitante."));
+            return null;
+        }
+
+        enviarLinha(ProtocoloSakura.NEGOCIACAO_ACEITA);
+
+        for (int tentativa = 1; tentativa <= ProtocoloSakura.TENTATIVAS_MAXIMAS; tentativa++) {
+
+            String linha;
+
+            try {
+                linha = entrada.lerLinha();
+            } catch (LeitorLinhas.LinhaMuitoLongaException e) {
+                linha = "";
+            }
+
+            if (linha == null) {
+                return null;
+            }
+
+            ProtocoloSakura.PedidoAutenticacao pedido;
+
+            try {
+                pedido = ProtocoloSakura.lerPedido(linha);
+            } catch (IllegalArgumentException e) {
+                enviarLinha(ProtocoloSakura.respostaErro(
+                        "COMANDO_INVALIDO", "Comando de autenticação inválido."));
+                continue;
+            }
+
+            try {
+                PerfilUsuario perfil = pedido.isCadastro()
+                        ? autenticacao.cadastrar(pedido.getLogin(), pedido.getApelido(), pedido.getSenha())
+                        : autenticacao.autenticar(pedido.getLogin(), pedido.getSenha());
+
+                enviarLinha(ProtocoloSakura.respostaSucesso(perfil));
+
+                return perfil.comoUsuario();
+
+            } catch (AutenticacaoException e) {
+                enviarLinha(ProtocoloSakura.respostaErro(e.getCodigo().name(), e.getMessage()));
+
+            } finally {
+                pedido.limpar();
+            }
+        }
+
+        enviarLinha(ProtocoloSakura.respostaErro(
+                "TENTATIVAS_ESGOTADAS", "Muitas tentativas. Conecte-se novamente."));
+
+        return null;
     }
 
     private void enviarHistorico(List<Mensagem> historico)

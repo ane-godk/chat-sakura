@@ -44,6 +44,12 @@ final class ControladorConversas {
         void estadoAlterado(EstadoConexao estado);
 
         void mensagemEnviada();
+
+        /** O servidor confirmou a conta; o apelido passa a ser o nome exibido. */
+        void usuarioIdentificado(String apelido);
+
+        /** Cadastro ou login recusado (mensagem para o usuário). */
+        void autenticacaoRecusada(String mensagem);
     }
 
     /** Conversa do cliente; acessada somente na EDT. */
@@ -120,9 +126,29 @@ final class ControladorConversas {
      * @return {@code false} se já existe uma sessão em andamento
      */
     boolean conectar(String endereco, int porta, String nome) {
+        return conectar(endereco, porta, new ConexaoServidor.Visitante(nome));
+    }
+
+    /**
+     * Inicia a conexão (visitante, login ou cadastro) sem bloquear quem
+     * chama. Com conta, o nome exibido só é conhecido após a confirmação
+     * do servidor; até lá vale o login ou o apelido informado.
+     */
+    boolean conectar(String endereco, int porta, ConexaoServidor.PedidoEntrada pedido) {
 
         if (conexao.ocupada()) {
+            pedido.limpar();
             return false;
+        }
+
+        String nome;
+
+        if (pedido instanceof ConexaoServidor.Visitante visitante) {
+            nome = visitante.nome();
+        } else if (pedido instanceof ConexaoServidor.Cadastrar cadastro) {
+            nome = cadastro.apelido();
+        } else {
+            nome = ((ConexaoServidor.Entrar) pedido).login();
         }
 
         nomeUsuario = nome;
@@ -132,7 +158,7 @@ final class ControladorConversas {
         conversaAtiva().linhas.clear();
         visao.reiniciarConversa(idConversaAtiva, nome);
 
-        boolean iniciada = conexao.iniciar(endereco, porta, nome);
+        boolean iniciada = conexao.iniciar(endereco, porta, pedido);
 
         visao.estadoAlterado(estado());
 
@@ -211,6 +237,20 @@ final class ControladorConversas {
         @Override
         public void sessaoEncerrada() {
             notificacoes.sessaoEncerrada();
+        }
+
+        @Override
+        public void identidadeConfirmada(String apelido) {
+            // Na fila da EDT antes da confirmação e do histórico.
+            edt.execute(() -> {
+                nomeUsuario = apelido;
+                visao.usuarioIdentificado(apelido);
+            });
+        }
+
+        @Override
+        public void autenticacaoRecusada(String mensagem) {
+            edt.execute(() -> visao.autenticacaoRecusada(mensagem));
         }
     }
 }

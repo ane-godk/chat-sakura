@@ -11,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 
 import java.time.LocalDateTime;
 
@@ -67,9 +68,10 @@ public final class JdbcMensagemRepository
                     remetente,
                     texto,
                     horario,
-                    tipo
+                    tipo,
+                    remetente_id
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """;
 
         try (
@@ -83,8 +85,7 @@ public final class JdbcMensagemRepository
                         )
         ) {
 
-            // Por enquanto toda mensagem pertence ao Chat Geral;
-            // remetente_id fica NULL até existir login autenticado.
+            // Por enquanto toda mensagem pertence ao Chat Geral.
             comando.setLong(
                     1,
                     MigradorBanco.ID_CONVERSA_GERAL
@@ -109,6 +110,16 @@ public final class JdbcMensagemRepository
                     5,
                     mensagem.getTipo().name()
             );
+
+            // Conta autenticada vinculada pelo servidor; NULL para
+            // visitantes, clientes legados e mensagens históricas.
+            Long remetenteId = mensagem.getRemetente().getId();
+
+            if (remetenteId == null) {
+                comando.setNull(6, Types.INTEGER);
+            } else {
+                comando.setLong(6, remetenteId);
+            }
 
             int linhasAfetadas = comando.executeUpdate();
 
@@ -174,7 +185,7 @@ public final class JdbcMensagemRepository
         }
 
         String sql = """
-                SELECT id, remetente, texto, horario, tipo
+                SELECT id, remetente_id, remetente, texto, horario, tipo
                 FROM mensagem
                 WHERE conversa_id = ?
                 ORDER BY id DESC
@@ -205,7 +216,10 @@ public final class JdbcMensagemRepository
 
                     Long id = resultado.getLong("id");
 
+                    long remetenteId = resultado.getLong("remetente_id");
+
                     Usuario remetente = new Usuario(
+                            resultado.wasNull() ? null : remetenteId,
                             resultado.getString("remetente")
                     );
 

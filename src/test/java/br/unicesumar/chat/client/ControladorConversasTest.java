@@ -94,6 +94,21 @@ class ControladorConversasTest {
             verificarEdt();
             envios++;
         }
+
+        final List<String> identificados = new CopyOnWriteArrayList<>();
+        final List<String> recusas = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void usuarioIdentificado(String apelido) {
+            verificarEdt();
+            identificados.add(apelido);
+        }
+
+        @Override
+        public void autenticacaoRecusada(String mensagem) {
+            verificarEdt();
+            recusas.add(mensagem);
+        }
     }
 
     private final ReprodutorFalso reprodutor = new ReprodutorFalso();

@@ -48,12 +48,13 @@ chat-sakura/
 │   └── MIGRACOES.md
 └── src/
     ├── main/java/br/unicesumar/chat/
-    │   ├── model/             Usuario, Mensagem, MensagemInvalidaException
-    │   ├── persistence/       MensagemRepository, MensagemRepositoryEmMemoria
-    │   │   └── jdbc/          ConnectionFactory, JdbcMensagemRepository, MigradorBanco
-    │   ├── service/           ChatService, ClientRegistry, ConexaoCliente
-    │   ├── server/            Servidor, ClienteHandler
-    │   └── client/            ClienteChat
+    │   ├── model/             Usuario, Mensagem, PerfilUsuario, RegrasConta
+    │   ├── persistence/       MensagemRepository, UsuarioRepository, MensagemRepositoryEmMemoria
+    │   │   └── jdbc/          ConnectionFactory, JdbcMensagemRepository, JdbcUsuarioRepository, MigradorBanco
+    │   ├── service/           ChatService, ClientRegistry, ServicoAutenticacao, HashSenha
+    │   ├── protocolo/         ProtocoloSakura (handshake de autenticação)
+    │   ├── server/            Servidor, ClienteHandler, LeitorLinhas
+    │   └── client/            ClienteChat, ConexaoServidor, ControladorConversas, DialogoEntrada
     └── test/java/br/unicesumar/chat/   Testes JUnit 5
 ```
 
@@ -62,7 +63,8 @@ chat-sakura/
 | `model` | Entidades imutáveis e validações (domínio, sem dependência de rede ou JDBC) |
 | `persistence` | Contrato do repositório e implementação em memória |
 | `persistence.jdbc` | Implementação com SQLite |
-| `service` | Regras do chat, broadcast, registro de clientes e sincronização |
+| `service` | Regras do chat, broadcast, registro de clientes, sincronização e contas |
+| `protocolo` | Formato do handshake de autenticação, compartilhado por servidor e cliente |
 | `server` | Servidor TCP e protocolo com cada cliente |
 | `client` | Interface gráfica Swing |
 
@@ -111,13 +113,15 @@ Uma alternativa pelo Maven:
 mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.client.ClienteChat"
 ```
 
-Na janela, clique em **Conectar** e informe:
+Na janela, clique em **Conectar** e escolha um modo:
 
-| Campo | Valor |
+| Modo | Campos |
 |---|---|
-| Nome de usuário | por exemplo, `Ana` |
-| Endereço do servidor | `localhost` |
-| Porta | `12345` |
+| **Entrar** | login e senha de uma conta existente |
+| **Criar conta** | login, apelido (nome exibido no chat), senha e confirmação |
+| **Visitante** | apenas um nome, sem conta (como nas versões anteriores) |
+
+Em todos os modos, o endereço do servidor é `localhost` e a porta é `12345`. Veja [Contas e autenticação](#contas-e-autenticação).
 
 ### 4. Demonstrar três clientes simultâneos
 
@@ -157,6 +161,24 @@ Ao conectar, o cliente recebe as **20 mensagens mais recentes**, em ordem cronol
 Como o histórico fica no banco, ele é preservado quando o servidor é reiniciado.
 
 O esquema da tabela também está documentado em [sql/criar_tabelas.sql](sql/criar_tabelas.sql).
+
+## Contas e autenticação
+
+Cada conta tem um ID persistente, um **login** (de 3 a 30 caracteres: letras sem acento, números, `.`, `-` e `_`; único, sem diferenciar maiúsculas), um **apelido** exibido no chat (único) e um avatar padrão. A senha deve ter de 8 a 128 caracteres.
+
+- **Senhas:** usam PBKDF2-HMAC-SHA256 (`javax.crypto`), com 600.000 iterações, sal aleatório de 16 bytes por conta (`SecureRandom`) e hash de 32 bytes. A comparação é feita em tempo constante.
+  - O banco guarda apenas `pbkdf2-sha256$<iterações>$<hash>` e o sal. Nenhuma senha, hash ou sal aparece em logs ou é enviado ao cliente.
+  - Login inexistente e senha incorreta recebem a mesma resposta.
+- **Identidade:** é definida **pelo servidor** no início da sessão e não muda depois. O cliente nunca envia um ID. Mensagens de contas gravam `remetente_id`; mensagens de visitantes e do histórico antigo ficam com `NULL`.
+- **Personificação:** visitantes e clientes antigos não podem usar um nome que seja login ou apelido de uma conta. Continua valendo a regra de um único participante ativo por nome.
+- **Compatibilidade:** clientes antigos e visitantes continuam no Chat Geral como antes.
+- **Handshake:** depois das duas linhas de boas-vindas, o cliente atualizado envia `SAKURA 2` em vez do apelido.
+  - Em seguida vem `ENTRAR` ou `CADASTRAR`, com os campos em Base64 URL.
+  - O servidor responde `AUTH OK` ou `AUTH ERRO`. São permitidas 5 tentativas por conexão.
+  - Toda linha recebida pelo servidor tem limite de 4096 caracteres.
+  - A especificação completa está em `ProtocoloSakura`.
+
+> **Segurança:** o PBKDF2 protege as senhas **armazenadas no banco**, mas **não** protege o tráfego. A conexão TCP não usa TLS, e o Base64 é só uma codificação: a senha trafega legível para quem puder observar a rede. O sistema é adequado para uso acadêmico em rede local confiável e **não deve ser exposto publicamente sem TLS**.
 
 ## Exportação TXT
 

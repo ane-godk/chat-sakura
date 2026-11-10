@@ -10,15 +10,13 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.*;
-import java.net.InetSocketAddress;
-import java.net.Socket;
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class ClienteChat extends JFrame {
 
@@ -68,15 +66,9 @@ public final class ClienteChat extends JFrame {
 
     private final IndicadorConexao indicador = new IndicadorConexao();
 
-    private final AtomicBoolean conectado = new AtomicBoolean(false);
-    private final AtomicBoolean conectando = new AtomicBoolean(false);
-
-    private final Object bloqueioEscrita = new Object();
-
-    private volatile Socket socket;
-    private volatile BufferedWriter saida;
-
-    private volatile String nomeUsuario = "";
+    // Rede e estado das conversas; a janela apenas monta e coordena a interface.
+    private final transient ControladorConversas controlador =
+            new ControladorConversas(new VisaoJanela(), notificacoes);
 
     public ClienteChat() {
         this(PreferenciasSakura.padrao());
@@ -492,7 +484,7 @@ public final class ClienteChat extends JFrame {
 
     private void abrirDialogoConexao() {
 
-        if (conectado.get() || conectando.get()) {
+        if (controlador.estado() != ControladorConversas.EstadoConexao.DESCONECTADO) {
             return;
         }
 
@@ -570,23 +562,8 @@ public final class ClienteChat extends JFrame {
             return;
         }
 
-        if (!conectando.compareAndSet(false, true)) {
-            return;
-        }
-
-        nomeUsuario = nome;
-        areaMensagens.limpar();
-        areaMensagens.definirUsuarioAtual(nome);
-        acompanhandoFim = true;
-        atualizarEstado();
-
-        Thread thread = new Thread(
-                () -> conectar(endereco, porta, nome),
-                "sakura-conexao"
-        );
-
-        thread.setDaemon(true);
-        thread.start();
+        // Retorna imediatamente: a conexão é aberta em segundo plano.
+        controlador.conectar(endereco, porta, nome);
     }
 
     private JOptionPane criarPainelConexao(
@@ -694,143 +671,9 @@ public final class ClienteChat extends JFrame {
         }
     }
 
-    private void conectar(
-            String endereco,
-            int porta,
-            String nome
-    ) {
-
-        Socket novaConexao = new Socket();
-
-        try {
-            socket = novaConexao;
-
-            novaConexao.connect(
-                    new InetSocketAddress(endereco, porta),
-                    5000
-            );
-
-            BufferedReader entrada = new BufferedReader(
-                    new InputStreamReader(
-                            novaConexao.getInputStream(),
-                            StandardCharsets.UTF_8
-                    )
-            );
-
-            BufferedWriter escritor = new BufferedWriter(
-                    new OutputStreamWriter(
-                            novaConexao.getOutputStream(),
-                            StandardCharsets.UTF_8
-                    )
-            );
-
-            synchronized (bloqueioEscrita) {
-                saida = escritor;
-            }
-
-            // O servidor atual envia duas linhas iniciais.
-            String saudacao = entrada.readLine();
-            String pedidoNome = entrada.readLine();
-
-            if (saudacao == null || pedidoNome == null) {
-                throw new IOException(
-                        "O servidor encerrou a conexão."
-                );
-            }
-
-            adicionarMensagem(saudacao);
-            adicionarMensagem(pedidoNome);
-
-            escreverLinha(nome);
-
-            String confirmacao = entrada.readLine();
-
-            if (confirmacao == null
-                    || !confirmacao.startsWith(
-                            "SISTEMA: Conectado como "
-                    )) {
-
-                if (confirmacao != null) {
-                    adicionarMensagem(confirmacao);
-                }
-
-                throw new IOException(
-                        "O servidor recusou a conexão."
-                );
-            }
-
-            conectado.set(true);
-            conectando.set(false);
-
-            // Conexão confirmada pelo servidor.
-            notificacoes.conexaoConfirmada();
-
-            adicionarMensagem(confirmacao);
-            atualizarEstado();
-
-            String linha;
-
-            while (conectado.get()
-                    && (linha = entrada.readLine()) != null) {
-
-                adicionarMensagem(linha);
-            }
-
-        } catch (IOException e) {
-
-            adicionarMensagem(
-                    "SISTEMA: " + e.getMessage()
-            );
-
-        } finally {
-
-            conectado.set(false);
-            conectando.set(false);
-
-            // Fim da sessão (Sair ou queda): toca uma única vez, e só se
-            // a conexão chegou a ser confirmada.
-            notificacoes.sessaoEncerrada();
-
-            try {
-                novaConexao.close();
-            } catch (IOException e) {
-                System.err.println(
-                        "Erro ao fechar conexão: "
-                                + e.getMessage()
-                );
-            }
-
-            synchronized (bloqueioEscrita) {
-                if (socket == novaConexao) {
-                    socket = null;
-                    saida = null;
-                }
-            }
-
-            atualizarEstado();
-        }
-    }
-
-    private void escreverLinha(String texto)
-            throws IOException {
-
-        synchronized (bloqueioEscrita) {
-
-            if (saida == null) {
-                throw new IOException(
-                        "Não existe conexão ativa."
-                );
-            }
-
-            saida.write(texto);
-            saida.newLine();
-            saida.flush();
-        }
-    }
-
     private void enviarMensagem() {
 
-        if (!conectado.get()) {
+        if (controlador.estado() != ControladorConversas.EstadoConexao.CONECTADO) {
             return;
         }
 
@@ -849,117 +692,84 @@ public final class ClienteChat extends JFrame {
 
         campoMensagem.setText("");
 
-        Thread thread = new Thread(() -> {
-
-            try {
-                escreverLinha(texto);
-
-                // Envio bem-sucedido: pequeno voo do avião de papel e som.
-                SwingUtilities.invokeLater(botaoEnviar::animarEnvio);
-                notificacoes.mensagemEnviada();
-
-            } catch (IOException e) {
-
-                adicionarMensagem(
-                        "SISTEMA: Falha ao enviar: "
-                                + e.getMessage()
-                );
-            }
-
-        }, "sakura-envio");
-
-        thread.setDaemon(true);
-        thread.start();
+        // A escrita no socket ocorre em segundo plano.
+        controlador.enviar(texto);
     }
 
     private void desconectar() {
-
-        conectado.set(false);
-
-        Socket conexaoAtual = socket;
-
-        if (conexaoAtual != null) {
-            try {
-                conexaoAtual.close();
-            } catch (IOException e) {
-                System.err.println(
-                        "Erro ao desconectar: "
-                                + e.getMessage()
-                );
-            }
-        }
-
-        atualizarEstado();
+        controlador.desconectar();
     }
 
+    /** Habilita os controles e o selo conforme o estado (na EDT). */
     private void atualizarEstado() {
 
-        SwingUtilities.invokeLater(() -> {
+        ControladorConversas.EstadoConexao estado = controlador.estado();
 
-            boolean ativo = conectado.get();
-            boolean emConexao = conectando.get();
+        boolean ativo = estado == ControladorConversas.EstadoConexao.CONECTADO;
+        boolean emConexao = estado == ControladorConversas.EstadoConexao.CONECTANDO;
 
-            botaoConectar.setEnabled(
-                    !ativo && !emConexao
+        botaoConectar.setEnabled(!ativo && !emConexao);
+        botaoDesconectar.setEnabled(ativo || emConexao);
+        botaoEnviar.setEnabled(ativo);
+        campoMensagem.setEnabled(ativo);
+        botaoExportar.setEnabled(!controlador.conversaAtiva().texto().isBlank());
+
+        if (ativo) {
+            indicador.mostrar(
+                    IndicadorConexao.Estado.CONECTADO,
+                    "Conectado como " + controlador.nomeUsuario()
             );
-
-            botaoDesconectar.setEnabled(
-                    ativo || emConexao
+        } else if (emConexao) {
+            indicador.mostrar(
+                    IndicadorConexao.Estado.CONECTANDO,
+                    "Conectando..."
             );
-
-            botaoEnviar.setEnabled(ativo);
-            campoMensagem.setEnabled(ativo);
-
-            botaoExportar.setEnabled(
-                    !areaMensagens.texto().isBlank()
+        } else {
+            indicador.mostrar(
+                    IndicadorConexao.Estado.DESCONECTADO,
+                    "Desconectado"
             );
-
-            if (ativo) {
-
-                indicador.mostrar(
-                        IndicadorConexao.Estado.CONECTADO,
-                        "Conectado como " + nomeUsuario
-                );
-
-            } else if (emConexao) {
-
-                indicador.mostrar(
-                        IndicadorConexao.Estado.CONECTANDO,
-                        "Conectando..."
-                );
-
-            } else {
-
-                indicador.mostrar(
-                        IndicadorConexao.Estado.DESCONECTADO,
-                        "Desconectado"
-                );
-            }
-        });
+        }
     }
 
-    private void adicionarMensagem(String mensagem) {
+    /** Ligação entre o controlador e os componentes da janela (EDT). */
+    private final class VisaoJanela implements ControladorConversas.Visao {
 
-        SwingUtilities.invokeLater(() -> {
+        @Override
+        public void reiniciarConversa(String idConversa, String usuarioAtual) {
+            areaMensagens.limpar();
+            areaMensagens.definirUsuarioAtual(usuarioAtual);
+            acompanhandoFim = true;
+        }
 
+        @Override
+        public void exibirLinha(String idConversa, String linha) {
             // A rolagem até a nova linha é feita por
             // atualizarAcompanhamentoDoFim, se o usuário estiver no fim.
-            areaMensagens.adicionarLinha(mensagem);
-
-            // Som apenas para mensagens novas de outros participantes.
-            notificacoes.linhaRecebida(
-                    mensagem,
-                    nomeUsuario,
-                    areaMensagens.historicoConcluido()
-            );
-
+            areaMensagens.adicionarLinha(linha);
             botaoExportar.setEnabled(true);
-        });
+        }
+
+        @Override
+        public boolean historicoConcluido(String idConversa) {
+            return areaMensagens.historicoConcluido();
+        }
+
+        @Override
+        public void estadoAlterado(ControladorConversas.EstadoConexao estado) {
+            atualizarEstado();
+        }
+
+        @Override
+        public void mensagemEnviada() {
+            // Envio bem-sucedido: pequeno voo do avião de papel.
+            botaoEnviar.animarEnvio();
+        }
     }
 
     private void exportarHistorico() {
 
-        String conteudo = areaMensagens.texto();
+        String conteudo = controlador.conversaAtiva().texto();
 
         if (conteudo.isBlank()) {
             mostrarErro(

@@ -3,12 +3,14 @@ package br.unicesumar.chat.server;
 
 import br.unicesumar.chat.persistence.MensagemRepository;
 import br.unicesumar.chat.persistence.jdbc.ConnectionFactory;
+import br.unicesumar.chat.persistence.jdbc.JdbcConversaRepository;
 import br.unicesumar.chat.persistence.jdbc.JdbcMensagemRepository;
 import br.unicesumar.chat.persistence.jdbc.JdbcUsuarioRepository;
 import br.unicesumar.chat.service.ChatService;
 import br.unicesumar.chat.service.ClientRegistry;
 import br.unicesumar.chat.service.HashSenha;
 import br.unicesumar.chat.service.ServicoAutenticacao;
+import br.unicesumar.chat.service.ServicoConversas;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -23,14 +25,20 @@ public final class Servidor {
     private final int porta;
     private final ChatService chatService;
 
-    /** Nulo: servidor sem contas (somente apelidos, como antes). */
+    /** Nulos juntos: servidor sem contas (somente apelidos, como antes). */
     private final ServicoAutenticacao autenticacao;
+    private final ServicoConversas conversas;
 
     public Servidor(int porta, ChatService chatService) {
-        this(porta, chatService, null);
+        this(porta, chatService, null, null);
     }
 
-    public Servidor(int porta, ChatService chatService, ServicoAutenticacao autenticacao) {
+    public Servidor(
+            int porta,
+            ChatService chatService,
+            ServicoAutenticacao autenticacao,
+            ServicoConversas conversas
+    ) {
 
         if (porta < 1 || porta > 65535) {
             throw new IllegalArgumentException(
@@ -44,6 +52,36 @@ public final class Servidor {
                 "O serviço do chat é obrigatório."
         );
         this.autenticacao = autenticacao;
+        this.conversas = conversas;
+    }
+
+    /** Serviços completos (chat, contas e conversas) sobre o mesmo banco. */
+    public record Servicos(ChatService chat, ServicoAutenticacao autenticacao, ServicoConversas conversas) {
+
+        public static Servicos montar(ConnectionFactory fabrica, HashSenha hashSenha, Clock relogio) {
+
+            MensagemRepository mensagens = new JdbcMensagemRepository(fabrica);
+            JdbcUsuarioRepository usuarios = new JdbcUsuarioRepository(fabrica);
+            ClientRegistry registro = new ClientRegistry();
+            ChatService chat = new ChatService(mensagens, registro, relogio);
+
+            return new Servicos(
+                    chat,
+                    new ServicoAutenticacao(usuarios, hashSenha, relogio),
+                    new ServicoConversas(new JdbcConversaRepository(fabrica), mensagens, usuarios,
+                            chat, registro, relogio)
+            );
+        }
+
+        public ClienteHandler atender(Socket socket) {
+            return new ClienteHandler(socket, chat, autenticacao, conversas);
+        }
+    }
+
+    /** Servidor completo (contas, conversas e histórico) sobre um banco SQLite. */
+    public static Servidor comBanco(int porta, ConnectionFactory fabrica, HashSenha hashSenha) {
+        Servicos servicos = Servicos.montar(fabrica, hashSenha, Clock.systemDefaultZone());
+        return new Servidor(porta, servicos.chat(), servicos.autenticacao(), servicos.conversas());
     }
 
     public void iniciar() {
@@ -69,7 +107,8 @@ public final class Servidor {
                 ClienteHandler handler = new ClienteHandler(
                         socket,
                         chatService,
-                        autenticacao
+                        autenticacao,
+                        conversas
                 );
 
                 new Thread(
@@ -88,32 +127,10 @@ public final class Servidor {
 
     public static void main(String[] args) {
 
-        ConnectionFactory fabrica =
-                new ConnectionFactory("chat-sakura.db");
-
-        MensagemRepository repositorio =
-                new JdbcMensagemRepository(fabrica);
-
-        ClientRegistry registro = new ClientRegistry();
-
-        ChatService servico = new ChatService(
-                repositorio,
-                registro,
-                Clock.systemDefaultZone()
-        );
-
-        ServicoAutenticacao autenticacao = new ServicoAutenticacao(
-                new JdbcUsuarioRepository(fabrica),
-                new HashSenha(),
-                Clock.systemDefaultZone()
-        );
-
-        Servidor servidor = new Servidor(
+        comBanco(
                 PORTA_PADRAO,
-                servico,
-                autenticacao
-        );
-
-        servidor.iniciar();
+                new ConnectionFactory("chat-sakura.db"),
+                new HashSenha()
+        ).iniciar();
     }
 }

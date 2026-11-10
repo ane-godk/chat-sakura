@@ -2,12 +2,11 @@ package br.unicesumar.chat.client;
 
 import br.unicesumar.chat.persistence.MensagemRepositoryEmMemoria;
 import br.unicesumar.chat.persistence.jdbc.ConnectionFactory;
-import br.unicesumar.chat.persistence.jdbc.JdbcUsuarioRepository;
 import br.unicesumar.chat.server.ClienteHandler;
+import br.unicesumar.chat.server.Servidor;
 import br.unicesumar.chat.service.ChatService;
 import br.unicesumar.chat.service.ClientRegistry;
 import br.unicesumar.chat.service.HashSenha;
-import br.unicesumar.chat.service.ServicoAutenticacao;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -41,8 +40,11 @@ final class ServidorTeste implements AutoCloseable {
         this(null);
     }
 
-    /** @param bancoContas SQLite temporário para contas; {@code null} = sem contas */
-    ServidorTeste(Path bancoContas) throws IOException {
+    /**
+     * @param banco SQLite temporário (contas, conversas e mensagens);
+     *              {@code null} = sem contas, histórico em memória
+     */
+    ServidorTeste(Path banco) throws IOException {
 
         ChatService servico = new ChatService(
                 repositorio,
@@ -50,19 +52,19 @@ final class ServidorTeste implements AutoCloseable {
                 Clock.systemDefaultZone()
         );
 
-        ServicoAutenticacao contas = bancoContas == null
+        Servidor.Servicos completos = banco == null
                 ? null
-                : new ServicoAutenticacao(
-                        new JdbcUsuarioRepository(new ConnectionFactory(bancoContas.toString())),
-                        new HashSenha(1_000),
-                        Clock.systemDefaultZone());
+                : Servidor.Servicos.montar(new ConnectionFactory(banco.toString()),
+                        new HashSenha(1_000), Clock.systemDefaultZone());
 
         threads.execute(() -> {
             while (!servidor.isClosed()) {
                 try {
                     Socket socket = servidor.accept();
                     conexoes.add(socket);
-                    threads.execute(new ClienteHandler(socket, servico, contas));
+                    threads.execute(completos == null
+                            ? new ClienteHandler(socket, servico)
+                            : completos.atender(socket));
                 } catch (IOException e) {
                     return;
                 }

@@ -5,8 +5,10 @@ import br.unicesumar.chat.model.Usuario;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Registro thread-safe dos clientes conectados.
@@ -78,6 +80,65 @@ public final class ClientRegistry {
      */
     public void transmitir(Mensagem mensagem) {
         transmitirExceto(mensagem, null);
+    }
+
+    /**
+     * Entrega somente às sessões autenticadas cujas contas estão em
+     * {@code usuarioIds} (participantes de uma conversa privada ou grupo).
+     * Sessões sem conta (visitantes e clientes legados) nunca recebem.
+     */
+    public void transmitirPara(Mensagem mensagem, Set<Long> usuarioIds) {
+
+        Objects.requireNonNull(mensagem, "Mensagem obrigatória.");
+        paraUsuarios(usuarioIds, cliente -> cliente.enviar(mensagem));
+    }
+
+    /** Ação de envio a uma sessão; falhas são registradas e não interrompem as demais. */
+    @FunctionalInterface
+    public interface Entrega {
+        void executar(ConexaoCliente cliente) throws Exception;
+    }
+
+    /** Executa a entrega para cada sessão autenticada das contas indicadas. */
+    public void paraUsuarios(Set<Long> usuarioIds, Entrega entrega) {
+
+        Objects.requireNonNull(usuarioIds, "Destinatários obrigatórios.");
+
+        synchronized (clientes) {
+
+            for (ConexaoCliente cliente : clientes) {
+
+                Long id = cliente.getUsuario().getId();
+
+                if (id == null || !usuarioIds.contains(id)) {
+                    continue;
+                }
+
+                try {
+                    entrega.executar(cliente);
+                } catch (Exception e) {
+                    System.err.println(
+                            "Falha no envio para "
+                                    + cliente.getUsuario().getNome()
+                                    + ": "
+                                    + e.getMessage()
+                    );
+                }
+            }
+        }
+    }
+
+    /** Contas com sessão ativa. */
+    public Set<Long> contasConectadas() {
+        synchronized (clientes) {
+            Set<Long> ids = new HashSet<>();
+            for (ConexaoCliente cliente : clientes) {
+                if (cliente.getUsuario().getId() != null) {
+                    ids.add(cliente.getUsuario().getId());
+                }
+            }
+            return ids;
+        }
     }
 
     /**

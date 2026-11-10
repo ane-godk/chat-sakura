@@ -46,6 +46,30 @@ class ConexaoContasTest {
         public void autenticacaoRecusada(String mensagem) {
             recusas.add(mensagem);
         }
+
+        final LinkedBlockingQueue<br.unicesumar.chat.protocolo.ProtocoloJson.Evento> eventos =
+                new LinkedBlockingQueue<>();
+
+        @Override
+        public void eventoRecebido(br.unicesumar.chat.protocolo.ProtocoloJson.Evento evento) {
+            if (javax.swing.SwingUtilities.isEventDispatchThread()) {
+                eventoNaEdt.set(true);
+            }
+            eventos.add(evento);
+        }
+
+        /** Consome eventos até o tipo indicado. */
+        br.unicesumar.chat.protocolo.ProtocoloJson.Evento esperarEvento(
+                br.unicesumar.chat.protocolo.ProtocoloJson.TipoEvento tipo) throws InterruptedException {
+            long limite = System.nanoTime() + TimeUnit.SECONDS.toNanos(ESPERA_S);
+            while (System.nanoTime() < limite) {
+                var evento = eventos.poll(100, TimeUnit.MILLISECONDS);
+                if (evento != null && evento.tipo() == tipo) {
+                    return evento;
+                }
+            }
+            throw new AssertionError("Evento não recebido: " + tipo);
+        }
     }
 
     @BeforeEach
@@ -72,7 +96,7 @@ class ConexaoContasTest {
 
         assertEquals("Ana", ouvinte.identidades.poll(ESPERA_S, TimeUnit.SECONDS));
         assertTrue(ouvinte.confirmada.await(ESPERA_S, TimeUnit.SECONDS));
-        ouvinte.esperar(FormatoLinhaChat.FIM_HISTORICO::equals);
+        ouvinte.esperarEvento(br.unicesumar.chat.protocolo.ProtocoloJson.TipoEvento.HISTORICO);
         assertArrayEquals(new char[senha.length], senha, "A senha é apagada após o envio");
         return conexao;
     }
@@ -81,7 +105,6 @@ class ConexaoContasTest {
     void cadastroELoginDevemConfirmarAIdentidadeDoServidor() throws Exception {
         OuvinteContas primeira = new OuvinteContas();
         ConexaoServidor conexao = cadastrarAna(primeira);
-        assertTrue(primeira.todas.contains("SISTEMA: Conectado como Ana"));
         assertFalse(primeira.eventoNaEdt.get());
 
         conexao.desconectar();
@@ -147,14 +170,14 @@ class ConexaoContasTest {
                 }
             }
 
-            @Override public void reiniciarConversa(String id, String usuario) { verificar(); }
-            @Override public void exibirLinha(String id, String linha) {
+            @Override public void reiniciarConversa(long id, String usuario) { verificar(); }
+            @Override public void exibirLinha(long id, String linha) {
                 verificar();
                 if (FormatoLinhaChat.FIM_HISTORICO.equals(linha)) {
                     historicoConcluido.set(true);
                 }
             }
-            @Override public boolean historicoConcluido(String id) { verificar(); return historicoConcluido.get(); }
+            @Override public boolean historicoConcluido(long id) { verificar(); return historicoConcluido.get(); }
             @Override public void estadoAlterado(ControladorConversas.EstadoConexao e) { verificar(); }
             @Override public void mensagemEnviada() { verificar(); }
             @Override public void usuarioIdentificado(String apelido) { verificar(); identificados.add(apelido); }

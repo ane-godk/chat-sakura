@@ -68,6 +68,18 @@ public final class ClienteChat extends JFrame {
     private final transient ControladorConversas controlador =
             new ControladorConversas(new VisaoJanela(), notificacoes);
 
+    // Barra lateral e nome da conversa ativa.
+    private final BarraConversas barraConversas = new BarraConversas(id -> controlador.selecionar(id));
+
+    private final JLabel tituloConversa = new JLabel(ControladorConversas.TITULO_GERAL) {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public Color getForeground() {
+            return TemaSakura.cores().rosaEscuro();
+        }
+    };
+
     public ClienteChat() {
         this(PreferenciasSakura.padrao());
     }
@@ -130,8 +142,8 @@ public final class ClienteChat extends JFrame {
 
     private void configurarJanela() {
         setTitle("Chat Sakura");
-        setSize(800, 580);
-        setMinimumSize(new Dimension(600, 420));
+        setSize(1020, 620);
+        setMinimumSize(new Dimension(820, 460));
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setIconImages(IconeSakura.imagensJanela());
@@ -313,7 +325,22 @@ public final class ClienteChat extends JFrame {
         fundoConversa.setBorder(new EmptyBorder(6, 6, 6, 6));
         fundoConversa.add(rolagem, BorderLayout.CENTER);
 
-        return fundoConversa;
+        // Nome da conversa ativa acima das mensagens.
+        tituloConversa.setFont(TemaSakura.FONTE_NOME);
+        tituloConversa.setBorder(new EmptyBorder(2, 8, 2, 8));
+        fundoConversa.add(tituloConversa, BorderLayout.NORTH);
+
+        barraConversas.botaoPrivada.addActionListener(e -> novaConversaPrivada());
+        barraConversas.botaoGrupo.addActionListener(e -> novoGrupo());
+        barraConversas.definirContas(false);
+        barraConversas.atualizar(controlador.itens(), ControladorConversas.ID_GERAL);
+
+        JPanel area = new JPanel(new BorderLayout(TemaSakura.ESPACO_M, 0));
+        area.setOpaque(false);
+        area.add(barraConversas, BorderLayout.WEST);
+        area.add(fundoConversa, BorderLayout.CENTER);
+
+        return area;
     }
 
     /**
@@ -535,6 +562,7 @@ public final class ClienteChat extends JFrame {
         botaoEnviar.setEnabled(ativo);
         campoMensagem.setEnabled(ativo);
         botaoExportar.setEnabled(!controlador.conversaAtiva().texto().isBlank());
+        barraConversas.definirContas(controlador.modoContas());
 
         if (ativo) {
             indicador.mostrar(
@@ -558,14 +586,15 @@ public final class ClienteChat extends JFrame {
     private final class VisaoJanela implements ControladorConversas.Visao {
 
         @Override
-        public void reiniciarConversa(String idConversa, String usuarioAtual) {
+        public void reiniciarConversa(long idConversa, String usuarioAtual) {
             areaMensagens.limpar();
             areaMensagens.definirUsuarioAtual(usuarioAtual);
             acompanhandoFim = true;
+            tituloConversa.setText(ControladorConversas.TITULO_GERAL);
         }
 
         @Override
-        public void exibirLinha(String idConversa, String linha) {
+        public void exibirLinha(long idConversa, String linha) {
             // A rolagem até a nova linha é feita por
             // atualizarAcompanhamentoDoFim, se o usuário estiver no fim.
             areaMensagens.adicionarLinha(linha);
@@ -573,8 +602,27 @@ public final class ClienteChat extends JFrame {
         }
 
         @Override
-        public boolean historicoConcluido(String idConversa) {
+        public boolean historicoConcluido(long idConversa) {
             return areaMensagens.historicoConcluido();
+        }
+
+        @Override
+        public void exibirConversa(ControladorConversas.Conversa conversa) {
+            acompanhandoFim = true;
+            areaMensagens.carregar(conversa.linhas());
+            tituloConversa.setText(conversa.titulo());
+            botaoExportar.setEnabled(!conversa.texto().isBlank());
+        }
+
+        @Override
+        public void conversasAtualizadas(java.util.List<ControladorConversas.ItemLateral> itens, long idAtiva) {
+            barraConversas.atualizar(itens, idAtiva);
+            barraConversas.definirContas(controlador.modoContas());
+        }
+
+        @Override
+        public void erroConversa(String mensagem) {
+            mostrarErro(mensagem);
         }
 
         @Override
@@ -599,6 +647,27 @@ public final class ClienteChat extends JFrame {
         }
     }
 
+    /** Nome sugerido: {@code chat-sakura-<conversa>-<data>.txt}, só com caracteres seguros. */
+    static String nomeArquivoExportacao(String tituloConversa, String data) {
+        String base = java.text.Normalizer.normalize(tituloConversa, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-+|-+$)", "");
+        return "chat-sakura-" + (base.isEmpty() ? "conversa" : base) + "-" + data + ".txt";
+    }
+
+    /** Nova conversa privada: lista de usuários pedida sem bloquear a EDT. */
+    private void novaConversaPrivada() {
+        controlador.solicitarUsuarios(usuarios -> DialogoNovaConversa.escolherContato(this, usuarios)
+                .ifPresent(controlador::abrirPrivada));
+    }
+
+    private void novoGrupo() {
+        controlador.solicitarUsuarios(usuarios -> DialogoNovaConversa.criarGrupo(this, usuarios)
+                .ifPresent(grupo -> controlador.criarGrupo(grupo.nome(), grupo.participantes())));
+    }
+
     private void exportarHistorico() {
 
         String conteudo = controlador.conversaAtiva().texto();
@@ -619,7 +688,7 @@ public final class ClienteChat extends JFrame {
         );
 
         seletor.setSelectedFile(
-                new File("chat-sakura-" + data + ".txt")
+                new File(nomeArquivoExportacao(controlador.conversaAtiva().titulo(), data))
         );
 
         int resultado = seletor.showSaveDialog(this);

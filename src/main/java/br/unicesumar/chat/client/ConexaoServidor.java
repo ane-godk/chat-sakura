@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
 
+import br.unicesumar.chat.protocolo.ProtocoloJson;
 import br.unicesumar.chat.protocolo.ProtocoloSakura;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -51,6 +52,10 @@ final class ConexaoServidor {
 
         /** Cadastro ou login recusado; mensagem própria para o usuário. */
         default void autenticacaoRecusada(String mensagem) {
+        }
+
+        /** Evento do protocolo v2 (sessões com conta). */
+        default void eventoRecebido(ProtocoloJson.Evento evento) {
         }
     }
 
@@ -232,6 +237,8 @@ final class ConexaoServidor {
                 escreverLinha(visitante.nome());
             } else {
                 autenticar(entrada, pedido);
+                executarSessaoJson(entrada);
+                return;
             }
 
             String confirmacao = entrada.readLine();
@@ -345,6 +352,72 @@ final class ConexaoServidor {
         }
 
         ouvinte.identidadeConfirmada(resposta.perfil().getApelido());
+    }
+
+    /**
+     * Protocolo v2: o primeiro evento é a lista de conversas (entrada
+     * confirmada) ou um erro (entrada recusada, por exemplo sessão repetida).
+     */
+    private void executarSessaoJson(BufferedReader entrada) throws IOException {
+
+        ProtocoloJson.Evento primeiro;
+
+        try {
+            primeiro = ProtocoloJson.lerEvento(entrada.readLine());
+        } catch (ProtocoloJson.ProtocoloInvalidoException e) {
+            throw new IOException("Resposta inválida do servidor.");
+        }
+
+        if (primeiro.tipo() == ProtocoloJson.TipoEvento.ERRO) {
+            ouvinte.autenticacaoRecusada(primeiro.mensagemErro());
+            throw new IOException("O servidor recusou a conexão.");
+        }
+
+        if (primeiro.tipo() != ProtocoloJson.TipoEvento.CONVERSAS) {
+            throw new IOException("Resposta inválida do servidor.");
+        }
+
+        conectado.set(true);
+        conectando.set(false);
+
+        ouvinte.conexaoConfirmada();
+        ouvinte.eventoRecebido(primeiro);
+        ouvinte.estadoAlterado();
+
+        String linha;
+
+        while (conectado.get() && (linha = entrada.readLine()) != null) {
+            try {
+                ouvinte.eventoRecebido(ProtocoloJson.lerEvento(linha));
+            } catch (ProtocoloJson.ProtocoloInvalidoException | RuntimeException e) {
+                System.err.println("Evento ignorado: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Envia uma requisição JSON em segundo plano, sem a animação e o som
+     * de mensagem enviada.
+     *
+     * @return {@code false} se não há conexão confirmada
+     */
+    boolean enviarComando(String linha) {
+
+        Objects.requireNonNull(linha, "Linha obrigatória.");
+
+        if (!conectado.get()) {
+            return false;
+        }
+
+        tarefas.iniciar(() -> {
+            try {
+                escreverLinha(linha);
+            } catch (IOException e) {
+                ouvinte.linhaRecebida("SISTEMA: Falha ao enviar: " + e.getMessage());
+            }
+        }, "sakura-comando");
+
+        return true;
     }
 
     /**

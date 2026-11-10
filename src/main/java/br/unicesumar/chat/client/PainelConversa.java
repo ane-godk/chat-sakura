@@ -117,6 +117,7 @@ final class PainelConversa extends JPanel implements Scrollable {
         long agora = relogio.getAsLong();
 
         if (historicoConcluido
+                && !carregando
                 && animavel
                 && ConfiguracaoAnimacoes.transicoesAtivas()
                 && limitador.permitir(agora)) {
@@ -203,6 +204,22 @@ final class PainelConversa extends JPanel implements Scrollable {
         }
         return texto.toString();
     }
+
+    /**
+     * Substitui o conteúdo (troca de conversa): as linhas entram sem
+     * animação, e o estado do histórico segue os separadores recebidos.
+     */
+    void carregar(List<String> novas) {
+        limpar();
+        carregando = true;
+        try {
+            novas.forEach(this::adicionarLinha);
+        } finally {
+            carregando = false;
+        }
+    }
+
+    private boolean carregando;
 
     void adicionarLinha(String linha) {
 

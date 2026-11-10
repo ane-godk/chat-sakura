@@ -1,14 +1,19 @@
 
 package br.unicesumar.chat.server;
 
+import br.unicesumar.chat.model.Conversa;
 import br.unicesumar.chat.model.Mensagem;
 import br.unicesumar.chat.model.PerfilUsuario;
 import br.unicesumar.chat.model.Usuario;
+import br.unicesumar.chat.protocolo.ProtocoloJson;
 import br.unicesumar.chat.protocolo.ProtocoloSakura;
 import br.unicesumar.chat.service.AutenticacaoException;
 import br.unicesumar.chat.service.ChatService;
 import br.unicesumar.chat.service.ConexaoCliente;
+import br.unicesumar.chat.service.ConversaException;
+import br.unicesumar.chat.service.ResumoConversa;
 import br.unicesumar.chat.service.ServicoAutenticacao;
+import br.unicesumar.chat.service.ServicoConversas;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -37,8 +42,12 @@ public final class ClienteHandler
             "SISTEMA: Não foi possível entrar: este nome pertence a uma conta"
                     + " cadastrada. Entre com login e senha em um cliente atualizado.";
 
-    /** Pode ser nulo: servidor sem contas (somente modo legado). */
+    /** Nulos juntos: servidor sem contas (somente modo legado). */
     private final ServicoAutenticacao autenticacao;
+    private final ServicoConversas conversas;
+
+    // Sessão autenticada no protocolo v2 (eventos JSON); definido uma vez.
+    private volatile boolean sessaoJson;
 
     private LeitorLinhas entrada;
     private BufferedWriter saida;
@@ -51,14 +60,26 @@ public final class ClienteHandler
             Socket socket,
             ChatService chatService
     ) {
-        this(socket, chatService, null);
+        this(socket, chatService, null, null);
     }
 
+    /**
+     * @param autenticacao contas (nulo junto com {@code conversas}: só legado)
+     * @param conversas    conversas privadas e grupos do protocolo v2
+     */
     public ClienteHandler(
             Socket socket,
             ChatService chatService,
-            ServicoAutenticacao autenticacao
+            ServicoAutenticacao autenticacao,
+            ServicoConversas conversas
     ) {
+        if ((autenticacao == null) != (conversas == null)) {
+            throw new IllegalArgumentException(
+                    "Contas e conversas devem ser informadas juntas."
+            );
+        }
+
+        this.conversas = conversas;
         this.socket = Objects.requireNonNull(
                 socket,
                 "Socket obrigatório."
@@ -126,6 +147,8 @@ public final class ClienteHandler
                     return;
                 }
 
+                sessaoJson = true;
+
             } else {
 
                 // Cliente legado ou visitante: o apelido não pode ser
@@ -155,18 +178,28 @@ public final class ClienteHandler
                 );
                 registrado = true;
             } catch (IllegalArgumentException e) {
-                enviarLinha(
-                        "SISTEMA: Não foi possível entrar: "
-                                + e.getMessage()
+                enviarLinha(sessaoJson
+                        ? ProtocoloJson.eventoErro(null, "ENTRADA_RECUSADA",
+                                "Não foi possível entrar: " + e.getMessage())
+                        : "SISTEMA: Não foi possível entrar: " + e.getMessage()
                 );
                 return;
             } catch (IllegalStateException e) {
-                enviarLinha(
-                        "SISTEMA: Não foi possível carregar o histórico."
+                enviarLinha(sessaoJson
+                        ? ProtocoloJson.eventoErro(null, "INDISPONIVEL",
+                                "Não foi possível carregar o histórico.")
+                        : "SISTEMA: Não foi possível carregar o histórico."
                 );
                 System.err.println(
                         "Erro de persistência: " + e.getMessage()
                 );
+                return;
+            }
+
+            if (sessaoJson) {
+                // Protocolo v2: estado inicial e eventos JSON até o fim.
+                iniciarSessaoJson(historico);
+                executarSessaoJson();
                 return;
             }
 
@@ -376,7 +409,7 @@ public final class ClienteHandler
             throws IOException {
 
         for (Mensagem mensagem : pendentes) {
-            enviarLinha(mensagem.formatar());
+            escreverMensagem(mensagem);
         }
 
         pendentes.clear();
@@ -393,7 +426,139 @@ public final class ClienteHandler
             return;
         }
 
-        enviarLinha(mensagem.formatar());
+        escreverMensagem(mensagem);
+    }
+
+    /**
+     * Sessões legadas recebem somente o Chat Geral, em texto; sessões v2
+     * recebem eventos JSON. Defesa extra: o registro já filtra privadas.
+     */
+    private void escreverMensagem(Mensagem mensagem) throws IOException {
+
+        if (sessaoJson) {
+            enviarLinha(ProtocoloJson.eventoMensagem(ProtocoloJson.MensagemJson.de(mensagem)));
+        } else if (mensagem.isDoChatGeral()) {
+            enviarLinha(mensagem.formatar());
+        }
+    }
+
+    @Override
+    public synchronized void conversaDisponivel(ResumoConversa resumo) throws IOException {
+        // Antes do estado inicial, a conversa já virá na lista completa.
+        if (sessaoJson && historicoEnviado) {
+            enviarLinha(ProtocoloJson.eventoConversa(null, paraJson(resumo)));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Protocolo v2 (JSON)
+    // ------------------------------------------------------------------
+
+    /**
+     * Estado inicial: lista de conversas (confirma a entrada) e histórico
+     * da Geral; só então os broadcasts pendentes são liberados.
+     */
+    private void iniciarSessaoJson(List<Mensagem> historicoGeral) throws IOException {
+
+        List<ResumoConversa> lista;
+
+        try {
+            lista = conversas.listar(usuario);
+        } catch (ConversaException e) {
+            lista = List.of();
+            System.err.println("Lista de conversas indisponível para " + usuario.getNome());
+        }
+
+        enviarLinha(ProtocoloJson.eventoConversas(null, lista.stream().map(ClienteHandler::paraJson).toList()));
+        enviarLinha(ProtocoloJson.eventoHistorico(null, Conversa.ID_GERAL,
+                historicoGeral.stream().map(ProtocoloJson.MensagemJson::de).toList()));
+
+        liberarMensagensPendentes();
+
+        System.out.println(usuario.getNome() + " entrou (v2). Clientes: " + chatService.contarClientes());
+    }
+
+    private void executarSessaoJson() throws IOException {
+
+        while (true) {
+
+            String linha;
+
+            try {
+                linha = entrada.lerLinha();
+            } catch (LeitorLinhas.LinhaMuitoLongaException e) {
+                enviarLinha(ProtocoloJson.eventoErro(null, "LINHA_LONGA",
+                        "A linha excede o limite do protocolo."));
+                continue;
+            }
+
+            if (linha == null) {
+                return;
+            }
+
+            if (linha.isBlank()) {
+                continue;
+            }
+
+            ProtocoloJson.Requisicao requisicao;
+
+            try {
+                requisicao = ProtocoloJson.lerRequisicao(linha);
+            } catch (ProtocoloJson.ProtocoloInvalidoException e) {
+                enviarLinha(ProtocoloJson.eventoErro(e.getReq(), "REQUISICAO_INVALIDA", e.getMessage()));
+                continue;
+            }
+
+            try {
+                atender(requisicao);
+            } catch (ProtocoloJson.ProtocoloInvalidoException e) {
+                enviarLinha(ProtocoloJson.eventoErro(requisicao.req(), "REQUISICAO_INVALIDA", e.getMessage()));
+            } catch (ConversaException e) {
+                enviarLinha(ProtocoloJson.eventoErro(requisicao.req(), e.getCodigo().name(), e.getMessage()));
+            }
+        }
+    }
+
+    /** O remetente e o leitor são sempre o usuário desta sessão. */
+    private void atender(ProtocoloJson.Requisicao r)
+            throws IOException, ProtocoloJson.ProtocoloInvalidoException, ConversaException {
+
+        Long req = r.req();
+
+        switch (r.tipo()) {
+
+            case LISTAR_CONVERSAS -> enviarLinha(ProtocoloJson.eventoConversas(req,
+                    conversas.listar(usuario).stream().map(ClienteHandler::paraJson).toList()));
+
+            case LISTAR_USUARIOS -> enviarLinha(ProtocoloJson.eventoUsuarios(req,
+                    conversas.listarUsuarios(usuario).stream()
+                            .map(u -> new ProtocoloJson.UsuarioJson(u.id(), u.apelido(), u.avatarId(), u.online()))
+                            .toList()));
+
+            case ABRIR_PRIVADA -> enviarLinha(ProtocoloJson.eventoConversa(req,
+                    paraJson(conversas.abrirPrivada(usuario, r.id("usuarioId")))));
+
+            case CRIAR_GRUPO -> enviarLinha(ProtocoloJson.eventoConversa(req,
+                    paraJson(conversas.criarGrupo(usuario, r.texto("nome"),
+                            r.ids("participantes", Conversa.PARTICIPANTES_MAXIMOS)))));
+
+            // A própria mensagem volta pelo broadcast (o remetente participa).
+            case ENVIAR -> conversas.enviar(usuario, r.id("conversaId"), r.texto("texto"));
+
+            case HISTORICO -> {
+                long conversaId = r.id("conversaId");
+                List<Mensagem> mensagens = conversas.historico(usuario, conversaId, r.idOpcional("antesDe"),
+                        r.inteiro("limite", 1, ServicoConversas.HISTORICO_MAXIMO, ServicoConversas.HISTORICO_PADRAO));
+                enviarLinha(ProtocoloJson.eventoHistorico(req, conversaId,
+                        mensagens.stream().map(ProtocoloJson.MensagemJson::de).toList()));
+            }
+
+            case MARCAR_LIDA -> conversas.marcarLida(usuario, r.id("conversaId"), r.id("mensagemId"));
+        }
+    }
+
+    private static ProtocoloJson.ConversaJson paraJson(ResumoConversa resumo) {
+        return ProtocoloJson.ConversaJson.de(resumo.conversa(), resumo.ultima(), resumo.naoLidas());
     }
 
     @Override

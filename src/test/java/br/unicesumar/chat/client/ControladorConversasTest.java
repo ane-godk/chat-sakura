@@ -60,7 +60,7 @@ class ControladorConversasTest {
         }
 
         @Override
-        public void reiniciarConversa(String idConversa, String usuarioAtual) {
+        public void reiniciarConversa(long idConversa, String usuarioAtual) {
             verificarEdt();
             reinicios++;
             linhas.clear();
@@ -68,7 +68,7 @@ class ControladorConversasTest {
         }
 
         @Override
-        public void exibirLinha(String idConversa, String linha) {
+        public void exibirLinha(long idConversa, String linha) {
             verificarEdt();
             assertEquals(ControladorConversas.ID_GERAL, idConversa);
             linhas.add(linha);
@@ -78,7 +78,7 @@ class ControladorConversasTest {
         }
 
         @Override
-        public boolean historicoConcluido(String idConversa) {
+        public boolean historicoConcluido(long idConversa) {
             verificarEdt();
             return historicoConcluido;
         }

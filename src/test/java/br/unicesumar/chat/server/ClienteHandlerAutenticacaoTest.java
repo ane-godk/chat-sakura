@@ -3,6 +3,7 @@ package br.unicesumar.chat.server;
 import br.unicesumar.chat.persistence.jdbc.ConnectionFactory;
 import br.unicesumar.chat.persistence.jdbc.JdbcMensagemRepository;
 import br.unicesumar.chat.persistence.jdbc.JdbcUsuarioRepository;
+import br.unicesumar.chat.protocolo.ProtocoloJson;
 import br.unicesumar.chat.protocolo.ProtocoloSakura;
 import br.unicesumar.chat.service.ChatService;
 import br.unicesumar.chat.service.ClientRegistry;
@@ -126,12 +127,8 @@ class ClienteHandlerAutenticacaoTest {
     private void iniciarServidor(boolean comContas) throws IOException {
         banco = pasta.resolve("servidor.db");
         ConnectionFactory fabrica = new ConnectionFactory(banco.toString());
-        ChatService chat = new ChatService(new JdbcMensagemRepository(fabrica), new ClientRegistry(),
-                Clock.systemDefaultZone());
-        ServicoAutenticacao contas = comContas
-                ? new ServicoAutenticacao(new JdbcUsuarioRepository(fabrica), new HashSenha(1_000),
-                        Clock.systemDefaultZone())
-                : null;
+        Servidor.Servicos servicos = Servidor.Servicos.montar(fabrica, new HashSenha(1_000), Clock.systemDefaultZone());
+        ChatService chat = servicos.chat();
 
         servidor = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
         threads.execute(() -> {
@@ -139,7 +136,7 @@ class ClienteHandlerAutenticacaoTest {
                 try {
                     Socket s = servidor.accept();
                     abertos.add(s);
-                    threads.execute(new ClienteHandler(s, chat, contas));
+                    threads.execute(comContas ? servicos.atender(s) : new ClienteHandler(s, chat));
                 } catch (IOException e) {
                     return;
                 }
@@ -192,9 +189,18 @@ class ClienteHandlerAutenticacaoTest {
         Cliente ana = autenticado(ProtocoloSakura.comandoCadastrar("ana.souza", "Ana", SENHA.toCharArray()));
         ProtocoloSakura.RespostaAutenticacao resposta = ProtocoloSakura.lerResposta(ana.ler());
         assertTrue(resposta.sucesso());
-        assertEquals("SISTEMA: Conectado como Ana", ana.ler());
-        ana.esperarHistorico();
+        esperarEstadoInicial(ana);
         return ana;
+    }
+
+    /** Protocolo v2: lista de conversas e histórico da Geral após o AUTH OK. */
+    private static void esperarEstadoInicial(Cliente cliente) throws IOException {
+        assertTrue(cliente.ler().startsWith("{\"tipo\":\"CONVERSAS\""), cliente.recebidas.toString());
+        assertTrue(cliente.ler().startsWith("{\"tipo\":\"HISTORICO\",\"conversaId\":1"), cliente.recebidas.toString());
+    }
+
+    private static String enviarJson(long conversaId, String texto) {
+        return ProtocoloJson.requisicao(ProtocoloJson.TipoRequisicao.ENVIAR, 1L, "conversaId", conversaId, "texto", texto);
     }
 
     private List<List<String>> mensagens() throws Exception {
@@ -215,20 +221,18 @@ class ClienteHandlerAutenticacaoTest {
         iniciarServidor(true);
         Cliente ana = cadastrarAna();
 
-        // Depois da entrada, comandos de autenticação são apenas texto do chat.
-        String tentativa = ProtocoloSakura.comandoEntrar("bia.lima", "qualquer-coisa".toCharArray());
-        ana.enviar(tentativa);
+        // Depois da entrada, comandos de autenticação não trocam a identidade.
+        ana.enviar(ProtocoloSakura.comandoEntrar("bia.lima", "qualquer-coisa".toCharArray()));
+        ana.esperar(l -> l.contains("\"REQUISICAO_INVALIDA\""));
         ana.enviar("AUTH OK 99 Ymlh Ymlh c2FrdXJh");
-        ana.enviar("Olá 🌸");
+        ana.esperar(l -> l.contains("\"REQUISICAO_INVALIDA\""));
 
-        ana.esperar(l -> l.endsWith(" Ana: Olá 🌸"));
+        // Remetente informado pelo cliente é ignorado.
+        ana.enviar("{\"tipo\":\"ENVIAR\",\"conversaId\":1,\"texto\":\"Olá 🌸\","
+                + "\"remetenteId\":99,\"remetente\":\"Bia\"}");
+        ana.esperar(l -> l.contains("\"remetente\":\"Ana\"") && l.contains("Olá 🌸"));
 
-        List<List<String>> gravadas = mensagens();
-        assertEquals(3, gravadas.size());
-        for (List<String> m : gravadas) {
-            assertEquals("Ana", m.get(0));
-            assertEquals("1", m.get(1), "remetente_id definido pelo servidor");
-        }
+        assertEquals(List.of(List.of("Ana", "1", "Olá 🌸")), mensagens(), "remetente_id definido pelo servidor");
     }
 
     @Test
@@ -240,12 +244,12 @@ class ClienteHandlerAutenticacaoTest {
         caio.enviar("Caio");
         assertEquals("SISTEMA: Conectado como Caio", caio.ler());
         caio.esperarHistorico();
-        ana.esperar(l -> l.endsWith("Caio se conectou"));
+        ana.esperar(l -> l.contains("\"remetente\":\"Caio\"") && l.contains("\"tipo\":\"ENTRADA\""));
 
-        ana.enviar("Oi, Caio!");
+        ana.enviar(enviarJson(1, "Oi, Caio!"));
         caio.esperar(l -> l.matches("\\[\\d{2}/\\d{2} \\d{2}:\\d{2}\\] Ana: Oi, Caio!"));
         caio.enviar("Oi, Ana!");
-        ana.esperar(l -> l.endsWith(" Caio: Oi, Ana!"));
+        ana.esperar(l -> l.contains("\"remetente\":\"Caio\"") && l.contains("\"texto\":\"Oi, Ana!\""));
 
         assertEquals(List.of(List.of("Ana", "1", "Oi, Caio!"), java.util.Arrays.asList("Caio", null, "Oi, Ana!")),
                 mensagens());
@@ -266,11 +270,13 @@ class ClienteHandlerAutenticacaoTest {
         // Conta já conectada: um segundo login da mesma conta é recusado.
         Cliente ana = autenticado(ProtocoloSakura.comandoEntrar("ana.souza", SENHA.toCharArray()));
         assertTrue(ProtocoloSakura.lerResposta(ana.ler()).sucesso());
-        ana.esperarHistorico();
+        esperarEstadoInicial(ana);
 
         Cliente segunda = autenticado(ProtocoloSakura.comandoEntrar("ANA.SOUZA", SENHA.toCharArray()));
         assertTrue(ProtocoloSakura.lerResposta(segunda.ler()).sucesso());
-        assertEquals("SISTEMA: Não foi possível entrar: Já existe um usuário conectado com esse nome.", segunda.ler());
+        String recusa = segunda.ler();
+        assertTrue(recusa.contains("\"ENTRADA_RECUSADA\"")
+                && recusa.contains("Já existe um usuário conectado com esse nome."), recusa);
         assertTrue(segunda.encerrada());
 
         assertTrue(mensagens().isEmpty());
@@ -291,7 +297,7 @@ class ClienteHandlerAutenticacaoTest {
 
         cliente.enviar(ProtocoloSakura.comandoEntrar("ana.souza", SENHA.toCharArray()));
         assertTrue(ProtocoloSakura.lerResposta(cliente.ler()).sucesso());
-        assertEquals("SISTEMA: Conectado como Ana", cliente.ler());
+        esperarEstadoInicial(cliente);
 
         Cliente insistente = autenticado(ProtocoloSakura.comandoEntrar("ana.souza", "errada-1".toCharArray()));
         for (int i = 2; i <= ProtocoloSakura.TENTATIVAS_MAXIMAS; i++) {
@@ -340,9 +346,16 @@ class ClienteHandlerAutenticacaoTest {
         Cliente ana = cadastrarAna();
 
         ana.enviar("x".repeat(ProtocoloSakura.TAMANHO_MAXIMO_LINHA + 1));
-        assertEquals("SISTEMA: Mensagem inválida: a linha excede o limite do protocolo.", ana.ler());
+        assertTrue(ana.ler().contains("\"LINHA_LONGA\""));
 
-        ana.enviar("Continua funcionando");
-        ana.esperar(l -> l.endsWith(" Ana: Continua funcionando"));
+        ana.enviar(enviarJson(1, "Continua funcionando"));
+        ana.esperar(l -> l.contains("\"texto\":\"Continua funcionando\""));
+
+        // Cliente legado: mesma regra, resposta em texto.
+        Cliente caio = new Cliente();
+        caio.enviar("Caio");
+        caio.esperarHistorico();
+        caio.enviar("y".repeat(ProtocoloSakura.TAMANHO_MAXIMO_LINHA + 1));
+        caio.esperar("SISTEMA: Mensagem inválida: a linha excede o limite do protocolo."::equals);
     }
 }

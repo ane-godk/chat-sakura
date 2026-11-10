@@ -25,6 +25,7 @@ Sistema de chat multiusuário com histórico, desenvolvido em Java 17. Um servid
 | Sockets TCP | `ServerSocket` / `Socket` |
 | Threads | Uma por conexão no servidor |
 | JDBC + SQLite | `org.xerial:sqlite-jdbc` 3.46.1.3 |
+| JSON (protocolo v2) | `com.google.code.gson:gson` 2.11.0 |
 | Java Swing | Interface do cliente |
 | JUnit 5 | `junit-jupiter` 5.11.4 |
 
@@ -102,12 +103,12 @@ Para encerrar, use `Ctrl + C` (se o Windows perguntar se deseja finalizar o arqu
 Em **outro terminal**, na **raiz do projeto**:
 
 ```powershell
-java -cp target\classes br.unicesumar.chat.client.ClienteChat
+java -cp "target\classes;$env:USERPROFILE\.m2\repository\com\google\code\gson\gson\2.11.0\gson-2.11.0.jar" br.unicesumar.chat.client.ClienteChat
 ```
 
-O cliente não depende de bibliotecas externas, por isso pode ser iniciado direto com `java`. Esse comando exige que o projeto já tenha sido compilado (passo 1 ou 2).
+O cliente usa a biblioteca **Gson** (protocolo JSON v2), baixada pelo Maven no passo 1. Esse comando exige que o projeto já tenha sido compilado (passo 1 ou 2).
 
-Uma alternativa pelo Maven:
+Uma alternativa pelo Maven, que já inclui a Gson:
 
 ```powershell
 mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.client.ClienteChat"
@@ -179,6 +180,41 @@ Cada conta tem um ID persistente, um **login** (de 3 a 30 caracteres: letras sem
   - A especificação completa está em `ProtocoloSakura`.
 
 > **Segurança:** o PBKDF2 protege as senhas **armazenadas no banco**, mas **não** protege o tráfego. A conexão TCP não usa TLS, e o Base64 é só uma codificação: a senha trafega legível para quem puder observar a rede. O sistema é adequado para uso acadêmico em rede local confiável e **não deve ser exposto publicamente sem TLS**.
+
+## Conversas privadas e grupos
+
+Com uma conta, a janela mostra uma **barra lateral** com:
+- o Chat Geral;
+- as conversas privadas e os grupos de que a pessoa participa;
+- para cada uma, um avatar padrão, a prévia da última mensagem e o contador de não lidas.
+
+O botão **Conversa** inicia uma conversa privada com outra conta cadastrada. Se o par já conversou antes, a mesma conversa é reaberta. O botão **Grupo** cria um grupo com nome e participantes: quem cria é `ADMIN` e os convidados são `MEMBRO`.
+
+- **Área principal:** mostra só a conversa selecionada, e o campo de envio vai para ela. O histórico de cada conversa é carregado sob demanda, sem travar a interface. Mensagens de conversas inativas atualizam a prévia e o contador em tempo real.
+- **Persistência:** conversas, participantes, mensagens e o ponto de leitura de cada um ficam no SQLite. Quem estava offline encontra as mensagens e as não lidas ao entrar de novo, inclusive depois de reiniciar o servidor.
+- **Segurança:**
+  - O servidor obtém o remetente só da sessão autenticada.
+  - Toda operação fora do Geral exige que a pessoa participe da conversa.
+  - Conversa inexistente e conversa sem acesso recebem a mesma resposta (`NAO_ENCONTRADA`), para não revelar metadados.
+  - Mensagens são entregues somente aos participantes conectados.
+- **Ordem:** cada conversa tem um bloqueio próprio, então as mensagens chegam na mesma ordem para todos, e conversas diferentes não se bloqueiam.
+- **Visitantes e clientes antigos:** continuam apenas no Chat Geral e nunca recebem mensagens privadas ou de grupos.
+- **Exportação TXT:** grava a conversa ativa, com o nome dela no arquivo sugerido.
+
+### Protocolo v2 (JSON)
+
+Depois do `AUTH OK`, cada linha é um objeto JSON com o campo `tipo`. As linhas são processadas pela Gson em modo estrito e têm limite de 4096 caracteres. A especificação completa está em `ProtocoloJson`.
+
+- **Requisições do cliente:** `LISTAR_CONVERSAS`, `LISTAR_USUARIOS`, `ABRIR_PRIVADA`, `CRIAR_GRUPO`, `ENVIAR`, `HISTORICO`, `MARCAR_LIDA`.
+- **Eventos do servidor:** `CONVERSAS`, `CONVERSA`, `USUARIOS`, `HISTORICO`, `MENSAGEM` e `ERRO`. A presença no Geral chega como `MENSAGEM` do tipo `ENTRADA` ou `SAIDA`.
+- **Correlação:** o campo opcional `req` é repetido na resposta.
+- **Dados públicos apenas:** os eventos não contêm login, senha, hash nem sal.
+
+Exemplo:
+
+```json
+{"tipo":"ENVIAR","req":7,"conversaId":3,"texto":"Oi, turma!"}
+```
 
 ## Exportação TXT
 

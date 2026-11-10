@@ -108,10 +108,10 @@ mvn -q -f ..\chat-sakura\pom.xml exec:java "-Dexec.mainClass=br.unicesumar.chat.
 **Cliente** (T2, T3 e T4, na pasta `chat-sakura`):
 
 ```powershell
-java -cp target\classes br.unicesumar.chat.client.ClienteChat
+java -cp "target\classes;$env:USERPROFILE\.m2\repository\com\google\code\gson\gson\2.11.0\gson-2.11.0.jar" br.unicesumar.chat.client.ClienteChat
 ```
 
-O cliente não depende de bibliotecas externas, por isso pode ser iniciado direto com `java`, o que é mais rápido. Se preferir usar o Maven, o comando equivalente é:
+O cliente usa a biblioteca Gson (protocolo JSON), baixada pelo Maven na compilação; o comando direto com `java` é o mais rápido. Se preferir usar o Maven, o comando equivalente é:
 
 ```powershell
 mvn -q exec:java "-Dexec.mainClass=br.unicesumar.chat.client.ClienteChat"

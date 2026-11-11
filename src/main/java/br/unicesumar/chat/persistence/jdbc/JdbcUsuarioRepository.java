@@ -164,6 +164,22 @@ public final class JdbcUsuarioRepository implements UsuarioRepository {
     }
 
     @Override
+    public boolean atualizarAvatar(long usuarioId, String avatarId) {
+
+        try (Connection conexao = connectionFactory.abrirConexao();
+             PreparedStatement comando = conexao.prepareStatement(
+                     "UPDATE usuario SET avatar_id = ? WHERE id = ?")) {
+
+            comando.setString(1, avatarId);
+            comando.setLong(2, usuarioId);
+            return comando.executeUpdate() == 1;
+
+        } catch (SQLException e) {
+            throw new IllegalStateException("Erro ao atualizar avatar no SQLite.", e);
+        }
+    }
+
+    @Override
     public java.util.List<PerfilUsuario> listar(int limite) {
 
         try (Connection conexao = connectionFactory.abrirConexao();
@@ -207,7 +223,8 @@ public final class JdbcUsuarioRepository implements UsuarioRepository {
                 resultado.getLong("id"),
                 resultado.getString("login"),
                 resultado.getString("apelido"),
-                resultado.getString("avatar_id")
+                // Valor desconhecido (dado antigo) vira o avatar padrão.
+                br.unicesumar.chat.model.CatalogoAvatares.normalizar(resultado.getString("avatar_id"))
         );
     }
 }

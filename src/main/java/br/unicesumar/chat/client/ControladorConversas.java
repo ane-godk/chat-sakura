@@ -2,7 +2,6 @@ package br.unicesumar.chat.client;
 
 import br.unicesumar.chat.model.Conversa.Tipo;
 import br.unicesumar.chat.model.Mensagem;
-import br.unicesumar.chat.model.TipoMensagem;
 import br.unicesumar.chat.protocolo.ProtocoloJson;
 
 import javax.swing.SwingUtilities;
@@ -45,8 +44,18 @@ final class ControladorConversas {
         CONECTADO
     }
 
-    /** Item imutável da barra lateral. */
-    record ItemLateral(long id, Tipo tipo, String titulo, String previa, int naoLidas) {
+    /** Item imutável da barra lateral ({@code avatarId} nulo para Geral e grupos). */
+    record ItemLateral(long id, Tipo tipo, String titulo, String previa, int naoLidas,
+                       String avatarId, boolean gerando) {
+
+        ItemLateral(long id, Tipo tipo, String titulo, String previa, int naoLidas) {
+            this(id, tipo, titulo, previa, naoLidas, null, false);
+        }
+    }
+
+    /** Aviso exibido no início de toda conversa com personagem. */
+    static String avisoIA(String nome) {
+        return "SISTEMA: " + nome + " é um personagem fictício interpretado por IA (Qwen), não uma pessoa real.";
     }
 
     /** Parte visual coordenada pelo controlador; chamada somente na EDT. */
@@ -82,6 +91,14 @@ final class ControladorConversas {
         /** Operação de conversa recusada pelo servidor. */
         default void erroConversa(String mensagem) {
         }
+
+        /** Perfil próprio (apelido e avatar) confirmado ou alterado. */
+        default void perfilAtualizado(String apelido, String avatarId) {
+        }
+
+        /** A IA começou ou terminou de gerar uma resposta na conversa. */
+        default void estadoIA(long idConversa, boolean gerando, String descricao) {
+        }
     }
 
     /** Conversa do cliente; acessada somente na EDT. */
@@ -100,6 +117,9 @@ final class ControladorConversas {
         private int naoLidas;
         private String previa = "";
         private long ultimaId;
+        private long idPrevia;
+        private String avatarId;
+        private boolean gerando;
 
         Conversa(long id, Tipo tipo, String titulo) {
             this.id = id;
@@ -123,6 +143,10 @@ final class ControladorConversas {
             return naoLidas;
         }
 
+        boolean gerando() {
+            return gerando;
+        }
+
         List<String> linhas() {
             return entradas.stream().map(Entrada::linha).toList();
         }
@@ -144,6 +168,7 @@ final class ControladorConversas {
             naoLidas = 0;
             previa = "";
             ultimaId = 0;
+            idPrevia = 0;
         }
 
         /** @return {@code false} se a mensagem já estava na conversa */
@@ -159,9 +184,11 @@ final class ControladorConversas {
         private void registrarUltima(Mensagem mensagem) {
             if (mensagem.getId() > ultimaId) {
                 ultimaId = mensagem.getId();
-                if (mensagem.getTipo() == TipoMensagem.MENSAGEM) {
-                    previa = mensagem.getRemetente().getNome() + ": " + mensagem.getConteudo();
-                }
+            }
+            // Prévia: a mensagem mais recente que não seja aviso de presença.
+            if (!mensagem.isAvisoDePresenca() && mensagem.getId() > idPrevia) {
+                idPrevia = mensagem.getId();
+                previa = mensagem.getRemetente().getNome() + ": " + mensagem.getConteudo();
             }
         }
 
@@ -213,6 +240,8 @@ final class ControladorConversas {
     private boolean modoContas;
     private boolean estadoInicialRecebido;
     private long proximaRequisicao = 1;
+    private long idProprio;
+    private String avatarProprio = br.unicesumar.chat.model.CatalogoAvatares.PADRAO;
 
     // Escrito na EDT antes de iniciar a conexão; lido na EDT.
     private volatile String nomeUsuario = "";
@@ -385,6 +414,59 @@ final class ControladorConversas {
                 "nome", nome, "participantes", participantes);
     }
 
+    /** Cria um personagem de IA e abre a conversa com ele. */
+    boolean criarPersonagem(String nome, String personalidade, String contexto) {
+        return requisitar(ProtocoloJson.TipoRequisicao.CRIAR_PERSONAGEM, this::abrirResposta,
+                "nome", nome, "personalidade", personalidade, "contexto", contexto);
+    }
+
+    /** Troca o próprio avatar (o servidor valida o identificador). */
+    boolean definirAvatar(String avatarId) {
+        return requisitar(ProtocoloJson.TipoRequisicao.DEFINIR_AVATAR, this::aplicarPerfil, "avatarId", avatarId);
+    }
+
+    String avatarProprio() {
+        return avatarProprio;
+    }
+
+    private void aplicarPerfil(ProtocoloJson.Evento evento) {
+
+        ProtocoloJson.UsuarioJson perfil = evento.perfil();
+
+        if (perfil.id() == idProprio) {
+            avatarProprio = br.unicesumar.chat.model.CatalogoAvatares.normalizar(perfil.avatar());
+            visao.perfilAtualizado(nomeUsuario, avatarProprio);
+        } else {
+            // Avatar de outra pessoa: atualiza as conversas em que ela aparece.
+            requisitar(ProtocoloJson.TipoRequisicao.LISTAR_CONVERSAS, e -> {
+                e.conversas().forEach(this::atualizar);
+                visao.conversasAtualizadas(itens(), idConversaAtiva);
+            });
+        }
+    }
+
+    private void tratarEstadoIA(ProtocoloJson.Evento evento) {
+
+        Conversa conversa = conversas.get(evento.conversaId());
+
+        if (conversa == null) {
+            return;
+        }
+
+        String estado = evento.estado();
+        conversa.gerando = "GERANDO".equals(estado);
+
+        if ("ERRO".equals(estado)) {
+            String linha = "SISTEMA: Sakura IA indisponível: " + evento.mensagemErro();
+            conversa.entradas.add(new Conversa.Entrada(null, linha));
+            if (conversa.id == idConversaAtiva) {
+                visao.exibirLinha(conversa.id, linha);
+            }
+        }
+
+        visao.estadoIA(conversa.id, conversa.gerando, evento.mensagemErro());
+    }
+
     private void abrirResposta(ProtocoloJson.Evento evento) {
         Conversa conversa = atualizar(evento.conversa());
         selecionar(conversa.id());
@@ -426,7 +508,8 @@ final class ControladorConversas {
     }
 
     private static ItemLateral item(Conversa c) {
-        return new ItemLateral(c.id, c.tipo, c.titulo, c.previa, c.naoLidas);
+        return new ItemLateral(c.id, c.tipo, c.titulo, c.gerando ? "digitando…" : c.previa, c.naoLidas,
+                c.avatarId, c.gerando);
     }
 
     // ------------------------------------------------------------------
@@ -478,6 +561,16 @@ final class ControladorConversas {
                 visao.erroConversa(evento.mensagemErro());
                 return;
             }
+
+            case PERFIL -> {
+                if (resposta != null) {
+                    resposta.accept(evento);
+                } else {
+                    aplicarPerfil(evento);
+                }
+            }
+
+            case IA_STATUS -> tratarEstadoIA(evento);
         }
 
         visao.conversasAtualizadas(itens(), idConversaAtiva);
@@ -514,9 +607,16 @@ final class ControladorConversas {
     private Conversa atualizar(ProtocoloJson.ConversaJson json) {
 
         Tipo tipo = Tipo.valueOf(json.tipo());
-        Conversa conversa = conversas.computeIfAbsent(json.id(), id -> new Conversa(id, tipo, titulo(json)));
+        Conversa conversa = conversas.computeIfAbsent(json.id(), id -> {
+            Conversa nova = new Conversa(id, tipo, titulo(json));
+            if (tipo == Tipo.IA) {
+                nova.entradas.add(new Conversa.Entrada(null, avisoIA(titulo(json))));
+            }
+            return nova;
+        });
         conversa.tipo = tipo;
         conversa.titulo = titulo(json);
+        conversa.avatarId = avatarDe(json);
 
         if (json.ultima() != null) {
             try {
@@ -531,6 +631,24 @@ final class ControladorConversas {
         }
 
         return conversa;
+    }
+
+    /** Privada: avatar da outra pessoa; IA: marcador do personagem; demais: nenhum. */
+    private String avatarDe(ProtocoloJson.ConversaJson json) {
+
+        if ("IA".equals(json.tipo())) {
+            return AvatarSakura.IA;
+        }
+
+        if ("PRIVADA".equals(json.tipo()) && json.participantes() != null) {
+            return json.participantes().stream()
+                    .filter(p -> !p.apelido().equalsIgnoreCase(nomeUsuario))
+                    .map(ProtocoloJson.ParticipanteJson::avatar)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        return null;
     }
 
     private String titulo(ProtocoloJson.ConversaJson json) {
@@ -585,7 +703,7 @@ final class ControladorConversas {
         if (ativa) {
             visao.exibirLinha(conversa.id, linha);
             marcarLida(conversa);
-        } else if (!propria && mensagem.getTipo() == TipoMensagem.MENSAGEM) {
+        } else if (!propria && !mensagem.isAvisoDePresenca()) {
             conversa.naoLidas++;
         }
 
@@ -667,6 +785,15 @@ final class ControladorConversas {
         @Override
         public void autenticacaoRecusada(String mensagem) {
             edt.execute(() -> visao.autenticacaoRecusada(mensagem));
+        }
+
+        @Override
+        public void perfilRecebido(br.unicesumar.chat.model.PerfilUsuario perfil) {
+            edt.execute(() -> {
+                idProprio = perfil.getId();
+                avatarProprio = perfil.getAvatarId();
+                visao.perfilAtualizado(perfil.getApelido(), avatarProprio);
+            });
         }
 
         @Override

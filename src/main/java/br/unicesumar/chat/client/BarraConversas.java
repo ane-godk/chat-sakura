@@ -35,15 +35,16 @@ final class BarraConversas extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
-    static final int LARGURA = 236;
+    static final int LARGURA = 262;
     private static final int ALTURA_ITEM = 58;
     private static final int AVATAR = 36;
 
     private final DefaultListModel<ControladorConversas.ItemLateral> modelo = new DefaultListModel<>();
     private final JList<ControladorConversas.ItemLateral> lista = new JList<>(modelo);
 
-    final BotaoSakura botaoPrivada = new BotaoSakura("Conversa", BotaoSakura.Estilo.SECUNDARIO);
+    final BotaoSakura botaoPrivada = new BotaoSakura("Privada", BotaoSakura.Estilo.SECUNDARIO);
     final BotaoSakura botaoGrupo = new BotaoSakura("Grupo", BotaoSakura.Estilo.SECUNDARIO);
+    final BotaoSakura botaoIA = new BotaoSakura("IA", BotaoSakura.Estilo.SECUNDARIO);
 
     private boolean atualizando;
 
@@ -65,11 +66,14 @@ final class BarraConversas extends JPanel {
 
         botaoPrivada.setToolTipText("Nova conversa privada");
         botaoGrupo.setToolTipText("Novo grupo");
+        botaoIA.setToolTipText("Sakura IA: criar personagem (Qwen)");
 
-        JPanel acoes = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        // Três colunas iguais: os botões sempre cabem na largura da barra.
+        JPanel acoes = new JPanel(new java.awt.GridLayout(1, 3, 4, 0));
         acoes.setOpaque(false);
         acoes.add(botaoPrivada);
         acoes.add(botaoGrupo);
+        acoes.add(botaoIA);
 
         // Título acima dos botões: a barra é estreita demais para os dois lado a lado.
         JPanel topo = new JPanel(new BorderLayout(0, 6));
@@ -135,6 +139,7 @@ final class BarraConversas extends JPanel {
     void definirContas(boolean habilitado) {
         botaoPrivada.setEnabled(habilitado);
         botaoGrupo.setEnabled(habilitado);
+        botaoIA.setEnabled(habilitado);
     }
 
     int quantidade() {
@@ -190,6 +195,9 @@ final class BarraConversas extends JPanel {
                 int yAvatar = (altura - AVATAR) / 2;
                 if (item.tipo() == Tipo.GERAL) {
                     IconeSakura.desenhar(g2, xAvatar + AVATAR / 2.0, yAvatar + AVATAR / 2.0, AVATAR / 2.0 - 1);
+                } else if (item.avatarId() != null) {
+                    // Privada: avatar da outra pessoa; IA: marcador do personagem.
+                    AvatarSakura.desenhar(g2, item.avatarId(), xAvatar, yAvatar, AVATAR);
                 } else {
                     g2.setColor(item.tipo() == Tipo.GRUPO ? cores.rosaHover() : cores.rosa());
                     g2.fill(new Ellipse2D.Float(xAvatar, yAvatar, AVATAR, AVATAR));

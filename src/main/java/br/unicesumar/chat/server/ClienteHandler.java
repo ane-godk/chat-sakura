@@ -14,6 +14,7 @@ import br.unicesumar.chat.service.ConversaException;
 import br.unicesumar.chat.service.ResumoConversa;
 import br.unicesumar.chat.service.ServicoAutenticacao;
 import br.unicesumar.chat.service.ServicoConversas;
+import br.unicesumar.chat.service.ServicoIA;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -45,6 +46,7 @@ public final class ClienteHandler
     /** Nulos juntos: servidor sem contas (somente modo legado). */
     private final ServicoAutenticacao autenticacao;
     private final ServicoConversas conversas;
+    private final ServicoIA ia;
 
     // Sessão autenticada no protocolo v2 (eventos JSON); definido uma vez.
     private volatile boolean sessaoJson;
@@ -73,6 +75,19 @@ public final class ClienteHandler
             ServicoAutenticacao autenticacao,
             ServicoConversas conversas
     ) {
+        this(socket, chatService, autenticacao, conversas, null);
+    }
+
+    /** @param ia personagens de IA (nulo: recurso indisponível) */
+    public ClienteHandler(
+            Socket socket,
+            ChatService chatService,
+            ServicoAutenticacao autenticacao,
+            ServicoConversas conversas,
+            ServicoIA ia
+    ) {
+        this.ia = ia;
+
         if ((autenticacao == null) != (conversas == null)) {
             throw new IllegalArgumentException(
                     "Contas e conversas devem ser informadas juntas."
@@ -543,7 +558,38 @@ public final class ClienteHandler
                             r.ids("participantes", Conversa.PARTICIPANTES_MAXIMOS)))));
 
             // A própria mensagem volta pelo broadcast (o remetente participa).
-            case ENVIAR -> conversas.enviar(usuario, r.id("conversaId"), r.texto("texto"));
+            // Numa conversa de IA, a resposta é gerada depois, em segundo plano.
+            case ENVIAR -> {
+                long conversaId = r.id("conversaId");
+                String texto = r.texto("texto");
+                if (ia != null) {
+                    ia.verificarEnvio(usuario, conversaId);
+                }
+                Mensagem enviada = conversas.enviar(usuario, conversaId, texto);
+                if (ia != null) {
+                    ia.aposMensagem(usuario, enviada);
+                }
+            }
+
+            case CRIAR_PERSONAGEM -> {
+                if (ia == null) {
+                    throw new ConversaException(ConversaException.Codigo.INDISPONIVEL,
+                            "A Sakura IA não está disponível neste servidor.");
+                }
+                enviarLinha(ProtocoloJson.eventoConversa(req, paraJson(ia.criarPersonagem(usuario,
+                        r.texto("nome"), r.texto("personalidade"), r.texto("contexto")))));
+            }
+
+            case DEFINIR_AVATAR -> {
+                PerfilUsuario perfil;
+                try {
+                    perfil = autenticacao.definirAvatar(usuario, r.texto("avatarId"));
+                } catch (AutenticacaoException e) {
+                    throw new ConversaException(ConversaException.Codigo.DADOS_INVALIDOS, e.getMessage());
+                }
+                enviarLinha(ProtocoloJson.eventoPerfil(req, paraJson(perfil)));
+                conversas.anunciarPerfil(perfil);
+            }
 
             case HISTORICO -> {
                 long conversaId = r.id("conversaId");
@@ -554,6 +600,24 @@ public final class ClienteHandler
             }
 
             case MARCAR_LIDA -> conversas.marcarLida(usuario, r.id("conversaId"), r.id("mensagemId"));
+        }
+    }
+
+    private static ProtocoloJson.UsuarioJson paraJson(PerfilUsuario perfil) {
+        return new ProtocoloJson.UsuarioJson(perfil.getId(), perfil.getApelido(), perfil.getAvatarId(), true);
+    }
+
+    @Override
+    public synchronized void perfilAtualizado(PerfilUsuario perfil) throws IOException {
+        if (sessaoJson && historicoEnviado) {
+            enviarLinha(ProtocoloJson.eventoPerfil(null, paraJson(perfil)));
+        }
+    }
+
+    @Override
+    public synchronized void estadoIA(long conversaId, String estado, String mensagem) throws IOException {
+        if (sessaoJson && historicoEnviado) {
+            enviarLinha(ProtocoloJson.eventoEstadoIA(conversaId, estado, mensagem));
         }
     }
 

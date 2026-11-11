@@ -127,7 +127,8 @@ class ClienteHandlerAutenticacaoTest {
     private void iniciarServidor(boolean comContas) throws IOException {
         banco = pasta.resolve("servidor.db");
         ConnectionFactory fabrica = new ConnectionFactory(banco.toString());
-        Servidor.Servicos servicos = Servidor.Servicos.montar(fabrica, new HashSenha(1_000), Clock.systemDefaultZone());
+        Servidor.Servicos servicos = Servidor.Servicos.montar(fabrica, new HashSenha(1_000), Clock.systemDefaultZone(),
+                new br.unicesumar.chat.ia.ProvedorIAFalso());
         ChatService chat = servicos.chat();
 
         servidor = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());

@@ -82,6 +82,72 @@ public final class JdbcConversaRepository implements ConversaRepository {
     }
 
     @Override
+    public long criarConversaIA(long donoId, String nome, String personalidade, String contexto,
+                                LocalDateTime criadaEm) {
+
+        return emTransacao(conexao -> {
+            long personagemId;
+
+            try (PreparedStatement comando = conexao.prepareStatement(
+                    "INSERT INTO personagem (dono_id, nome, personalidade, contexto, criado_em) "
+                            + "VALUES (?, ?, ?, ?, ?) RETURNING id")) {
+                comando.setLong(1, donoId);
+                comando.setString(2, nome);
+                comando.setString(3, personalidade);
+                comando.setString(4, contexto);
+                comando.setString(5, criadaEm.toString());
+                try (ResultSet chave = comando.executeQuery()) {
+                    chave.next();
+                    personagemId = chave.getLong(1);
+                }
+            }
+
+            long conversaId;
+
+            try (PreparedStatement comando = conexao.prepareStatement(
+                    "INSERT INTO conversa (tipo, nome, criador_id, personagem_id, criado_em) "
+                            + "VALUES ('IA', ?, ?, ?, ?) RETURNING id")) {
+                comando.setString(1, nome);
+                comando.setLong(2, donoId);
+                comando.setLong(3, personagemId);
+                comando.setString(4, criadaEm.toString());
+                try (ResultSet chave = comando.executeQuery()) {
+                    chave.next();
+                    conversaId = chave.getLong(1);
+                }
+            }
+
+            inserirParticipante(conexao, conversaId, donoId, Conversa.Papel.ADMIN, criadaEm);
+            return conversaId;
+        });
+    }
+
+    @Override
+    public Optional<br.unicesumar.chat.model.Personagem> personagemDaConversa(long conversaId) {
+
+        try (Connection conexao = connectionFactory.abrirConexao();
+             PreparedStatement comando = conexao.prepareStatement(
+                     "SELECT p.id, p.dono_id, p.nome, p.personalidade, p.contexto FROM conversa c "
+                             + "JOIN personagem p ON p.id = c.personagem_id "
+                             + "WHERE c.id = ? AND c.tipo = 'IA'")) {
+
+            comando.setLong(1, conversaId);
+
+            try (ResultSet r = comando.executeQuery()) {
+                if (!r.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(new br.unicesumar.chat.model.Personagem(
+                        r.getLong("id"), r.getLong("dono_id"), r.getString("nome"),
+                        r.getString("personalidade"), r.getString("contexto")));
+            }
+
+        } catch (SQLException e) {
+            throw new IllegalStateException("Erro ao consultar personagem.", e);
+        }
+    }
+
+    @Override
     public Optional<Conversa> buscar(long conversaId) {
 
         try (Connection conexao = connectionFactory.abrirConexao()) {
@@ -98,7 +164,7 @@ public final class JdbcConversaRepository implements ConversaRepository {
              PreparedStatement comando = conexao.prepareStatement(
                      "SELECT c.id FROM conversa c "
                              + "JOIN conversa_participante p ON p.conversa_id = c.id "
-                             + "WHERE p.usuario_id = ? AND c.tipo IN ('PRIVADA', 'GRUPO') "
+                             + "WHERE p.usuario_id = ? AND c.tipo IN ('PRIVADA', 'GRUPO', 'IA') "
                              + "ORDER BY c.id")) {
 
             comando.setLong(1, usuarioId);

@@ -15,4 +15,12 @@ public interface ConexaoCliente {
      */
     default void conversaDisponivel(ResumoConversa resumo) throws Exception {
     }
+
+    /** Perfil público alterado (avatar). Somente sessões v2. */
+    default void perfilAtualizado(br.unicesumar.chat.model.PerfilUsuario perfil) throws Exception {
+    }
+
+    /** Estado da geração de resposta da IA (GERANDO, CONCLUIDO ou ERRO). Somente sessões v2. */
+    default void estadoIA(long conversaId, String estado, String mensagem) throws Exception {
+    }
 }

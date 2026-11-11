@@ -199,6 +199,63 @@ class ControladorConversasJsonTest {
     }
 
     @Test
+    void conversaComIADeveAvisarQueEPersonagemEMostrarDigitandoEErros() throws Exception {
+        entrarComoAna();
+        Conversa naruto = new Conversa(11, Conversa.Tipo.IA, "Naruto", List.of(
+                new Conversa.Participante(1, "Ana", "sakura", Conversa.Papel.ADMIN)));
+        evento(ProtocoloJson.eventoConversa(null, ProtocoloJson.ConversaJson.de(naruto, null, 0)));
+
+        assertEquals(AvatarSakura.IA, visao.item(11).avatarId());
+        naEdt(() -> controlador.selecionar(11));
+        assertEquals(ControladorConversas.avisoIA("Naruto"), visao.exibida.get(0), "Aviso de personagem de IA");
+
+        evento(ProtocoloJson.eventoEstadoIA(11, "GERANDO", "Qwen qwen-plus"));
+        assertTrue(visao.item(11).gerando());
+        assertEquals("digitando…", visao.item(11).previa());
+        AtomicReference<String> titulo = new AtomicReference<>();
+        naEdt(() -> titulo.set(ClienteChat.tituloDe(controlador.conversaAtiva())));
+        assertEquals("Naruto · personagem de IA · digitando…", titulo.get());
+
+        Mensagem resposta = new Mensagem(60L, new Usuario("Naruto"), "Dattebayo!",
+                LocalDateTime.of(2026, 11, 10, 16, 0), TipoMensagem.IA, 11);
+        evento(mensagemJson(resposta));
+        evento(ProtocoloJson.eventoEstadoIA(11, "CONCLUIDO", "Qwen qwen-plus"));
+        assertFalse(visao.item(11).gerando());
+        assertEquals("Naruto: Dattebayo!", visao.item(11).previa());
+        assertTrue(visao.linhasAtivas.contains("11|[10/11 16:00] Naruto: Dattebayo!"));
+
+        evento(ProtocoloJson.eventoEstadoIA(11, "ERRO", "Chave do Qwen inválida ou sem permissão (QWEN_API_KEY)."));
+        assertTrue(visao.linhasAtivas.contains(
+                "11|SISTEMA: Sakura IA indisponível: Chave do Qwen inválida ou sem permissão (QWEN_API_KEY)."));
+
+        // Resposta da IA em conversa inativa conta como não lida.
+        naEdt(() -> controlador.selecionar(1));
+        evento(mensagemJson(new Mensagem(61L, new Usuario("Naruto"), "Ainda está aí?",
+                LocalDateTime.of(2026, 11, 10, 16, 1), TipoMensagem.IA, 11)));
+        assertEquals(1, visao.item(11).naoLidas());
+    }
+
+    @Test
+    void avataresDevemAparecerNoPerfilENaConversaPrivada() throws Exception {
+        entrarComoAna();
+        AtomicReference<String> avatar = new AtomicReference<>();
+        naEdt(() -> avatar.set(controlador.avatarProprio()));
+        assertEquals("sakura", avatar.get());
+
+        // Privada mostra o avatar da outra pessoa.
+        Conversa privadaComGato = new Conversa(7, Conversa.Tipo.PRIVADA, null, List.of(
+                new Conversa.Participante(1, "Ana", "sakura", Conversa.Papel.MEMBRO),
+                new Conversa.Participante(2, "Bia", "gato", Conversa.Papel.MEMBRO)));
+        evento(ProtocoloJson.eventoConversa(null, ProtocoloJson.ConversaJson.de(privadaComGato, null, 0)));
+        assertEquals("gato", visao.item(7).avatarId());
+        assertNull(visao.item(5).avatarId(), "Grupo usa o ícone de grupo");
+
+        assertTrue(br.unicesumar.chat.model.CatalogoAvatares.AVATARES.size() >= 6);
+        assertEquals("sakura", br.unicesumar.chat.model.CatalogoAvatares.normalizar("desconhecido"));
+        assertFalse(br.unicesumar.chat.model.CatalogoAvatares.valido("../x.png"));
+    }
+
+    @Test
     void nomeDoArquivoExportadoDeveIdentificarAConversa() {
         assertEquals("chat-sakura-turma-de-java-2026-11-10.txt",
                 ClienteChat.nomeArquivoExportacao("Turma de Java!", "2026-11-10"));

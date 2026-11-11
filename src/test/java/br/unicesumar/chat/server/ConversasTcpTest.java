@@ -48,10 +48,13 @@ class ConversasTcpTest {
     private final List<AutoCloseable> clientes = new ArrayList<>();
     private long proximoReq = 1;
 
+    /** Provedor de IA dos testes (nunca o do ambiente da máquina). */
+    private br.unicesumar.chat.ia.ProvedorIA provedor = new br.unicesumar.chat.ia.ProvedorIAFalso();
+
     private void iniciarServidor() throws IOException {
         Servidor.Servicos servicos = Servidor.Servicos.montar(
                 new ConnectionFactory(pasta.resolve("tcp.db").toString()), new HashSenha(1_000),
-                Clock.systemDefaultZone());
+                Clock.systemDefaultZone(), provedor);
         servidor = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
         threads = Executors.newCachedThreadPool();
         ServerSocket atual = servidor;
@@ -269,6 +272,95 @@ class ConversasTcpTest {
         req = biaDeVolta.requisitar(TipoRequisicao.HISTORICO, "conversaId", grupo);
         assertEquals(List.of("Enquanto você estava fora"), biaDeVolta.esperarEvento(TipoEvento.HISTORICO, req)
                 .mensagens().stream().map(ProtocoloJson.MensagemJson::texto).toList());
+    }
+
+    @Test
+    void avatarDeveSerValidadoAnunciadoEPersistirAposReinicio() throws Exception {
+        Cliente ana = conta("ana", "Ana", true);
+        Cliente bia = conta("bia", "Bia", true);
+
+        long req = ana.requisitar(TipoRequisicao.DEFINIR_AVATAR, "avatarId", "gato");
+        assertEquals("gato", ana.esperarEvento(TipoEvento.PERFIL, req).perfil().avatar());
+        ProtocoloJson.UsuarioJson anunciado = bia.esperarEvento(TipoEvento.PERFIL, null).perfil();
+        assertEquals("Ana", anunciado.apelido());
+        assertEquals("gato", anunciado.avatar());
+
+        req = ana.requisitar(TipoRequisicao.DEFINIR_AVATAR, "avatarId", "../../segredo.png");
+        assertEquals("DADOS_INVALIDOS", ana.esperarEvento(TipoEvento.ERRO, req).codigo());
+
+        pararServidor();
+        iniciarServidor();
+
+        Cliente volta = new Cliente();
+        volta.enviar(ProtocoloSakura.NEGOCIACAO);
+        volta.ler();
+        volta.enviar(ProtocoloSakura.comandoEntrar("ana", "senha-de-teste".toCharArray()));
+        assertEquals("gato", ProtocoloSakura.lerResposta(volta.ler()).perfil().getAvatarId());
+    }
+
+    @Test
+    void conversaComPersonagemViaQwenSimuladoEmHttpSemVazarAChave() throws Exception {
+        // Provedor Qwen real, apontado para um servidor HTTP local que imita a API.
+        String chave = "sk-chave-ficticia-nao-vazar";
+        com.sun.net.httpserver.HttpServer api = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        java.util.concurrent.atomic.AtomicReference<String> corpo = new java.util.concurrent.atomic.AtomicReference<>();
+        api.createContext("/v1/chat/completions", troca -> {
+            corpo.set(new String(troca.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] resposta = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Dattebayo! Vamos treinar!\"}}]}"
+                    .getBytes(StandardCharsets.UTF_8);
+            troca.sendResponseHeaders(200, resposta.length);
+            troca.getResponseBody().write(resposta);
+            troca.close();
+        });
+        api.start();
+
+        try {
+            pararServidor();
+            provedor = new br.unicesumar.chat.ia.ProvedorQwen(new br.unicesumar.chat.ia.ConfiguracaoQwen(
+                    java.net.URI.create("http://127.0.0.1:" + api.getAddress().getPort() + "/v1"),
+                    "qwen-plus", chave, java.time.Duration.ofSeconds(5)));
+            iniciarServidor();
+
+            Cliente ana = conta("ana", "Ana", true);
+            Cliente bia = conta("bia", "Bia", true);
+
+            long req = ana.requisitar(TipoRequisicao.CRIAR_PERSONAGEM, "nome", "Naruto",
+                    "personalidade", "animado, determinado, amigável, motivador e descontraído",
+                    "contexto", "Estamos treinando juntos na Vila da Folha.");
+            ProtocoloJson.ConversaJson naruto = ana.esperarEvento(TipoEvento.CONVERSA, req).conversa();
+            assertEquals("IA", naruto.tipo());
+            assertEquals("Naruto", naruto.nome());
+
+            ana.requisitar(TipoRequisicao.ENVIAR, "conversaId", naruto.id(), "texto", "Bora treinar?");
+            assertEquals("GERANDO", ana.esperarEvento(TipoEvento.IA_STATUS, null).estado());
+            ProtocoloJson.MensagemJson resposta = null;
+            for (int i = 0; i < 5 && resposta == null; i++) {
+                ProtocoloJson.MensagemJson m = ana.esperarEvento(TipoEvento.MENSAGEM, null).mensagem();
+                if ("IA".equals(m.tipo())) {
+                    resposta = m;
+                }
+            }
+            assertNotNull(resposta);
+            assertEquals("Naruto", resposta.remetente());
+            assertEquals("Dattebayo! Vamos treinar!", resposta.texto());
+            assertEquals("CONCLUIDO", ana.esperarEvento(TipoEvento.IA_STATUS, null).estado());
+            assertTrue(corpo.get().contains("Vila da Folha") && corpo.get().contains("Bora treinar?"));
+
+            // Bia não acessa o personagem da Ana.
+            req = bia.requisitar(TipoRequisicao.HISTORICO, "conversaId", naruto.id());
+            assertEquals("NAO_ENCONTRADA", bia.esperarEvento(TipoEvento.ERRO, req).codigo());
+            req = bia.requisitar(TipoRequisicao.ENVIAR, "conversaId", naruto.id(), "texto", "oi");
+            assertEquals("NAO_ENCONTRADA", bia.esperarEvento(TipoEvento.ERRO, req).codigo());
+
+            marco(ana, List.of(ana, bia), "Marco-IA");
+            for (Cliente c : List.of(ana, bia)) {
+                assertTrue(c.recebidas.stream().noneMatch(l -> l.contains(chave)), "Chave nunca trafega no TCP");
+            }
+            assertTrue(bia.recebidas.stream().noneMatch(l -> l.contains("Dattebayo")), "Bia não recebe a IA da Ana");
+        } finally {
+            api.stop(0);
+        }
     }
 
     @Test

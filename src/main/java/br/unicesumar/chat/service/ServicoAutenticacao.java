@@ -123,6 +123,37 @@ public final class ServicoAutenticacao {
     }
 
     /**
+     * Troca o avatar da conta da sessão por um da galeria.
+     *
+     * @return o perfil público atualizado
+     */
+    public PerfilUsuario definirAvatar(br.unicesumar.chat.model.Usuario usuario, String avatarId)
+            throws AutenticacaoException {
+
+        if (usuario == null || usuario.getId() == null) {
+            throw new AutenticacaoException(AutenticacaoException.Codigo.DADOS_INVALIDOS,
+                    "Entre com uma conta para escolher um avatar.");
+        }
+
+        String avatar;
+        try {
+            avatar = RegrasConta.validarAvatar(avatarId);
+        } catch (IllegalArgumentException e) {
+            throw new AutenticacaoException(AutenticacaoException.Codigo.DADOS_INVALIDOS, e.getMessage());
+        }
+
+        try {
+            if (!repositorio.atualizarAvatar(usuario.getId(), avatar)) {
+                throw new AutenticacaoException(AutenticacaoException.Codigo.DADOS_INVALIDOS, "Conta não encontrada.");
+            }
+            return repositorio.buscarPorId(usuario.getId()).orElseThrow();
+        } catch (RuntimeException e) {
+            registrarErroInterno("avatar", e);
+            throw new AutenticacaoException(AutenticacaoException.Codigo.INDISPONIVEL, MENSAGEM_INDISPONIVEL);
+        }
+    }
+
+    /**
      * {@code true} se o nome pertence a uma conta (como login ou apelido).
      * Sessões sem conta não podem usá-lo. Em caso de falha interna responde
      * {@code true}: na dúvida, o nome não é liberado.

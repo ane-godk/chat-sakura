@@ -12,6 +12,8 @@ public final class ConversaException extends Exception {
         /** Inexistente ou sem acesso: indistinguíveis para não revelar metadados. */
         NAO_ENCONTRADA,
         CONTA_NECESSARIA,
+        /** Aguarde: resposta da IA em andamento ou limite de uso atingido. */
+        LIMITE,
         INDISPONIVEL
     }
 

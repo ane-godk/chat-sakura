@@ -68,6 +68,10 @@ public final class ClienteChat extends JFrame {
     private final transient ControladorConversas controlador =
             new ControladorConversas(new VisaoJanela(), notificacoes);
 
+    // Avatar do perfil no cabeçalho (com conta).
+    private final AvatarSakura.Icone avatarPerfil =
+            new AvatarSakura.Icone(30, br.unicesumar.chat.model.CatalogoAvatares.PADRAO);
+
     // Barra lateral e nome da conversa ativa.
     private final BarraConversas barraConversas = new BarraConversas(id -> controlador.selecionar(id));
 
@@ -271,8 +275,21 @@ public final class ClienteChat extends JFrame {
                 new FlowLayout(FlowLayout.RIGHT, 6, 0)
         );
         linhaStatus.setOpaque(false);
+        linhaStatus.add(avatarPerfil);
         linhaStatus.add(criarBotaoTema());
         linhaStatus.add(indicador);
+
+        // Avatar do perfil: clique para abrir a galeria (somente com conta).
+        avatarPerfil.setVisible(false);
+        avatarPerfil.setToolTipText("Escolher avatar");
+        avatarPerfil.getAccessibleContext().setAccessibleName("Escolher avatar");
+        avatarPerfil.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        avatarPerfil.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                escolherAvatar();
+            }
+        });
 
         JPanel acoes = new JPanel(
                 new FlowLayout(FlowLayout.RIGHT, 6, 0)
@@ -332,6 +349,7 @@ public final class ClienteChat extends JFrame {
 
         barraConversas.botaoPrivada.addActionListener(e -> novaConversaPrivada());
         barraConversas.botaoGrupo.addActionListener(e -> novoGrupo());
+        barraConversas.botaoIA.addActionListener(e -> novoPersonagem());
         barraConversas.definirContas(false);
         barraConversas.atualizar(controlador.itens(), ControladorConversas.ID_GERAL);
 
@@ -562,6 +580,7 @@ public final class ClienteChat extends JFrame {
         botaoEnviar.setEnabled(ativo);
         campoMensagem.setEnabled(ativo);
         botaoExportar.setEnabled(!controlador.conversaAtiva().texto().isBlank());
+        avatarPerfil.setVisible(controlador.modoContas());
         barraConversas.definirContas(controlador.modoContas());
 
         if (ativo) {
@@ -610,8 +629,22 @@ public final class ClienteChat extends JFrame {
         public void exibirConversa(ControladorConversas.Conversa conversa) {
             acompanhandoFim = true;
             areaMensagens.carregar(conversa.linhas());
-            tituloConversa.setText(conversa.titulo());
+            tituloConversa.setText(tituloDe(conversa));
             botaoExportar.setEnabled(!conversa.texto().isBlank());
+        }
+
+        @Override
+        public void perfilAtualizado(String apelido, String avatarId) {
+            avatarPerfil.definir(avatarId);
+            avatarPerfil.setVisible(true);
+        }
+
+        @Override
+        public void estadoIA(long idConversa, boolean gerando, String descricao) {
+            ControladorConversas.Conversa ativa = controlador.conversaAtiva();
+            if (ativa.id() == idConversa) {
+                tituloConversa.setText(tituloDe(ativa));
+            }
         }
 
         @Override
@@ -661,6 +694,26 @@ public final class ClienteChat extends JFrame {
     private void novaConversaPrivada() {
         controlador.solicitarUsuarios(usuarios -> DialogoNovaConversa.escolherContato(this, usuarios)
                 .ifPresent(controlador::abrirPrivada));
+    }
+
+    /** Personagem de IA: a resposta do Qwen é gerada no servidor, sem bloquear a EDT. */
+    private void novoPersonagem() {
+        DialogoPersonagem.exibir(this).ifPresent(dados ->
+                controlador.criarPersonagem(dados.nome(), dados.personalidade(), dados.contexto()));
+    }
+
+    private void escolherAvatar() {
+        if (controlador.modoContas()) {
+            DialogoAvatar.escolher(this, controlador.avatarProprio()).ifPresent(controlador::definirAvatar);
+        }
+    }
+
+    /** Título da área de mensagens; personagens são identificados como IA. */
+    static String tituloDe(ControladorConversas.Conversa conversa) {
+        if (conversa.tipo() != br.unicesumar.chat.model.Conversa.Tipo.IA) {
+            return conversa.titulo();
+        }
+        return conversa.titulo() + " · personagem de IA" + (conversa.gerando() ? " · digitando…" : "");
     }
 
     private void novoGrupo() {

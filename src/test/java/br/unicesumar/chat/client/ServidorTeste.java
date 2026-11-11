@@ -55,7 +55,7 @@ final class ServidorTeste implements AutoCloseable {
         Servidor.Servicos completos = banco == null
                 ? null
                 : Servidor.Servicos.montar(new ConnectionFactory(banco.toString()),
-                        new HashSenha(1_000), Clock.systemDefaultZone());
+                        new HashSenha(1_000), Clock.systemDefaultZone(), new br.unicesumar.chat.ia.ProvedorIAFalso());
 
         threads.execute(() -> {
             while (!servidor.isClosed()) {

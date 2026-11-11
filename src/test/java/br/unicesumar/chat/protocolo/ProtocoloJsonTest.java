@@ -55,7 +55,7 @@ class ProtocoloJsonTest {
 
         assertThrows(ProtocoloInvalidoException.class, () -> lerRequisicao("{\"tipo\":\"ENVIAR\",\"req\":-2}"));
 
-        Requisicao longo = lerRequisicao("{\"tipo\":\"ENVIAR\",\"texto\":\"" + "a".repeat(1001) + "\"}");
+        Requisicao longo = lerRequisicao("{\"tipo\":\"ENVIAR\",\"texto\":\"" + "a".repeat(1301) + "\"}");
         assertThrows(ProtocoloInvalidoException.class, () -> longo.texto("texto"));
 
         Requisicao semTexto = lerRequisicao("{\"tipo\":\"ENVIAR\",\"texto\":5}");

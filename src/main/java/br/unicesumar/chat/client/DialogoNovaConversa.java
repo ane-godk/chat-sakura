@@ -128,7 +128,7 @@ final class DialogoNovaConversa {
         return rolagem;
     }
 
-    private static void exibir(Component pai, String tituloJanela, String orientacao,
+    static void exibir(Component pai, String tituloJanela, String orientacao,
                                JComponent conteudo, JComponent foco, Runnable confirmar) {
 
         JLabel titulo = new JLabel(orientacao);

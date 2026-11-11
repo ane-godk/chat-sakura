@@ -16,7 +16,7 @@ public final class RegrasConta {
     public static final int SENHA_MINIMA = 8;
     public static final int SENHA_MAXIMA = 128;
 
-    public static final String AVATAR_PADRAO = "sakura";
+    public static final String AVATAR_PADRAO = CatalogoAvatares.PADRAO;
 
     private static final Pattern LOGIN = Pattern.compile(
             "[a-z0-9._-]{" + LOGIN_MINIMO + "," + LOGIN_MAXIMO + "}");
@@ -87,10 +87,12 @@ public final class RegrasConta {
         }
     }
 
+    /** Somente identificadores do {@link CatalogoAvatares}. */
     public static String validarAvatar(String avatarId) {
 
-        if (avatarId == null || !AVATAR.matcher(avatarId).matches()) {
-            throw new IllegalArgumentException("Identificador de avatar inválido.");
+        if (avatarId == null || !AVATAR.matcher(avatarId).matches()
+                || !CatalogoAvatares.valido(avatarId)) {
+            throw new IllegalArgumentException("Avatar inválido: escolha um da galeria.");
         }
 
         return avatarId;

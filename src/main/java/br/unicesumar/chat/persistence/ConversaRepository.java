@@ -38,4 +38,19 @@ public interface ConversaRepository {
 
     /** Mensagens de outros participantes após a última lida. */
     int naoLidas(long conversaId, long usuarioId);
+
+    /**
+     * Cria o personagem e a conversa de IA (somente o dono participa).
+     *
+     * @return id da conversa
+     */
+    default long criarConversaIA(long donoId, String nome, String personalidade, String contexto,
+                                 LocalDateTime criadaEm) {
+        throw new UnsupportedOperationException("Conversas de IA não suportadas.");
+    }
+
+    /** Personagem de uma conversa do tipo IA. */
+    default Optional<br.unicesumar.chat.model.Personagem> personagemDaConversa(long conversaId) {
+        return Optional.empty();
+    }
 }

@@ -166,7 +166,12 @@ public final class Mensagem {
     }
 
     public boolean isAvisoDePresenca() {
-        return tipo != TipoMensagem.MENSAGEM;
+        return tipo == TipoMensagem.ENTRADA || tipo == TipoMensagem.SAIDA;
+    }
+
+    /** Resposta de um personagem interpretado por IA. */
+    public boolean isDaIA() {
+        return tipo == TipoMensagem.IA;
     }
 
     /**

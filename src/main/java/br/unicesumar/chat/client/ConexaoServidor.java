@@ -54,6 +54,10 @@ final class ConexaoServidor {
         default void autenticacaoRecusada(String mensagem) {
         }
 
+        /** Perfil público da conta autenticada (inclui o avatar). */
+        default void perfilRecebido(br.unicesumar.chat.model.PerfilUsuario perfil) {
+        }
+
         /** Evento do protocolo v2 (sessões com conta). */
         default void eventoRecebido(ProtocoloJson.Evento evento) {
         }
@@ -352,6 +356,7 @@ final class ConexaoServidor {
         }
 
         ouvinte.identidadeConfirmada(resposta.perfil().getApelido());
+        ouvinte.perfilRecebido(resposta.perfil());
     }
 
     /**

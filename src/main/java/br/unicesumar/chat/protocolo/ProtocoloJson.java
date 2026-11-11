@@ -53,16 +53,24 @@ import java.util.Objects;
 public final class ProtocoloJson {
 
     public enum TipoRequisicao {
-        LISTAR_CONVERSAS, LISTAR_USUARIOS, ABRIR_PRIVADA, CRIAR_GRUPO, ENVIAR, HISTORICO, MARCAR_LIDA
+        LISTAR_CONVERSAS, LISTAR_USUARIOS, ABRIR_PRIVADA, CRIAR_GRUPO, ENVIAR, HISTORICO, MARCAR_LIDA,
+        /** {req, nome, personalidade, contexto}: personagem de IA e sua conversa. */
+        CRIAR_PERSONAGEM,
+        /** {req, avatarId}: avatar da galeria. */
+        DEFINIR_AVATAR
     }
 
     public enum TipoEvento {
-        CONVERSAS, CONVERSA, USUARIOS, HISTORICO, MENSAGEM, ERRO
+        CONVERSAS, CONVERSA, USUARIOS, HISTORICO, MENSAGEM, ERRO,
+        /** {req?, perfil:{id, apelido, avatar}}: perfil público alterado. */
+        PERFIL,
+        /** {conversaId, estado: GERANDO|CONCLUIDO|ERRO, mensagem}: geração da IA. */
+        IA_STATUS
     }
 
     /** Maior inteiro exato em JSON (2^53 - 1). */
     private static final long ID_MAXIMO = 9_007_199_254_740_991L;
-    private static final int TEXTO_MAXIMO = 1_000;
+    private static final int TEXTO_MAXIMO = 1_300;
 
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
@@ -279,6 +287,18 @@ public final class ProtocoloJson {
         return evento(TipoEvento.MENSAGEM, null, "mensagem", mensagem);
     }
 
+    public static String eventoPerfil(Long req, UsuarioJson perfil) {
+        return evento(TipoEvento.PERFIL, req, "perfil", perfil);
+    }
+
+    public static String eventoEstadoIA(long conversaId, String estado, String mensagem) {
+        JsonObject objeto = base(TipoEvento.IA_STATUS, null);
+        objeto.addProperty("conversaId", conversaId);
+        objeto.addProperty("estado", estado);
+        objeto.addProperty("mensagem", mensagem);
+        return GSON.toJson(objeto);
+    }
+
     public static String eventoErro(Long req, String codigo, String mensagem) {
         JsonObject objeto = base(TipoEvento.ERRO, req);
         objeto.addProperty("codigo", codigo);
@@ -337,6 +357,15 @@ public final class ProtocoloJson {
 
         public String mensagemErro() {
             return dados.get("mensagem").getAsString();
+        }
+
+        public UsuarioJson perfil() {
+            return GSON.fromJson(dados.get("perfil"), UsuarioJson.class);
+        }
+
+        /** Estado da IA ({@code IA_STATUS}). */
+        public String estado() {
+            return dados.get("estado").getAsString();
         }
 
         private <T> List<T> lista(String campo, Class<T> classe) {

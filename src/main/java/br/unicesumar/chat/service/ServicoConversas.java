@@ -249,6 +249,51 @@ public final class ServicoConversas {
     }
 
     // ------------------------------------------------------------------
+    // IA e perfis (uso interno do servidor)
+    // ------------------------------------------------------------------
+
+    /** Conversa pelo id (sem verificação de acesso: uso interno). */
+    Optional<Conversa> buscarConversa(long conversaId) {
+        return conversas.buscar(conversaId);
+    }
+
+    /**
+     * Grava e entrega a resposta do personagem, com o mesmo bloqueio por
+     * conversa das mensagens dos participantes (ordem preservada).
+     */
+    Mensagem salvarRespostaIA(long conversaId, String nomePersonagem, String texto) {
+
+        Set<Long> participantes = conversas.participantes(conversaId);
+        Mensagem mensagem = new Mensagem(null, new Usuario(nomePersonagem), texto,
+                LocalDateTime.now(relogio), TipoMensagem.IA, conversaId);
+
+        synchronized (bloqueios.computeIfAbsent(conversaId, chave -> new Object())) {
+            Mensagem persistida = mensagens.salvar(mensagem);
+            registro.transmitirPara(persistida, participantes);
+            return persistida;
+        }
+    }
+
+    /** Avisa os participantes sobre o estado da geração da IA. */
+    void notificarIA(long conversaId, String estado, String mensagem) {
+        try {
+            Set<Long> participantes = conversas.participantes(conversaId);
+            registro.paraUsuarios(participantes, cliente -> cliente.estadoIA(conversaId, estado, mensagem));
+        } catch (RuntimeException e) {
+            registrarErroInterno("aviso da IA", e);
+        }
+    }
+
+    /** Anuncia o perfil público alterado a todas as sessões com conta. */
+    public void anunciarPerfil(PerfilUsuario perfil) {
+        registro.paraUsuarios(registro.contasConectadas(), cliente -> cliente.perfilAtualizado(perfil));
+    }
+
+    ResumoConversa resumoPara(long conversaId, long usuarioId) throws ConversaException {
+        return resumoDe(conversaId, usuarioId);
+    }
+
+    // ------------------------------------------------------------------
     // Apoio
     // ------------------------------------------------------------------
 

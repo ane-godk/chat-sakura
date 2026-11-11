@@ -31,6 +31,11 @@ public interface UsuarioRepository {
     /** {@code true} se o nome é login ou apelido de alguma conta. */
     boolean nomeEmUso(String nome);
 
+    /** Grava o avatar (já validado) da conta; {@code false} se a conta não existe. */
+    default boolean atualizarAvatar(long usuarioId, String avatarId) {
+        throw new UnsupportedOperationException("Atualização de avatar não suportada.");
+    }
+
     /** Perfis públicos das contas, por apelido (no máximo {@code limite}). */
     default java.util.List<PerfilUsuario> listar(int limite) {
         throw new UnsupportedOperationException("Listagem não suportada.");

@@ -1,7 +1,10 @@
 
 package br.unicesumar.chat.server;
 
+import br.unicesumar.chat.ia.ProvedorIA;
+import br.unicesumar.chat.ia.ProvedorIndisponivel;
 import br.unicesumar.chat.persistence.MensagemRepository;
+import br.unicesumar.chat.service.ServicoIA;
 import br.unicesumar.chat.persistence.jdbc.ConnectionFactory;
 import br.unicesumar.chat.persistence.jdbc.JdbcConversaRepository;
 import br.unicesumar.chat.persistence.jdbc.JdbcMensagemRepository;
@@ -39,6 +42,17 @@ public final class Servidor {
             ServicoAutenticacao autenticacao,
             ServicoConversas conversas
     ) {
+        this(porta, chatService, autenticacao, conversas, null);
+    }
+
+    private Servidor(
+            int porta,
+            ChatService chatService,
+            ServicoAutenticacao autenticacao,
+            ServicoConversas conversas,
+            Servicos servicos
+    ) {
+        this.servicos = servicos;
 
         if (porta < 1 || porta > 65535) {
             throw new IllegalArgumentException(
@@ -56,32 +70,52 @@ public final class Servidor {
     }
 
     /** Serviços completos (chat, contas e conversas) sobre o mesmo banco. */
-    public record Servicos(ChatService chat, ServicoAutenticacao autenticacao, ServicoConversas conversas) {
+    public record Servicos(ChatService chat, ServicoAutenticacao autenticacao, ServicoConversas conversas,
+                           ServicoIA ia) {
 
+        /** Provedor de IA conforme as variáveis de ambiente (Qwen, SIMULADO ou indisponível). */
         public static Servicos montar(ConnectionFactory fabrica, HashSenha hashSenha, Clock relogio) {
+            return montar(fabrica, hashSenha, relogio, ProvedorIndisponivel.doAmbiente(System.getenv()));
+        }
+
+        public static Servicos montar(ConnectionFactory fabrica, HashSenha hashSenha, Clock relogio,
+                                      ProvedorIA provedor) {
 
             MensagemRepository mensagens = new JdbcMensagemRepository(fabrica);
             JdbcUsuarioRepository usuarios = new JdbcUsuarioRepository(fabrica);
+            JdbcConversaRepository repositorioConversas = new JdbcConversaRepository(fabrica);
             ClientRegistry registro = new ClientRegistry();
             ChatService chat = new ChatService(mensagens, registro, relogio);
+            ServicoConversas conversas = new ServicoConversas(repositorioConversas, mensagens, usuarios,
+                    chat, registro, relogio);
 
             return new Servicos(
                     chat,
                     new ServicoAutenticacao(usuarios, hashSenha, relogio),
-                    new ServicoConversas(new JdbcConversaRepository(fabrica), mensagens, usuarios,
-                            chat, registro, relogio)
+                    conversas,
+                    new ServicoIA(repositorioConversas, mensagens, conversas, provedor, relogio)
             );
         }
 
         public ClienteHandler atender(Socket socket) {
-            return new ClienteHandler(socket, chat, autenticacao, conversas);
+            return new ClienteHandler(socket, chat, autenticacao, conversas, ia);
         }
     }
 
-    /** Servidor completo (contas, conversas e histórico) sobre um banco SQLite. */
+    /** Servidor completo (contas, conversas, IA e histórico) sobre um banco SQLite. */
     public static Servidor comBanco(int porta, ConnectionFactory fabrica, HashSenha hashSenha) {
-        Servicos servicos = Servicos.montar(fabrica, hashSenha, Clock.systemDefaultZone());
-        return new Servidor(porta, servicos.chat(), servicos.autenticacao(), servicos.conversas());
+        return new Servidor(porta, Servicos.montar(fabrica, hashSenha, Clock.systemDefaultZone()));
+    }
+
+    /** Servidor completo com o provedor de IA indicado. */
+    public static Servidor comBanco(int porta, ConnectionFactory fabrica, HashSenha hashSenha, ProvedorIA provedor) {
+        return new Servidor(porta, Servicos.montar(fabrica, hashSenha, Clock.systemDefaultZone(), provedor));
+    }
+
+    private final Servicos servicos;
+
+    private Servidor(int porta, Servicos servicos) {
+        this(porta, servicos.chat(), servicos.autenticacao(), servicos.conversas(), servicos);
     }
 
     public void iniciar() {
@@ -93,6 +127,9 @@ public final class Servidor {
         try (ServerSocket servidorSocket = new ServerSocket(porta)) {
 
             System.out.println("Servidor iniciado na porta " + porta);
+            if (servicos != null) {
+                System.out.println("Sakura IA: " + servicos.ia().provedor().descricao());
+            }
             System.out.println("Aguardando conexões...");
 
             while (true) {
@@ -104,12 +141,9 @@ public final class Servidor {
                                 + socket.getRemoteSocketAddress()
                 );
 
-                ClienteHandler handler = new ClienteHandler(
-                        socket,
-                        chatService,
-                        autenticacao,
-                        conversas
-                );
+                ClienteHandler handler = servicos != null
+                        ? servicos.atender(socket)
+                        : new ClienteHandler(socket, chatService, autenticacao, conversas);
 
                 new Thread(
                         handler,

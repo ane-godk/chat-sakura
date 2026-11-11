@@ -4,7 +4,16 @@
 
 O **Chat Sakura** é um sistema de chat multiusuário com histórico persistente, desenvolvido como projeto acadêmico em Java 17. Ele é composto por um servidor TCP, que atende vários clientes de forma simultânea, e por um cliente com interface gráfica Swing.
 
-O objetivo do sistema é permitir que vários usuários, identificados por nome, troquem mensagens em tempo real. Toda mensagem aceita é gravada em um banco SQLite antes de ser distribuída, e as mensagens mais recentes são apresentadas a cada usuário que se conecta.
+O objetivo do sistema é permitir que vários usuários troquem mensagens em tempo real. Toda mensagem aceita é gravada em um banco SQLite antes de ser distribuída, e as mensagens mais recentes são apresentadas a cada usuário que se conecta.
+
+A versão final acrescenta, sobre essa base:
+- contas com senha;
+- conversas privadas e grupos;
+- uma barra lateral de conversas no estilo dos mensageiros atuais;
+- avatares de perfil;
+- a **Sakura IA**: conversas com personagens personalizados interpretados por um modelo **Qwen**.
+
+As seções 1 a 15 descrevem o núcleo concorrente, e a seção 16 descreve essa evolução.
 
 Além da funcionalidade, o projeto tem como objetivo didático demonstrar, de forma correta e verificável:
 
@@ -26,8 +35,11 @@ Além da funcionalidade, o projeto tem como objetivo didático demonstrar, de fo
 | SQLite | Banco embarcado em arquivo (`org.xerial:sqlite-jdbc` 3.46.1.3). |
 | Swing | Interface gráfica do cliente, com o tema visual "Sakura" em tons de rosa. |
 | JUnit 5 | Testes automatizados (`junit-jupiter` 5.11.4). |
+| Gson 2.11.0 | JSON do protocolo v2 e das chamadas ao Qwen (`com.google.code.gson:gson`). |
+| `javax.crypto` | Hash de senhas com PBKDF2-HMAC-SHA256 (JDK, sem dependência). |
+| `java.net.http.HttpClient` | Chamadas HTTP ao Qwen, feitas somente pelo servidor (JDK, sem dependência). |
 
-Nenhum framework adicional é utilizado. As únicas dependências são o driver SQLite e o JUnit, este último restrito ao escopo de teste.
+Nenhum framework adicional é utilizado. As dependências externas são o driver SQLite e a Gson, além do JUnit, que fica restrito ao escopo de teste.
 
 ## 3. Arquitetura em camadas
 
@@ -440,9 +452,14 @@ No cliente Swing, a perda de conexão é exibida como mensagem `SISTEMA: ...`. O
 
 ## 15. Testes automatizados
 
-A suíte possui **52 testes JUnit 5**. Na última execução de `mvn clean test`, os 52 foram aprovados, com 0 falhas e 0 erros.
+A suíte da versão final possui **306 testes JUnit 5**. Na última execução de `mvn clean test`, os 306 foram aprovados, com 0 falhas e 0 erros.
 
-Com exceção de `JdbcMensagemRepositoryTest`, que usa um arquivo SQLite temporário (`@TempDir`), nenhum teste utiliza banco real ou socket de rede. Os testes do servidor usam um `Socket` simulado, cujos fluxos de entrada e saída ficam em memória.
+Nenhum teste usa o banco principal nem a internet:
+- os testes de persistência usam arquivos SQLite temporários (`@TempDir`);
+- os testes de rede usam o servidor real em uma porta efêmera do *loopback*;
+- os testes do Qwen usam um servidor HTTP local (`com.sun.net.httpserver`) que imita a API.
+
+A tabela abaixo mostra as classes de teste do núcleo original. As classes acrescentadas pela evolução do sistema aparecem na seção 16.9.
 
 | Classe de teste | Testes | O que verifica |
 |---|---|---|
@@ -483,7 +500,140 @@ Para executar os testes:
 mvn clean test
 ```
 
-## 16. Funcionalidades extras
+## 16. Evolução: contas, conversas, avatares e Sakura IA
+
+### 16.1 Arquitetura cliente-servidor final
+
+```
+Cliente Swing (EDT)                         Servidor TCP (uma thread por conexão)
+ClienteChat ── ControladorConversas         ClienteHandler ── ChatService (Geral)
+   │            (estado das conversas)         │           ├─ ServicoAutenticacao (contas, avatares)
+   └─ ConexaoServidor (threads de rede) ⇄ TCP ⇄│           ├─ ServicoConversas (privadas e grupos)
+                                               │           └─ ServicoIA ── ProvedorIA ── HTTP ── Qwen
+                                               └─ Repositórios JDBC ── SQLite (migrações versionadas)
+```
+
+- **Cliente:** não faz rede na EDT. `ConexaoServidor` lê e escreve em threads próprias, e `ControladorConversas` repassa os eventos à interface via `SwingUtilities.invokeLater`.
+- **Servidor:** os pacotes continuam separados por camada:
+  - `model`: domínio, sem `java.io` nem `java.sql`;
+  - `persistence`: repositórios JDBC;
+  - `service`: regras de negócio;
+  - `server`: TCP;
+  - `protocolo`: formato compartilhado entre cliente e servidor;
+  - `ia`: provedores de IA.
+
+### 16.2 Autenticação e segurança
+
+- **Contas:** cada conta tem um login único (sem diferenciar maiúsculas), um apelido exibido e um avatar.
+- **Senhas:** são protegidas com **PBKDF2-HMAC-SHA256**, com 600.000 iterações, sal aleatório de 16 bytes por conta (`SecureRandom`) e hash de 32 bytes. A comparação é feita em tempo constante.
+  - A senha trafega como `char[]` e é apagada após o uso.
+  - Login inexistente e senha incorreta recebem a mesma resposta, com o mesmo custo.
+- **Identidade:** é definida **pelo servidor** na autenticação e não muda durante a sessão. O servidor ignora qualquer ID de remetente enviado pelo cliente.
+- **Personificação:** visitantes e clientes antigos não podem usar o nome de uma conta cadastrada.
+- **Limites:** toda linha recebida pelo servidor tem no máximo 4096 caracteres, e o login permite 5 tentativas por conexão.
+- **Sigilo nos registros:** nenhum log, evento ou mensagem de erro contém senha, hash, sal ou chave de API.
+- **Ressalva:** o PBKDF2 protege as senhas **armazenadas**, mas o tráfego TCP não usa TLS. Por isso o sistema não deve ser exposto publicamente.
+
+### 16.3 Protocolo
+
+- **Handshake:** o servidor envia as linhas de boas-vindas. O cliente legado responde com o apelido; o cliente atualizado responde `SAKURA 2`, e um apelido nunca contém espaço, então não há ambiguidade. Em seguida vem `ENTRAR` ou `CADASTRAR`, com os campos em Base64 URL, e a resposta `AUTH OK` ou `AUTH ERRO`.
+- **Protocolo v2:** depois do `AUTH OK`, cada linha é um objeto **JSON estrito** (Gson) com o campo `tipo` e, opcionalmente, `req`, que correlaciona requisição e resposta.
+  - Requisições: `LISTAR_CONVERSAS`, `LISTAR_USUARIOS`, `ABRIR_PRIVADA`, `CRIAR_GRUPO`, `ENVIAR`, `HISTORICO`, `MARCAR_LIDA`, `CRIAR_PERSONAGEM` e `DEFINIR_AVATAR`.
+  - Eventos: `CONVERSAS`, `CONVERSA`, `USUARIOS`, `HISTORICO`, `MENSAGEM`, `PERFIL`, `IA_STATUS` e `ERRO`.
+- **Validação:** tipos, IDs inteiros, tamanhos de texto e listas são validados. JSON inválido gera um evento `ERRO` sem derrubar a sessão.
+- **Compatibilidade:** clientes legados e visitantes continuam no protocolo de texto original e recebem **somente** o Chat Geral.
+
+### 16.4 Persistência e migrações
+
+O `MigradorBanco` controla o esquema por `PRAGMA user_version`.
+
+| Versão | Conteúdo |
+|---|---|
+| 0 | Banco vazio ou legado |
+| 1 | Coluna `tipo` na tabela de mensagens |
+| 2 | Tabelas `usuario`, `conversa`, `conversa_participante`, `conversa_privada` e `personagem`; mensagens ligadas a uma conversa |
+| 3 | `ultima_lida_id`, para o contador de não lidas |
+
+- Antes de migrar um banco existente, é feito um backup consistente com `VACUUM INTO`, conferido com `quick_check`.
+- Todas as migrações pendentes rodam em **uma única transação**, com verificação de chaves estrangeiras e de integridade antes do commit. Uma falha desfaz tudo e impede o servidor de iniciar.
+- Um banco de versão futura é recusado sem ser alterado.
+- As chaves estrangeiras ficam ativas em toda conexão.
+- A Sakura IA não exigiu uma nova versão: ela usa as tabelas `personagem`, `conversa` (tipo `IA`) e `mensagem` (tipo `IA`), já previstas na versão 2.
+
+### 16.5 Chat Geral, conversas privadas e grupos
+
+- **Chat Geral:** é a conversa de id 1, aberta a todos.
+- **Conversas privadas:** usam um par canônico (menor id, maior id) com restrição `UNIQUE`, então abrir de novo reaproveita a mesma conversa.
+- **Grupos:** quem cria é `ADMIN` e os convidados são `MEMBRO`.
+- **Autorização:** toda operação fora do Geral exige participação. Conversa inexistente e conversa sem acesso recebem a mesma resposta (`NAO_ENCONTRADA`), para não revelar metadados.
+- **Entrega:** `ClientRegistry.transmitirPara` entrega somente às sessões autenticadas dos participantes, percorrendo a lista dentro de `synchronized (clientes)` e isolando falhas.
+- **Ordem:** cada conversa tem o próprio bloqueio (gravação e entrega juntas), então conversas independentes não se bloqueiam.
+- **Mensagens offline:** quem estava fora encontra as mensagens no histórico; o contador de não lidas é persistido.
+
+### 16.6 Avatares
+
+- **Catálogo:** `CatalogoAvatares` é um catálogo fechado de 6 avatares (flor de cerejeira, lua, gatinho, estrela, onda e xícara de chá), desenhados em **Java2D** a partir do identificador. Não há arquivos externos, upload nem caminhos de arquivo.
+- **Validação e gravação:** o servidor valida o identificador e o grava em `usuario.avatar_id`.
+- **Atualização:** a mudança é anunciada (`PERFIL`) aos demais clientes.
+- **Exibição:** o avatar aparece no cabeçalho, no item das conversas privadas e na galeria.
+
+### 16.7 Integração com o Qwen
+
+- **Interface:** `ProvedorIA` desacopla o serviço do provedor concreto.
+- **Provedor real:** `ProvedorQwen` usa a API **compatível com OpenAI** (`POST /chat/completions`) com `java.net.http.HttpClient` e Gson. A mesma implementação atende:
+  - à API oficial do Qwen no **Alibaba Cloud Model Studio** (DashScope), que é o padrão, com o modelo `qwen-plus`;
+  - ao **Ollama** local (`http://localhost:11434/v1`), com modelos como `qwen2.5:3b`.
+- **Configuração:** somente por variáveis de ambiente: `QWEN_API_KEY`, `QWEN_BASE_URL`, `QWEN_MODEL` e `QWEN_TIMEOUT_SEGUNDOS`.
+  - Modelos que não sejam da família Qwen são recusados.
+  - A chave vai apenas no cabeçalho `Authorization` e nunca aparece em logs, eventos TCP ou mensagens de erro.
+- **Limites:**
+  - tempo limite configurável (padrão de 45 s);
+  - resposta de até 400 tokens;
+  - contexto com as 20 mensagens mais recentes, até 6.000 caracteres;
+  - 8 gerações por minuto por conta;
+  - uma geração por vez em cada conversa;
+  - **nenhuma** nova tentativa automática.
+- **Erros tratados:** autenticação (401/403), limite de uso (429), modelo ou endereço inexistente (404), indisponibilidade (5xx ou serviço local parado), tempo esgotado e resposta malformada. Cada caso vira uma mensagem clara na conversa.
+- **Concorrência:** `ServicoIA` chama o provedor em um executor próprio (threads `sakura-ia-*`), **fora** da EDT, da thread da conexão e de qualquer bloqueio do chat. Geral, privadas e grupos seguem funcionando com a IA lenta ou indisponível.
+- **Sem configuração:** o servidor usa `ProvedorIndisponivel`, que informa como configurar o Qwen. Ele **nunca** apresenta respostas simuladas como se fossem do Qwen.
+- **Provedor simulado:** `ProvedorIAFalso` gera respostas determinísticas prefixadas com `[SIMULADO]`. É usado nos testes e, de forma explícita, com `CHAT_SAKURA_IA=simulado`.
+
+### 16.8 Personagens personalizados
+
+- **Criação:** o usuário define nome, personalidade (até 400 caracteres) e contexto (até 1.200).
+- **Conversa:** o personagem ganha uma conversa do tipo `IA` da qual **somente o dono** participa. Por isso a mesma autorização das demais conversas isola os personagens: outros usuários não listam, não leem e não enviam.
+- **Pedido ao Qwen:** o servidor envia as instruções do personagem e o histórico recente **daquela** conversa. As instruções pedem português do Brasil e respostas curtas, mandam manter o personagem, não afirmar ser uma pessoa real e não pedir dados pessoais.
+- **Respostas:** são gravadas como mensagens do tipo `IA`, com o nome do personagem como remetente, e divididas se passarem de 500 caracteres.
+- **Interface:** a conversa começa com o aviso de que se trata de um personagem interpretado por IA, e o título mostra "digitando…" durante a geração.
+
+### 16.9 Testes da evolução e demonstração
+
+| Classe de teste | O que verifica |
+|---|---|
+| `MigradorBancoTest` | Migrações 0→3, 1→3 e 2→3; backup em WAL; falha com rollback; versão futura recusada; idempotência; script SQL igual ao esquema |
+| `HashSenhaTest`, `ServicoAutenticacaoTest` | Parâmetros PBKDF2; sais distintos; senha incorreta; duplicados; validação; persistência; concorrência; logs sem credenciais |
+| `ClienteHandlerAutenticacaoTest`, `ConexaoContasTest` | Handshake; identidade vinculada pelo servidor; personificação; cliente legado; limite de linha; EDT livre |
+| `ProtocoloSakuraTest`, `ProtocoloJsonTest` | Codecs, JSON inválido ou não estrito, limites e eventos sem dados sensíveis |
+| `ServicoConversasTest`, `ConversasTcpTest` | Privadas sem duplicação, grupos, isolamento de terceiros e de legados, offline, reinício, ordem sob concorrência e avatar via TCP |
+| `ProvedorQwenTest` | Requisição no formato do Qwen, interpretação da resposta (inclusive `<think>`), erros 401/403/404/429/5xx, tempo limite, serviço parado, configuração e chave fora de logs |
+| `ServicoIATest` | Personagens, validação, histórico em ordem, isolamento entre personagens e usuários, falha sem resposta inventada, chat livre durante a geração, limite de uso, geração fora da EDT e avatares |
+| `ControladorConversasTest`, `ControladorConversasJsonTest` | Eventos na EDT, barra lateral, não lidas, histórico sem duplicar, aviso de IA, "digitando…", avatares, temas e exportação |
+
+A demonstração prática final usou o servidor real, um SQLite temporário e três janelas reais. As **41 verificações** passaram:
+- cadastro e Chat Geral;
+- privada isolada de terceiros;
+- grupo com os três;
+- avatares persistidos e anunciados;
+- dois personagens independentes, com o provedor **SIMULADO** lento (2 s) e a interface respondendo em menos de 5 ms durante a geração;
+- reconexão;
+- reinício do servidor com recuperação de contas, conversas, avatares, personagens e históricos;
+- mensagem clara quando o Qwen não está configurado;
+- temas Claro e Noturno;
+- exportação TXT.
+
+**Qwen real:** a integração está implementada e testada contra um servidor que imita a API, mas **não foi verificada com o serviço real**. O ambiente de desenvolvimento não tinha chave do Model Studio nem Ollama instalado. O procedimento para o teste real está no README.
+
+## 17. Funcionalidades extras
 
 - **Interface gráfica Swing com tema Sakura.** A janela usa cores em tons de rosa e tem:
   - área de mensagens com rolagem automática;
@@ -496,52 +646,49 @@ mvn clean test
 - **Histórico ao conectar.** As últimas 20 mensagens são exibidas em um bloco delimitado.
 - **Mensagens do sistema.** O servidor informa nome inválido, nome em uso, mensagem inválida e falhas de persistência.
 
-## 17. Limitações conhecidas
+## 18. Limitações conhecidas
 
-1. **Cliente que deixa de ler o socket.**
-   - O broadcast escreve em cada socket enquanto segura `bloqueioMensagens` e `clientes`.
-   - Se um cliente parar de ler sem fechar a conexão (por exemplo, um processo travado), o buffer TCP pode encher, e `write()` fica bloqueado.
-   - Enquanto isso, o envio de novas mensagens, a entrada de novos clientes e a remoção de clientes ficam aguardando.
-   - Não há tempo limite de escrita, porque `SO_TIMEOUT` só se aplica a leituras.
-   - Em uso normal, com clientes ativos ou desconectados, o problema não ocorre, porque uma conexão fechada gera `IOException` imediatamente.
-2. **Uma thread por conexão, sem limite.** O servidor cria uma thread para cada cliente, sem pool. É adequado ao escopo acadêmico, mas não escala para muitos milhares de conexões.
-3. **Protocolo baseado em texto literal.** Mensagens como `SISTEMA: Conectado como ` estão repetidas no servidor e no cliente, sem uma classe de protocolo compartilhada.
-4. **Encerramento do servidor.** Não há comando de desligamento ordenado. O servidor é encerrado ao finalizar o processo.
-5. **Segurança.** Não há autenticação nem criptografia (o TCP trafega em texto puro). O nome é apenas um identificador da sessão.
-6. **Horário sem fuso.** O horário é gravado como `LocalDateTime` do relógio local do servidor, sem informação de fuso horário.
-7. **Script SQL.** `sql/criar_tabelas.sql` define um índice em `horario` que o código não cria e que as consultas, ordenadas por `id`, não utilizam.
-8. **Dados inválidos no banco.** Se uma linha do banco tiver dados que violem as regras do domínio (por exemplo, alterada manualmente), a criação da `Mensagem` falha. Na conexão, o usuário veria uma mensagem de recusa pouco específica.
-9. **Exportação.** O TXT contém apenas o texto exibido na janela naquela sessão, e não o histórico completo do banco.
+1. **Sem TLS.** O tráfego TCP não é criptografado. As senhas ficam protegidas no banco (PBKDF2), mas trafegam codificadas em Base64, que não é criptografia. O uso deve se restringir a uma rede local confiável.
+2. **Qwen real não verificado neste ambiente.** O provedor foi testado contra um servidor que imita a API, sem chave do Model Studio nem Ollama disponíveis. Os nomes de modelo, as regiões e as cotas gratuitas do Model Studio podem mudar; o endereço e o modelo podem ser ajustados por variáveis de ambiente.
+3. **Cliente que deixa de ler o socket.**
+   - O envio a um socket acontece dentro das seções críticas.
+   - Se um cliente parar de ler sem fechar a conexão, o buffer TCP pode encher e travar as entregas, porque não há tempo limite de escrita.
+   - Com clientes ativos ou desconectados normalmente, o problema não ocorre.
+4. **Uma thread por conexão, sem limite.** É adequado ao escopo acadêmico, mas não a milhares de conexões.
+5. **Limite de tentativas de login só por conexão.** Não há limite por endereço IP.
+6. **Maiúsculas acentuadas.** No banco, a comparação de apelidos sem diferenciar maiúsculas cobre apenas letras ASCII (`COLLATE NOCASE`).
+7. **Grupos simples.** Não há edição de membros, saída nem exclusão de grupos e personagens.
+8. **Não lidas do Chat Geral.** O contador vale apenas durante a sessão; nas demais conversas, ele é persistido.
+9. **Horário sem fuso.** O horário é gravado como `LocalDateTime` do relógio do servidor.
+10. **Exportação.** O TXT contém a conversa carregada na janela (até as 50 mensagens mais recentes por conversa, mais as recebidas na sessão), e não o histórico completo do banco.
 
-## 18. Melhorias futuras
+## 19. Melhorias futuras
 
-- Fila de saída e thread de envio por cliente, com descarte de clientes lentos. Isso eliminaria a limitação 1, ao retirar o I/O de dentro das seções críticas.
-- Uso de um `ExecutorService` com limite de threads para atender as conexões.
-- Classe de constantes de protocolo compartilhada entre cliente e servidor.
-- Comando de desligamento ordenado do servidor.
-- Configuração de porta, caminho do banco e tamanho do histórico por argumentos ou arquivo de propriedades.
-- Gravação do horário com fuso (`Instant` ou `OffsetDateTime`).
-- Alinhamento do script SQL com o esquema criado pelo código.
-- Lista de usuários conectados visível na interface.
+- TLS (`SSLServerSocket`) para proteger o tráfego e as credenciais.
+- Fila de saída por cliente, retirando o I/O das seções críticas e descartando clientes lentos.
+- `ExecutorService` com limite para as conexões e comando de desligamento ordenado.
+- Respostas da IA por *streaming* e exibição progressiva.
+- Edição de grupos (adicionar e remover membros, sair) e exclusão de personagens.
+- Limite de tentativas de login por endereço e atraso progressivo.
+- Paginação do histórico na interface (o protocolo já aceita `antesDe`).
+- Horário com fuso (`Instant`) e configuração de porta e banco por arquivo de propriedades.
 
-## 19. Conclusão
+## 20. Conclusão
 
-O Chat Sakura atende aos requisitos propostos:
-
+O Chat Sakura atende aos requisitos originais:
 - servidor TCP com uma thread por conexão;
-- broadcast feito dentro de `synchronized (clientes)`, com isolamento de falhas;
-- persistência em SQLite via JDBC, com `PreparedStatement` em todas as operações com dados do usuário e *try-with-resources*;
-- recuperação do histórico em ordem cronológica;
-- interface Swing atualizada com `SwingUtilities.invokeLater`;
-- domínio imutável e independente de infraestrutura.
+- broadcast dentro de `synchronized (clientes)`, com isolamento de falhas;
+- JDBC com `PreparedStatement` e *try-with-resources*;
+- interface Swing atualizada pela EDT;
+- domínio imutável;
+- testes de concorrência com `ExecutorService` e `awaitTermination`.
 
-O principal ponto técnico do projeto é o controle de concorrência. Três mecanismos de sincronização, sempre adquiridos na mesma ordem, garantem que:
+Sobre essa base, a versão final entrega:
+- contas autenticadas com PBKDF2;
+- protocolo JSON v2 validado;
+- conversas privadas e grupos com autorização em toda operação;
+- barra lateral com não lidas;
+- avatares persistentes;
+- a Sakura IA com personagens personalizados e histórico próprio, integrada ao **Qwen** por uma interface desacoplada.
 
-- as mensagens sejam gravadas antes de distribuídas;
-- todos os clientes recebam as mensagens na mesma ordem;
-- nomes duplicados sejam rejeitados de forma atômica;
-- um cliente que se conecta receba histórico e mensagens ao vivo sem perdas nem duplicatas.
-
-A condição de corrida identificada na conexão foi corrigida, e cada uma dessas garantias é verificada por testes automatizados, inclusive testes de concorrência com `ExecutorService` e `awaitTermination`.
-
-As limitações documentadas, em especial o bloqueio causado por clientes que deixam de ler o socket, indicam caminhos claros de evolução sem alterar a arquitetura em camadas adotada.
+As garantias de concorrência continuam valendo: as conversas têm bloqueios independentes, a IA roda fora de qualquer bloqueio e a EDT nunca faz rede. As 306 verificações automatizadas e as 41 da demonstração prática sustentam essas afirmações. As limitações acima indicam a evolução natural do projeto, sem alterar a arquitetura em camadas.

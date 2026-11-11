@@ -1,20 +1,27 @@
 # Chat Sakura
 
-Sistema de chat multiusuário com histórico, desenvolvido em Java 17. Um servidor TCP atende vários clientes ao mesmo tempo, com uma thread por conexão. As mensagens são gravadas em SQLite via JDBC e distribuídas a todos os conectados. O cliente tem interface gráfica Swing com tema Sakura.
+O Chat Sakura é um aplicativo de mensagens desenvolvido em Java 17, com:
+- servidor TCP multithread;
+- cliente Swing com os temas Sakura Claro e Noturno;
+- histórico persistente em SQLite.
+
+Ele oferece **Chat Geral**, **conversas privadas**, **grupos**, contas com senha, **avatares** e a **Sakura IA**: conversas com personagens personalizados, interpretados por um modelo **Qwen**.
 
 ## Funcionalidades
 
-- Comunicação em tempo real entre vários usuários, com broadcast.
-- Servidor TCP com uma thread (`ClienteHandler`) por cliente.
-- Interface gráfica em Java Swing, com tema Sakura.
-- Identificação por apelido (1 a 30 caracteres, sem espaços).
-- Rejeição de apelidos duplicados, sem diferenciar maiúsculas de minúsculas.
-- Validação das mensagens (não vazias, no máximo 500 caracteres).
-- Persistência das mensagens em SQLite, com JDBC.
-- Envio das 20 mensagens mais recentes ao conectar, em ordem cronológica e sem duplicatas.
-- Exportação da conversa exibida para arquivo TXT.
-- Desconexões, inclusive abruptas, tratadas sem afetar os demais clientes.
-- Testes automatizados de regras de negócio, persistência e concorrência.
+- **Contas:** cadastro e login com senha (PBKDF2-HMAC-SHA256). Visitantes e clientes antigos continuam no Chat Geral.
+- **Conversas:**
+  - Chat Geral em tempo real para todos;
+  - conversas privadas entre duas contas, reaproveitadas quando o par já conversou;
+  - grupos com nome e participantes (ADMIN e MEMBRO).
+- **Barra lateral:** conversas com avatar, prévia, contador de não lidas e indicador "digitando…" da IA.
+- **Avatares:** galeria de 6 avatares, persistidos e exibidos aos demais.
+- **Sakura IA:** personagens com nome, personalidade e contexto. As respostas vêm do Qwen, e o histórico é próprio de cada personagem e persistente.
+- **Histórico:** fica no SQLite, com migrações versionadas e backup automático, e mensagens para quem está offline são recuperadas depois.
+- **Segurança:** o servidor define a identidade e verifica a autorização em cada operação.
+- **Protocolo:** JSON validado (protocolo v2), com compatibilidade com o protocolo de texto original.
+- **Interface:** sons, animações, preferências, menu "Copiar mensagem" e exportação TXT da conversa ativa.
+- **Testes:** 306 testes automatizados.
 
 ## Tecnologias
 
@@ -49,13 +56,14 @@ chat-sakura/
 │   └── MIGRACOES.md
 └── src/
     ├── main/java/br/unicesumar/chat/
-    │   ├── model/             Usuario, Mensagem, PerfilUsuario, RegrasConta
-    │   ├── persistence/       MensagemRepository, UsuarioRepository, MensagemRepositoryEmMemoria
-    │   │   └── jdbc/          ConnectionFactory, JdbcMensagemRepository, JdbcUsuarioRepository, MigradorBanco
-    │   ├── service/           ChatService, ClientRegistry, ServicoAutenticacao, HashSenha
-    │   ├── protocolo/         ProtocoloSakura (handshake de autenticação)
+    │   ├── model/             Usuario, Mensagem, Conversa, PerfilUsuario, Personagem, CatalogoAvatares
+    │   ├── persistence/       MensagemRepository, UsuarioRepository, ConversaRepository
+    │   │   └── jdbc/          ConnectionFactory, Jdbc*Repository, MigradorBanco
+    │   ├── service/           ChatService, ClientRegistry, ServicoAutenticacao, ServicoConversas, ServicoIA
+    │   ├── protocolo/         ProtocoloSakura (handshake), ProtocoloJson (protocolo v2)
+    │   ├── ia/                ProvedorIA, ProvedorQwen, ConfiguracaoQwen, ProvedorIAFalso
     │   ├── server/            Servidor, ClienteHandler, LeitorLinhas
-    │   └── client/            ClienteChat, ConexaoServidor, ControladorConversas, DialogoEntrada
+    │   └── client/            ClienteChat, ConexaoServidor, ControladorConversas, BarraConversas, AvatarSakura, diálogos
     └── test/java/br/unicesumar/chat/   Testes JUnit 5
 ```
 
@@ -67,6 +75,7 @@ chat-sakura/
 | `service` | Regras do chat, broadcast, registro de clientes, sincronização e contas |
 | `protocolo` | Formato do handshake de autenticação, compartilhado por servidor e cliente |
 | `server` | Servidor TCP e protocolo com cada cliente |
+| `ia` | Provedores de IA: Qwen (API compatível com OpenAI) e SIMULADO |
 | `client` | Interface gráfica Swing |
 
 ## Como executar (Windows / PowerShell)
@@ -128,7 +137,7 @@ Em todos os modos, o endereço do servidor é `localhost` e a porta é `12345`. 
 
 1. Inicie o servidor (passo 2).
 2. Abra **três terminais** na raiz do projeto e execute o comando do cliente em cada um.
-3. Conecte cada janela com um apelido diferente, por exemplo `Ana`, `Bia` e `Caio`.
+3. Em cada janela, clique em **Conectar** → **Criar conta** (por exemplo `ana.souza`/`Ana`, `bia.lima`/`Bia` e `caio.reis`/`Caio`). Nas próximas vezes, use **Entrar**.
 4. Envie mensagens: todas aparecem nas três janelas, na mesma ordem.
 
 As janelas abrem sobrepostas no centro da tela. Use `Win + ←` / `Win + →` para organizá-las lado a lado.
@@ -220,6 +229,103 @@ Exemplo:
 
 Na janela do cliente, clique em **Exportar TXT**, escolha o destino e salve. O arquivo, em UTF-8, contém as mensagens exibidas na janela naquele momento.
 
+## Avatares
+
+Com uma conta conectada, clique no **avatar ao lado do botão de tema**, no cabeçalho, para abrir a galeria e escolher um dos 6 avatares:
+
+- flor de cerejeira (padrão);
+- lua crescente;
+- gatinho;
+- estrela;
+- onda;
+- xícara de chá.
+
+Os avatares são desenhados em Java2D a partir de um identificador do catálogo `CatalogoAvatares`. Não há upload nem caminhos de arquivo, e o servidor recusa identificadores fora do catálogo.
+
+A escolha é gravada em `usuario.avatar_id`, volta após reconexão ou reinício do servidor e é anunciada aos demais clientes. Ela aparece no cabeçalho e no item das conversas privadas.
+
+## Sakura IA (Qwen)
+
+Com uma conta, o botão **IA** da barra lateral cria um **personagem**, que tem:
+- **nome**, sem espaços (ex.: `Naruto`);
+- **personalidade**, com até 400 caracteres;
+- **contexto inicial**, com até 1.200 caracteres.
+
+Cada personagem tem uma conversa própria, visível **somente** para quem o criou. O histórico fica no SQLite e volta ao reabrir o aplicativo.
+
+- **Aviso de IA:** a conversa começa com o aviso de que se trata de um personagem interpretado por IA, não de uma pessoa real.
+- **Indicador:** enquanto a resposta é gerada, o título mostra "digitando…", e a interface continua respondendo.
+- **Onde roda:** as chamadas ao modelo são feitas **somente pelo servidor**, em segundo plano. O cliente nunca acessa a API nem recebe a chave.
+
+### Modelo e forma de execução
+
+O servidor usa um modelo da família **Qwen** pela API compatível com OpenAI (`/chat/completions`). A mesma implementação (`ProvedorQwen`) funciona de duas formas:
+
+| Forma | Quando usar | Configuração |
+|---|---|---|
+| **API do Qwen no Alibaba Cloud Model Studio** (padrão) | Com uma chave da API (contas novas costumam receber uma cota gratuita) | `QWEN_API_KEY`; modelo padrão `qwen-plus` |
+| **Ollama local** | Sem chave e sem internet, se o computador comportar o modelo | `QWEN_BASE_URL=http://localhost:11434/v1` e `QWEN_MODEL=qwen2.5:3b` |
+
+### Variáveis de ambiente (lidas pelo servidor)
+
+| Variável | Obrigatória | Padrão | Descrição |
+|---|---|---|---|
+| `QWEN_API_KEY` | para API remota | — | Chave da API. Nunca vai para o código, os logs ou os clientes. |
+| `QWEN_BASE_URL` | não | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | Base da API compatível com OpenAI. Confirme no console do Model Studio o endereço da sua região. |
+| `QWEN_MODEL` | não | `qwen-plus` | Modelo da família Qwen. Outros modelos são recusados. |
+| `QWEN_TIMEOUT_SEGUNDOS` | não | `45` | Tempo limite da resposta, entre 5 e 120 s. |
+| `CHAT_SAKURA_IA` | não | — | `simulado` ativa o provedor **SIMULADO**, para demonstração sem IA real. As respostas vêm marcadas com `[SIMULADO]`. |
+
+Sem nenhuma variável, o servidor inicia normalmente. Nesse caso, o personagem responde com uma mensagem clara de que o Qwen não está configurado; nenhuma resposta simulada é apresentada como sendo do Qwen.
+
+**Opção A — API (PowerShell, com valor fictício):**
+
+```powershell
+$env:QWEN_API_KEY = "sk-sua-chave-aqui"
+$env:QWEN_MODEL = "qwen-plus"        # opcional
+mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
+```
+
+**Opção B — Ollama local:**
+
+```powershell
+# Instale o Ollama (https://ollama.com) e, em outro terminal:
+ollama pull qwen2.5:3b       # cerca de 2 GB; recomenda-se 8 GB de RAM ou mais
+ollama serve                 # se o serviço ainda não estiver rodando
+$env:QWEN_BASE_URL = "http://localhost:11434/v1"
+$env:QWEN_MODEL = "qwen2.5:3b"
+mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
+```
+
+Ao iniciar, o servidor mostra o provedor ativo, por exemplo `Sakura IA: Qwen qwen-plus`, `Sakura IA: SIMULADO` ou `Sakura IA: Qwen (não configurado)`.
+
+### Como testar a IA
+
+1. Configure o Qwen (opção A ou B) e inicie o servidor.
+2. Abra um cliente, clique em **Conectar** e entre com uma conta (ou crie uma).
+3. Clique em **IA** e crie o personagem do exemplo:
+   - **Nome:** `Naruto`
+   - **Personalidade:** animado, determinado, amigável, motivador e descontraído
+   - **Contexto:** estamos treinando juntos na Vila da Folha; Naruto deve interpretar esse personagem em uma conversa fictícia, mantendo uma postura encorajadora e usando referências adequadas ao cenário.
+4. Envie uma mensagem: o título mostra "digitando…" e, em seguida, chega a resposta do Qwen.
+5. Feche e reabra o cliente (ou reinicie o servidor): o personagem e o histórico continuam lá.
+
+**Erros tratados pelo servidor:**
+- chave inválida;
+- limite de uso atingido (HTTP 429);
+- modelo ou endereço inexistente;
+- Ollama parado;
+- tempo esgotado;
+- resposta inválida.
+
+Cada caso aparece como mensagem na conversa, sem novas tentativas automáticas.
+
+**Limites da IA:**
+- contexto de até 20 mensagens recentes (6.000 caracteres);
+- resposta de até 400 tokens;
+- 8 mensagens por minuto por conta;
+- uma resposta por vez em cada conversa.
+
 ## Testes
 
 Na raiz do projeto:
@@ -228,21 +334,29 @@ Na raiz do projeto:
 mvn clean test
 ```
 
-A suíte tem **52 testes JUnit 5**, que cobrem:
+A suíte tem **306 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
 
-- validação de usuários e mensagens;
-- repositório em memória e repositório SQLite (este último usando um arquivo temporário);
-- regras do chat: broadcast, isolamento de falhas, nomes duplicados, persistência antes do envio e limite do histórico;
-- protocolo do `ClienteHandler`, com socket simulado em memória;
-- concorrência: envios simultâneos, ordem do broadcast, registro e remoção simultâneos, e entrada de clientes durante broadcasts. Esses testes usam `ExecutorService` e `awaitTermination`, sem `Thread.sleep`.
+- usuários, mensagens e repositórios;
+- regras do chat e concorrência (`ExecutorService` e `awaitTermination`, sem `Thread.sleep`);
+- migrações do banco (0→3), com backup e rollback;
+- contas e PBKDF2;
+- handshake, identidade e personificação;
+- codec JSON;
+- conversas privadas, grupos, isolamento, mensagens offline e reinício;
+- avatares;
+- personagens de IA;
+- provedor Qwen contra um servidor HTTP local que imita a API, incluindo erros, tempo limite e chave fora de logs e eventos;
+- interface: barra lateral, não lidas, temas e exportação.
 
 ## Observações e limitações
 
 - **Não execute `mvn clean` com o servidor ou os clientes abertos.** O comando apaga a pasta `target`, que eles estão usando.
 - Execute apenas um servidor por vez: a porta `12345` não pode estar em uso.
-- Um cliente que pare de ler o socket sem fechar a conexão pode atrasar o broadcast para os demais. Clientes desconectados, mesmo de forma abrupta, não causam esse problema.
-- Não há autenticação nem criptografia: o protocolo é texto puro sobre TCP, adequado ao uso em rede local e ao escopo acadêmico.
-- A exportação TXT inclui apenas o conteúdo exibido na janela, não o histórico completo do banco.
+- **Sem TLS:** as senhas são protegidas no banco (PBKDF2), mas o tráfego TCP não é criptografado. Use o sistema apenas em rede local confiável.
+- **Qwen real não verificado** no ambiente de desenvolvimento, por falta de chave e de Ollama. A integração foi testada contra um servidor que imita a API. Os nomes de modelo e as cotas gratuitas do Model Studio podem mudar.
+- Um cliente que pare de ler o socket sem fechar a conexão pode atrasar as entregas aos demais.
+- Grupos e personagens não podem ser editados nem excluídos pela interface.
+- A exportação TXT inclui a conversa carregada na janela, não o histórico completo do banco.
 
 Outras limitações e melhorias futuras estão descritas no relatório técnico.
 
@@ -250,9 +364,10 @@ Outras limitações e melhorias futuras estão descritas no relatório técnico.
 
 | Documento | Conteúdo |
 |---|---|
-| [RELATORIO_TECNICO.md](RELATORIO_TECNICO.md) | Arquitetura, diagramas, sincronização, persistência, testes e limitações |
+| [RELATORIO_TECNICO.md](RELATORIO_TECNICO.md) | Arquitetura, sincronização, segurança, protocolo, migrações, Qwen, testes e limitações |
 | [ROTEIRO_VIDEO.md](ROTEIRO_VIDEO.md) | Roteiro da demonstração em vídeo |
-| [sql/criar_tabelas.sql](sql/criar_tabelas.sql) | Script de criação da tabela |
+| [sql/criar_tabelas.sql](sql/criar_tabelas.sql) | Esquema atual do banco (versão 3) |
+| [sql/MIGRACOES.md](sql/MIGRACOES.md) | Versões do banco, backup e restauração |
 | [AGENTS.md](AGENTS.md) | Requisitos e regras de implementação do projeto |
 
 ## Repositório

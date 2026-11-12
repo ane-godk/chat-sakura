@@ -28,3 +28,11 @@ Thumbs.db
 *.key
 *.pem
 secrets.properties
+
+# Certificados e chaves TLS (keystores com chave privada e truststores locais)
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+certificados/

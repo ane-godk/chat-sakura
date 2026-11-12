@@ -131,20 +131,39 @@ public final class Servidor {
         }
     }
 
-    /** Servidor completo (contas, conversas, IA e histórico) sobre um banco SQLite. */
+    /**
+     * Servidor completo (contas, conversas, IA e histórico) sobre um banco
+     * SQLite, com o transporte do ambiente (TLS por padrão).
+     *
+     * @throws IllegalStateException se o TLS não estiver configurado
+     */
     public static Servidor comBanco(int porta, ConnectionFactory fabrica, HashSenha hashSenha) {
-        return new Servidor(porta, Servicos.montar(fabrica, hashSenha, Clock.systemDefaultZone(),
-                ProvedorIndisponivel.doAmbiente(System.getenv()), LimitesServidor.doAmbiente(System.getenv())));
+        return comBanco(porta, fabrica, hashSenha, ProvedorIndisponivel.doAmbiente(System.getenv()));
     }
 
-    /** Servidor completo com o provedor de IA indicado. */
+    /** Servidor completo com o provedor de IA indicado e o transporte do ambiente. */
     public static Servidor comBanco(int porta, ConnectionFactory fabrica, HashSenha hashSenha, ProvedorIA provedor) {
+        // O transporte é lido antes de abrir o banco: sem TLS válido, nada é migrado.
+        TransporteServidor transporte = TransporteServidor.doAmbiente(System.getenv());
         return new Servidor(porta, Servicos.montar(fabrica, hashSenha, Clock.systemDefaultZone(), provedor,
-                LimitesServidor.doAmbiente(System.getenv())));
+                LimitesServidor.doAmbiente(System.getenv())), transporte);
     }
 
+    /** Sem transporte definido: TCP de desenvolvimento no loopback (testes que abrem o próprio socket). */
     Servidor(int porta, Servicos servicos) {
+        this(porta, servicos, TransporteServidor.tcpDesenvolvimento());
+    }
+
+    public Servidor(int porta, Servicos servicos, TransporteServidor transporte) {
         this(porta, servicos.chat(), servicos.autenticacao(), servicos.conversas(), servicos, servicos.limites());
+        this.transporte = Objects.requireNonNull(transporte);
+    }
+
+    private TransporteServidor transporte = TransporteServidor.tcpDesenvolvimento();
+
+    /** Socket de escuta conforme o transporte (TLS ou TCP de desenvolvimento). */
+    public ServerSocket abrirSocket() throws IOException {
+        return transporte.abrir(porta);
     }
 
     /** Vagas de conexão (diagnóstico e testes). */
@@ -158,9 +177,10 @@ public final class Servidor {
         System.out.println("       CHAT SAKURA - SERVIDOR      ");
         System.out.println("==================================");
 
-        try (ServerSocket servidorSocket = new ServerSocket(porta)) {
+        try (ServerSocket servidorSocket = abrirSocket()) {
 
             System.out.println("Servidor iniciado na porta " + servidorSocket.getLocalPort());
+            System.out.println("Transporte: " + transporte.descricao());
             if (servicos != null) {
                 br.unicesumar.chat.ia.ParametrosIA p = servicos.ia().parametros();
                 System.out.println("Sakura IA: " + servicos.ia().provedor().descricao() + " (contexto "
@@ -190,7 +210,7 @@ public final class Servidor {
      * precisa de uma vaga (limite global e por IP); sem vaga, recebe um aviso
      * curto e é fechada na hora, sem criar thread.
      */
-    void atenderConexoes(ServerSocket servidorSocket) {
+    public void atenderConexoes(ServerSocket servidorSocket) {
 
         while (!servidorSocket.isClosed()) {
 
@@ -260,10 +280,19 @@ public final class Servidor {
 
     public static void main(String[] args) {
 
-        comBanco(
-                PORTA_PADRAO,
-                new ConnectionFactory("chat-sakura.db"),
-                new HashSenha()
-        ).iniciar();
+        Servidor servidor;
+        try {
+            servidor = comBanco(
+                    PORTA_PADRAO,
+                    new ConnectionFactory("chat-sakura.db"),
+                    new HashSenha()
+            );
+        } catch (IllegalStateException e) {
+            // Configuração de TLS ausente ou inválida: não inicia (sem fallback para TCP).
+            System.err.println("Chat Sakura: o servidor não foi iniciado. " + e.getMessage());
+            System.exit(1);
+            return;
+        }
+        servidor.iniciar();
     }
 }

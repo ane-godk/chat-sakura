@@ -28,6 +28,7 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import javax.net.ssl.SSLSocket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -203,6 +204,12 @@ public final class ClienteHandler
         boolean registrado = false;
 
         try {
+
+            // TLS: a negociação termina (ou falha) antes de qualquer leitura ou
+            // escrita, com prazo próprio; falha encerra e libera a vaga.
+            if (socket instanceof SSLSocket tls && !concluirHandshakeTls(tls)) {
+                return;
+            }
 
             configurarSocket();
 
@@ -687,6 +694,28 @@ public final class ClienteHandler
                         "Erro ao fechar socket: " + e.getMessage()
                 );
             }
+        }
+    }
+
+    /** Prazo máximo da negociação TLS (também limitado pelo prazo de entrada). */
+    static final long PRAZO_HANDSHAKE_TLS_MS = 10_000;
+
+    /**
+     * Negociação TLS com prazo. Registra só o endereço e o tipo da falha
+     * (sem dados recebidos); o socket é fechado no {@code finally} de {@link #run}.
+     */
+    private boolean concluirHandshakeTls(SSLSocket tls) {
+        long prazo = Math.min(PRAZO_HANDSHAKE_TLS_MS, limites.prazoEntrada().toMillis());
+        try {
+            tls.setSoTimeout((int) prazo);
+            tls.startHandshake();
+            tls.setSoTimeout(0);
+            return true;
+        } catch (IOException e) {
+            String motivo = e.getMessage() == null ? "" : e.getMessage().lines().findFirst().orElse("");
+            System.err.println("Negociação TLS recusada (" + (origem == null ? "?" : origem) + "): "
+                    + e.getClass().getSimpleName() + (motivo.isEmpty() ? "" : " - " + motivo));
+            return false;
         }
     }
 

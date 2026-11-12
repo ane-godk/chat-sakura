@@ -21,7 +21,7 @@ Ele oferece **Chat Geral**, **conversas privadas**, **grupos**, contas com senha
 - **Segurança:** o servidor define a identidade e verifica a autorização em cada operação.
 - **Protocolo:** JSON validado (protocolo v2), com compatibilidade com o protocolo de texto original.
 - **Interface:** sons, animações, preferências, menu "Copiar mensagem" e exportação TXT da conversa ativa.
-- **Testes:** 377 testes automatizados.
+- **Testes:** 409 testes automatizados.
 
 ## Tecnologias
 
@@ -361,11 +361,51 @@ Ao iniciar, o servidor mostra o provedor ativo, por exemplo `Sakura IA: Qwen qwe
 
 Cada caso aparece como mensagem na conversa, sem novas tentativas automáticas.
 
-**Limites da IA:**
-- contexto de até 20 mensagens recentes (6.000 caracteres);
-- resposta de até 400 tokens;
-- 8 mensagens por minuto por conta;
-- uma resposta por vez em cada conversa.
+### Memória dos personagens
+
+Cada conversa com um personagem tem uma **memória própria**: notas curtas sobre o que você contou, para que o personagem se lembre de conversas antigas sem que o histórico inteiro seja enviado ao modelo.
+
+- **Quando é atualizada:** a cada 10 mensagens novas, logo depois de uma resposta. O personagem resume a conversa em até 6 notas curtas, com no máximo 1.200 caracteres no total.
+- **A quem pertence:** à conversa, que pertence a uma única conta. Dois usuários podem ter personagens com o mesmo nome sem compartilhar nada. Ninguém além do dono consegue ver ou apagar essa memória, e ela não existe fora do seu personagem.
+- **O que não entra:**
+  - dados sensíveis, como e-mails, telefones, documentos, números longos e senhas;
+  - frases que soam como instruções ("a partir de agora...", "ignore...").
+  Esse filtro não depende do modelo obedecer.
+- **Como é usada:** no prompt, a memória vai num bloco marcado como notas que podem estar incompletas e que não são instruções.
+- **Ver e apagar:** numa conversa de IA, o botão **Memória**, ao lado do título, mostra as notas. **Apagar memória** pede confirmação e:
+  - esvazia as notas;
+  - faz o personagem deixar de considerar as mensagens anteriores;
+  - **não apaga** o histórico, que continua visível.
+- **Durante a atualização** (alguns segundos), um novo envio para aquele personagem recebe o aviso "O personagem está organizando a memória da conversa".
+
+### Contexto, tokens e desempenho
+
+- **Prompt em blocos:** identidade, personalidade, contexto, estilo de fala, memória, regras e histórico recente.
+  - Personalidade e contexto vão entre aspas triplas, como dados do personagem, não como ordens.
+  - O histórico contém só mensagens reais da conversa, sem falas inventadas.
+  - Se você perguntar diretamente, o personagem pode dizer que é uma IA.
+- **Orçamento de contexto:** janela menos resposta menos uma margem. As instruções nunca passam de 60% disso: se passarem, saem primeiro as notas mais antigas da memória e depois parte do contexto. Identidade, personalidade e regras ficam sempre inteiras. O resto vai para as mensagens mais recentes, que nunca são cortadas ao meio.
+- **Resposta cortada pelo limite de tamanho:** termina na última frase completa e recebe a marca `[…]`, e a interface avisa. O corte nunca é escondido.
+- **Uma geração por vez com Ollama local, com fila limitada:**
+  - Com a fila cheia, o envio é recusado **antes** de gravar a mensagem, com o aviso "A Sakura IA está ocupada...".
+  - Cada conversa tem no máximo uma geração em andamento.
+  - Se você reconectar no meio de uma geração, o "digitando…" volta e a resposta chega normalmente.
+
+| Variável | Ollama local | API remota | Descrição |
+|---|---|---|---|
+| `QWEN_API` | `ollama` (automático na porta 11434) | `openai` | `ollama` usa a API nativa `/api/chat`, que aceita `num_ctx`, `keep_alive` e `repeat_penalty`. `openai` usa `/chat/completions`. |
+| `QWEN_CONTEXTO_TOKENS` | 4096 | 16384 | Janela considerada no orçamento (mínimo 2048). No Ollama, vai como `num_ctx`, porque o padrão muda entre versões. |
+| `QWEN_RESPOSTA_TOKENS` | 320 | 400 | Limite da resposta (`num_predict` / `max_tokens`). |
+| `QWEN_HISTORICO_MENSAGENS` | 16 | 20 | Máximo de mensagens recentes (também limitado a 6.000 caracteres). |
+| `QWEN_GERACOES_SIMULTANEAS` | 1 | 2 | Gerações ao mesmo tempo. |
+| `QWEN_FILA_MAXIMA` | 4 | 8 | Gerações aguardando vaga; além disso, recusa. |
+| `QWEN_TEMPERATURA` / `QWEN_TOP_P` | 0,65 / 0,9 | 0,65 / 0,9 | Amostragem. Resumos de memória usam temperatura 0,2. Penalidade de repetição: `repeat_penalty` 1,1, ou `presence_penalty` 0,3 na API OpenAI. |
+| `QWEN_KEEP_ALIVE` | `30m` | — | Tempo que o Ollama mantém o modelo carregado depois do último pedido. Vai em cada pedido e não altera a configuração global do Ollama. |
+| `QWEN_AQUECER` | desligado | — | `true` carrega o modelo em segundo plano ao iniciar o servidor, sem atrasar a inicialização e sem baixar nada. |
+
+**Memória da máquina com Ollama.** O `qwen2.5:3b` (Q4_K_M) ocupa cerca de 1,9 GB de pesos, mais aproximadamente 150 MB de cache de contexto com 4096 tokens. Com uma GPU de 2 GB, parte das camadas roda na CPU, então conte com cerca de 2,5 a 3 GB de RAM enquanto o modelo estiver carregado. Com `keep_alive` de 30 minutos, essa memória fica ocupada até 30 minutos depois da última mensagem; em troca, as respostas seguintes não pagam o carregamento, que leva alguns segundos. Use `QWEN_KEEP_ALIVE=5m` (o padrão do Ollama) para liberar a memória antes.
+
+**Outros limites:** 8 mensagens por minuto por conta para a IA; uma resposta por vez em cada conversa.
 
 ## Testes
 
@@ -375,7 +415,7 @@ Na raiz do projeto:
 mvn clean test
 ```
 
-A suíte tem **377 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
+A suíte tem **409 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
 
 - robustez do servidor: cliente lento, fila de saída, ordem, vagas global e por IP, prazo de entrada, heartbeat v2, substituição de sessão, limites de taxa e de tentativas de login;
 - usuários, mensagens e repositórios;
@@ -385,6 +425,7 @@ A suíte tem **377 testes JUnit 5**. Todos usam bancos SQLite temporários, e ne
 - handshake, identidade e personificação, incluindo nomes Unicode equivalentes, invisíveis e alfabetos misturados;
 - migração v4 (colisões, rollback e backup), WAL e gravações concorrentes;
 - cliente: ordem de envio, nova tentativa de histórico, avisos não modais e reconexão com restauração das conversas;
+- IA: prompt em blocos e orçamento de contexto, memória (criação, isolamento, persistência, exclusão e filtro), fila limitada, tempo esgotado, resposta truncada, Ollama parado, API nativa e remota, e reconexão durante a geração (todos com provedores simulados);
 - codec JSON;
 - conversas privadas, grupos, isolamento, mensagens offline e reinício;
 - avatares;

@@ -96,7 +96,7 @@ class MigracaoV4ConcorrenciaTest {
                 new String[] {"3", "joao", "João"});
 
         MigradorBanco.Resultado resultado = new MigradorBanco(new ConnectionFactory(arquivo.toString()),
-                MigradorBanco.MIGRACOES, RELOGIO).migrar();
+                MigradorBanco.MIGRACOES.subList(0, 4), RELOGIO).migrar();
 
         assertEquals(3, resultado.versaoAnterior());
         assertEquals(4, versao(arquivo));
@@ -115,7 +115,7 @@ class MigracaoV4ConcorrenciaTest {
 
         // Idempotente: rodar de novo não altera nada nem cria backup.
         MigradorBanco.Resultado denovo = new MigradorBanco(new ConnectionFactory(arquivo.toString()),
-                MigradorBanco.MIGRACOES, RELOGIO).migrar();
+                MigradorBanco.MIGRACOES.subList(0, 4), RELOGIO).migrar();
         assertFalse(denovo.migrou());
         assertEquals(1, backups().size());
     }
@@ -131,7 +131,7 @@ class MigracaoV4ConcorrenciaTest {
         List<String> antes = coluna(arquivo, "SELECT id || ':' || login || ':' || apelido FROM usuario ORDER BY id");
 
         MigracaoBancoException erro = assertThrows(MigracaoBancoException.class, () -> new MigradorBanco(
-                new ConnectionFactory(arquivo.toString()), MigradorBanco.MIGRACOES, RELOGIO).migrar());
+                new ConnectionFactory(arquivo.toString()), MigradorBanco.MIGRACOES.subList(0, 4), RELOGIO).migrar());
 
         String mensagem = erro.getMessage();
         assertTrue(mensagem.contains("id 1 (\"Élia\"), id 2 (\"ÉLIA\")"), mensagem);
@@ -152,12 +152,12 @@ class MigracaoV4ConcorrenciaTest {
         // Após renomear manualmente, a migração segue.
         executar(arquivo, "UPDATE usuario SET apelido = 'Élia2' WHERE id = 2",
                 "UPDATE usuario SET apelido = 'Ana4' WHERE id = 4");
-        new MigradorBanco(new ConnectionFactory(arquivo.toString()), MigradorBanco.MIGRACOES, RELOGIO).migrar();
+        new MigradorBanco(new ConnectionFactory(arquivo.toString()), MigradorBanco.MIGRACOES.subList(0, 4), RELOGIO).migrar();
         assertEquals(4, versao(arquivo));
     }
 
     @Test
-    void bancoLegadoV0DeveChegarAV4() throws Exception {
+    void bancoLegadoV0DeveChegarAVersaoAtual() throws Exception {
         Path arquivo = banco("legado.db");
         executar(arquivo,
                 "CREATE TABLE mensagem (id INTEGER PRIMARY KEY AUTOINCREMENT, remetente TEXT NOT NULL,"
@@ -168,8 +168,8 @@ class MigracaoV4ConcorrenciaTest {
                 MigradorBanco.MIGRACOES, RELOGIO).migrar();
 
         assertEquals(0, resultado.versaoAnterior());
-        assertEquals(MigradorBanco.VERSAO_ATUAL, 4);
-        assertEquals(4, versao(arquivo));
+        assertEquals(5, MigradorBanco.VERSAO_ATUAL);
+        assertEquals(MigradorBanco.VERSAO_ATUAL, versao(arquivo));
         assertEquals(List.of("legado"), coluna(arquivo, "SELECT texto FROM mensagem"));
         assertEquals(List.of("ux_usuario_apelido_chave"),
                 coluna(arquivo, "SELECT name FROM sqlite_master WHERE name = 'ux_usuario_apelido_chave'"));

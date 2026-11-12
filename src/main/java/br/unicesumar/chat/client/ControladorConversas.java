@@ -563,6 +563,29 @@ final class ControladorConversas {
                 "nome", nome, "personalidade", personalidade, "contexto", contexto);
     }
 
+    /** Memória do personagem como o servidor informou ({@code atualizadaEm} nulo: nunca resumida). */
+    record MemoriaInfo(long conversaId, String resumo, String atualizadaEm) {
+    }
+
+    /** Pede a memória do personagem da conversa ativa (somente conversas de IA). */
+    boolean verMemoria(Consumer<MemoriaInfo> aoReceber) {
+        return pedirMemoria(ProtocoloJson.TipoRequisicao.MEMORIA_VER, aoReceber);
+    }
+
+    /** Apaga a memória do personagem da conversa ativa; o histórico continua. */
+    boolean apagarMemoria(Consumer<MemoriaInfo> aoApagar) {
+        return pedirMemoria(ProtocoloJson.TipoRequisicao.MEMORIA_APAGAR, aoApagar);
+    }
+
+    private boolean pedirMemoria(ProtocoloJson.TipoRequisicao tipo, Consumer<MemoriaInfo> aoReceber) {
+        Conversa ativa = conversaAtiva();
+        if (ativa == null || ativa.tipo != Tipo.IA) {
+            return false;
+        }
+        return requisitar(tipo, evento -> aoReceber.accept(new MemoriaInfo(evento.conversaId(),
+                evento.resumoMemoria(), evento.memoriaAtualizadaEm())), "conversaId", ativa.id);
+    }
+
     /** Troca o próprio avatar (o servidor valida o identificador). */
     boolean definirAvatar(String avatarId) {
         return requisitar(ProtocoloJson.TipoRequisicao.DEFINIR_AVATAR, this::aplicarPerfil, "avatarId", avatarId);
@@ -605,6 +628,11 @@ final class ControladorConversas {
             if (conversa.id == idConversaAtiva) {
                 visao.exibirLinha(conversa.id, linha);
             }
+        }
+
+        if ("TRUNCADA".equals(estado)) {
+            // A resposta foi gravada e marcada com "[…]"; o aviso explica o corte.
+            visao.erroConversa(conversa.titulo + ": " + evento.mensagemErro());
         }
 
         visao.estadoIA(conversa.id, conversa.gerando, evento.mensagemErro());
@@ -759,6 +787,17 @@ final class ControladorConversas {
             }
 
             case IA_STATUS -> tratarEstadoIA(evento);
+
+            case MEMORIA -> {
+                if (resposta != null) {
+                    resposta.accept(evento);
+                }
+                return;
+            }
+
+            case PING -> {
+                // Respondido pela conexão; nunca chega aqui.
+            }
         }
 
         visao.conversasAtualizadas(itens(), idConversaAtiva);

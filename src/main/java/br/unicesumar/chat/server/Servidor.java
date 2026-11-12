@@ -7,6 +7,7 @@ import br.unicesumar.chat.persistence.MensagemRepository;
 import br.unicesumar.chat.service.ServicoIA;
 import br.unicesumar.chat.persistence.jdbc.ConnectionFactory;
 import br.unicesumar.chat.persistence.jdbc.JdbcConversaRepository;
+import br.unicesumar.chat.persistence.jdbc.JdbcMemoriaRepository;
 import br.unicesumar.chat.persistence.jdbc.JdbcMensagemRepository;
 import br.unicesumar.chat.persistence.jdbc.JdbcUsuarioRepository;
 import br.unicesumar.chat.service.ChatService;
@@ -114,7 +115,8 @@ public final class Servidor {
                     chat,
                     new ServicoAutenticacao(usuarios, hashSenha, relogio),
                     conversas,
-                    new ServicoIA(repositorioConversas, mensagens, conversas, provedor, relogio),
+                    new ServicoIA(repositorioConversas, mensagens, conversas, provedor,
+                            new JdbcMemoriaRepository(fabrica), relogio),
                     limites
             );
         }
@@ -160,7 +162,12 @@ public final class Servidor {
 
             System.out.println("Servidor iniciado na porta " + servidorSocket.getLocalPort());
             if (servicos != null) {
-                System.out.println("Sakura IA: " + servicos.ia().provedor().descricao());
+                br.unicesumar.chat.ia.ParametrosIA p = servicos.ia().parametros();
+                System.out.println("Sakura IA: " + servicos.ia().provedor().descricao() + " (contexto "
+                        + p.janelaTokens() + " tokens, resposta " + p.tokensResposta() + ", "
+                        + p.geracoesSimultaneas() + " geração(ões) por vez, fila " + p.filaMaxima() + ")");
+                // Opcional (QWEN_AQUECER): carrega o modelo sem atrasar a inicialização.
+                servicos.ia().aquecerEmSegundoPlano();
             }
             System.out.println("Limites: " + limites.maxConexoes() + " conexões ("
                     + limites.maxConexoesPorIp() + " por IP), entrada em "

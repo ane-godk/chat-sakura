@@ -1,4 +1,4 @@
--- Chat Sakura - esquema atual do banco SQLite (versão 4).
+-- Chat Sakura - esquema atual do banco SQLite (versão 5).
 --
 -- O servidor NÃO executa este arquivo: o esquema é criado e migrado por
 -- br.unicesumar.chat.persistence.jdbc.MigradorBanco na inicialização
@@ -99,6 +99,24 @@ CREATE TABLE mensagem (
     tipo TEXT NOT NULL DEFAULT 'MENSAGEM'
 );
 
+-- Versão 5: memória resumida de cada conversa com um personagem de IA.
+-- Uma memória por conversa (nunca global); apagar a conversa, o personagem
+-- ou a conta apaga a memória. esquecer_ate_id: mensagens até este id não
+-- vão mais ao modelo depois que o usuário apaga a memória.
+CREATE TABLE memoria_personagem (
+    conversa_id INTEGER PRIMARY KEY
+        REFERENCES conversa (id) ON DELETE CASCADE,
+    dono_id INTEGER NOT NULL
+        REFERENCES usuario (id) ON DELETE CASCADE,
+    personagem_id INTEGER NOT NULL
+        REFERENCES personagem (id) ON DELETE CASCADE,
+    resumo TEXT NOT NULL DEFAULT ''
+        CHECK (length(resumo) <= 1200),
+    ate_mensagem_id INTEGER NOT NULL DEFAULT 0,
+    esquecer_ate_id INTEGER NOT NULL DEFAULT 0,
+    atualizada_em TEXT NOT NULL
+);
+
 CREATE UNIQUE INDEX ux_conversa_geral ON conversa (tipo) WHERE tipo = 'GERAL';
 CREATE INDEX idx_conversa_personagem ON conversa (personagem_id);
 CREATE INDEX idx_conversa_criador ON conversa (criador_id);
@@ -108,8 +126,9 @@ CREATE INDEX idx_personagem_dono ON personagem (dono_id);
 CREATE INDEX idx_mensagem_conversa ON mensagem (conversa_id, id);
 CREATE INDEX idx_mensagem_remetente ON mensagem (remetente_id);
 CREATE UNIQUE INDEX ux_usuario_apelido_chave ON usuario (apelido_chave);
+CREATE INDEX idx_memoria_dono ON memoria_personagem (dono_id);
 
 INSERT INTO conversa (id, tipo, nome, criado_em)
 VALUES (1, 'GERAL', 'Chat Geral', strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'));
 
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;

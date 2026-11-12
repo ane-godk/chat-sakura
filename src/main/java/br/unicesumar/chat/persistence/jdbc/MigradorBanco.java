@@ -31,6 +31,7 @@ import br.unicesumar.chat.model.NormalizacaoNome;
  *   <li><b>3</b>: {@code conversa_participante.ultima_lida_id} (não lidas).</li>
  *   <li><b>4</b>: {@code usuario.apelido_chave} único (apelidos equivalentes
  *       após normalização Unicode não coexistem).</li>
+ *   <li><b>5</b>: {@code memoria_personagem} (memória resumida por conversa).</li>
  * </ul>
  *
  * Garantias: antes de alterar um banco existente é feito um backup
@@ -56,7 +57,8 @@ public final class MigradorBanco {
             MigradorBanco::migrarParaV1,
             MigradorBanco::migrarParaV2,
             MigradorBanco::migrarParaV3,
-            MigradorBanco::migrarParaV4
+            MigradorBanco::migrarParaV4,
+            MigradorBanco::migrarParaV5
     );
 
     public static final int VERSAO_ATUAL = MIGRACOES.size();
@@ -434,6 +436,36 @@ public final class MigradorBanco {
         try (Statement comando = conexao.createStatement()) {
             comando.executeUpdate(
                     "CREATE UNIQUE INDEX ux_usuario_apelido_chave ON usuario (apelido_chave)"
+            );
+        }
+    }
+
+    /**
+     * Versão 5: {@code memoria_personagem}, a memória resumida de cada
+     * conversa com um personagem. A chave é a conversa (uma memória por
+     * conversa), com o dono e o personagem gravados para conferência; apagar
+     * a conversa, o personagem ou a conta apaga a memória (CASCADE). Como os
+     * ids são AUTOINCREMENT, um personagem recriado nunca herda memória.
+     */
+    static void migrarParaV5(Connection conexao) throws SQLException {
+        try (Statement comando = conexao.createStatement()) {
+            comando.executeUpdate("""
+                    CREATE TABLE memoria_personagem (
+                        conversa_id INTEGER PRIMARY KEY
+                            REFERENCES conversa (id) ON DELETE CASCADE,
+                        dono_id INTEGER NOT NULL
+                            REFERENCES usuario (id) ON DELETE CASCADE,
+                        personagem_id INTEGER NOT NULL
+                            REFERENCES personagem (id) ON DELETE CASCADE,
+                        resumo TEXT NOT NULL DEFAULT ''
+                            CHECK (length(resumo) <= 1200),
+                        ate_mensagem_id INTEGER NOT NULL DEFAULT 0,
+                        esquecer_ate_id INTEGER NOT NULL DEFAULT 0,
+                        atualizada_em TEXT NOT NULL
+                    )
+                    """);
+            comando.executeUpdate(
+                    "CREATE INDEX idx_memoria_dono ON memoria_personagem (dono_id)"
             );
         }
     }

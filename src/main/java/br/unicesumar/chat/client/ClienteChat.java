@@ -67,6 +67,8 @@ public final class ClienteChat extends JFrame {
     // Avisos não modais (um por vez, sem empilhar diálogos).
     private final AvisoDiscreto aviso = new AvisoDiscreto();
 
+    private final BotaoSakura botaoMemoria = new BotaoSakura("Memória", BotaoSakura.Estilo.SECUNDARIO);
+
     // Rede e estado das conversas; a janela apenas monta e coordena a interface.
     private final transient ControladorConversas controlador =
             new ControladorConversas(new VisaoJanela(), notificacoes);
@@ -352,10 +354,18 @@ public final class ClienteChat extends JFrame {
         fundoConversa.setBorder(new EmptyBorder(6, 6, 6, 6));
         fundoConversa.add(rolagem, BorderLayout.CENTER);
 
-        // Nome da conversa ativa acima das mensagens.
+        // Nome da conversa ativa acima das mensagens; em conversas de IA,
+        // o botão "Memória" mostra (e permite apagar) a memória do personagem.
         tituloConversa.setFont(TemaSakura.FONTE_NOME);
         tituloConversa.setBorder(new EmptyBorder(2, 8, 2, 8));
-        fundoConversa.add(tituloConversa, BorderLayout.NORTH);
+        botaoMemoria.setVisible(false);
+        botaoMemoria.setToolTipText("Ver ou apagar a memória deste personagem");
+        botaoMemoria.addActionListener(e -> verMemoria());
+        JPanel topoConversa = new JPanel(new BorderLayout());
+        topoConversa.setOpaque(false);
+        topoConversa.add(tituloConversa, BorderLayout.CENTER);
+        topoConversa.add(botaoMemoria, BorderLayout.EAST);
+        fundoConversa.add(topoConversa, BorderLayout.NORTH);
 
         barraConversas.botaoPrivada.addActionListener(e -> novaConversaPrivada());
         barraConversas.botaoGrupo.addActionListener(e -> novoGrupo());
@@ -666,6 +676,7 @@ public final class ClienteChat extends JFrame {
         public void conversasAtualizadas(java.util.List<ControladorConversas.ItemLateral> itens, long idAtiva) {
             barraConversas.atualizar(itens, idAtiva);
             barraConversas.definirContas(controlador.modoContas());
+            atualizarBotaoMemoria();
         }
 
         // Recuperáveis: faixa discreta, sem diálogo modal.
@@ -708,6 +719,7 @@ public final class ClienteChat extends JFrame {
         @Override
         public void estadoAlterado(ControladorConversas.EstadoConexao estado) {
             atualizarEstado();
+            atualizarBotaoMemoria();
         }
 
         @Override
@@ -767,6 +779,22 @@ public final class ClienteChat extends JFrame {
             return conversa.titulo();
         }
         return conversa.titulo() + " · personagem de IA" + (conversa.gerando() ? " · digitando…" : "");
+    }
+
+    /** O botão só aparece numa conversa de IA, com conta conectada. */
+    private void atualizarBotaoMemoria() {
+        ControladorConversas.Conversa ativa = controlador.conversaAtiva();
+        botaoMemoria.setVisible(controlador.modoContas() && ativa != null
+                && ativa.tipo() == br.unicesumar.chat.model.Conversa.Tipo.IA);
+    }
+
+    /** Memória do personagem ativo: pedida sem bloquear a EDT; o diálogo abre na resposta. */
+    private void verMemoria() {
+        ControladorConversas.Conversa ativa = controlador.conversaAtiva();
+        controlador.verMemoria(memoria -> DialogoMemoria.mostrar(this, ativa.titulo(), memoria,
+                () -> controlador.apagarMemoria(apagada -> aviso.mostrar(
+                        "Memória de " + ativa.titulo() + " apagada. O histórico da conversa foi mantido.",
+                        AvisoDiscreto.Tipo.INFORMACAO))));
     }
 
     private void novoGrupo() {

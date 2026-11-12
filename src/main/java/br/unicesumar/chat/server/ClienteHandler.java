@@ -2,6 +2,7 @@
 package br.unicesumar.chat.server;
 
 import br.unicesumar.chat.model.Conversa;
+import br.unicesumar.chat.model.MemoriaPersonagem;
 import br.unicesumar.chat.model.Mensagem;
 import br.unicesumar.chat.model.PerfilUsuario;
 import br.unicesumar.chat.model.RegrasConta;
@@ -748,6 +749,17 @@ public final class ClienteHandler
 
         liberarMensagensPendentes();
 
+        // Reconexão durante uma geração: o cliente volta a ver "digitando…"
+        // e recebe a resposta (e o CONCLUIDO) quando ela ficar pronta.
+        if (ia != null) {
+            for (ResumoConversa resumo : lista) {
+                long id = resumo.conversa().getId();
+                if (resumo.conversa().getTipo() == Conversa.Tipo.IA && ia.gerando(id)) {
+                    estadoIA(id, ServicoIA.GERANDO, ia.provedor().descricao());
+                }
+            }
+        }
+
         System.out.println(usuario.getNome() + " entrou (v2). Clientes: " + chatService.contarClientes());
     }
 
@@ -829,8 +841,8 @@ public final class ClienteHandler
 
         BaldeTokens balde = switch (r.tipo()) {
             case ENVIAR -> baldeMensagens;
-            case ABRIR_PRIVADA, CRIAR_GRUPO, CRIAR_PERSONAGEM, DEFINIR_AVATAR -> baldeCriacoes;
-            case LISTAR_CONVERSAS, LISTAR_USUARIOS, HISTORICO -> baldeConsultas;
+            case ABRIR_PRIVADA, CRIAR_GRUPO, CRIAR_PERSONAGEM, DEFINIR_AVATAR, MEMORIA_APAGAR -> baldeCriacoes;
+            case LISTAR_CONVERSAS, LISTAR_USUARIOS, HISTORICO, MEMORIA_VER -> baldeConsultas;
             case MARCAR_LIDA -> baldeLeituras;
             case PONG -> null;
         };
@@ -916,6 +928,21 @@ public final class ClienteHandler
             }
 
             case MARCAR_LIDA -> conversas.marcarLida(usuario, r.id("conversaId"), r.id("mensagemId"));
+
+            // Memória do personagem: somente o dono (os demais recebem NAO_ENCONTRADA).
+            case MEMORIA_VER, MEMORIA_APAGAR -> {
+                if (ia == null) {
+                    throw new ConversaException(ConversaException.Codigo.INDISPONIVEL,
+                            "A Sakura IA não está disponível neste servidor.");
+                }
+                long conversaId = r.id("conversaId");
+                MemoriaPersonagem memoria = r.tipo() == ProtocoloJson.TipoRequisicao.MEMORIA_VER
+                        ? ia.memoria(usuario, conversaId)
+                        : ia.apagarMemoria(usuario, conversaId);
+                enviarLinha(ProtocoloJson.eventoMemoria(req, conversaId, memoria.resumo(),
+                        memoria.vazio() && memoria.atualizadaEm().equals(java.time.LocalDateTime.MIN)
+                                ? null : memoria.atualizadaEm().toString()));
+            }
         }
     }
 

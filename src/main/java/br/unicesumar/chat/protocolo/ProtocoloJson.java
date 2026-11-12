@@ -59,7 +59,11 @@ public final class ProtocoloJson {
         /** {req, avatarId}: avatar da galeria. */
         DEFINIR_AVATAR,
         /** {}: resposta ao PING do servidor (sessão ativa). */
-        PONG
+        PONG,
+        /** {req, conversaId}: memória do personagem (somente o dono). */
+        MEMORIA_VER,
+        /** {req, conversaId}: apaga a memória do personagem, sem apagar o histórico. */
+        MEMORIA_APAGAR
     }
 
     public enum TipoEvento {
@@ -69,7 +73,9 @@ public final class ProtocoloJson {
         /** {conversaId, estado: GERANDO|CONCLUIDO|ERRO, mensagem}: geração da IA. */
         IA_STATUS,
         /** {}: verificação de sessão após inatividade; o cliente responde PONG. */
-        PING
+        PING,
+        /** {req, conversaId, resumo, atualizadaEm}: memória do personagem. */
+        MEMORIA
     }
 
     /** Maior inteiro exato em JSON (2^53 - 1). */
@@ -303,6 +309,15 @@ public final class ProtocoloJson {
         return GSON.toJson(objeto);
     }
 
+    /** @param atualizadaEm data da última atualização, ou {@code null} se nunca houve resumo */
+    public static String eventoMemoria(Long req, long conversaId, String resumo, String atualizadaEm) {
+        JsonObject objeto = base(TipoEvento.MEMORIA, req);
+        objeto.addProperty("conversaId", conversaId);
+        objeto.addProperty("resumo", resumo);
+        objeto.addProperty("atualizadaEm", atualizadaEm);
+        return GSON.toJson(objeto);
+    }
+
     public static String eventoPing() {
         return GSON.toJson(base(TipoEvento.PING, null));
     }
@@ -374,6 +389,18 @@ public final class ProtocoloJson {
         /** Estado da IA ({@code IA_STATUS}). */
         public String estado() {
             return dados.get("estado").getAsString();
+        }
+
+        /** Resumo da memória ({@code MEMORIA}); vazio se não houver. */
+        public String resumoMemoria() {
+            JsonElement resumo = dados.get("resumo");
+            return resumo == null || resumo.isJsonNull() ? "" : resumo.getAsString();
+        }
+
+        /** Data da última atualização da memória, ou {@code null}. */
+        public String memoriaAtualizadaEm() {
+            JsonElement data = dados.get("atualizadaEm");
+            return data == null || data.isJsonNull() ? null : data.getAsString();
         }
 
         private <T> List<T> lista(String campo, Class<T> classe) {

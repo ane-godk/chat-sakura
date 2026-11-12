@@ -452,7 +452,7 @@ No cliente Swing, a perda de conexão é exibida como mensagem `SISTEMA: ...`. O
 
 ## 15. Testes automatizados
 
-A suíte da versão final possui **306 testes JUnit 5**. Na última execução de `mvn clean test`, os 306 foram aprovados, com 0 falhas e 0 erros.
+A suíte da entrega original possuía **306 testes JUnit 5**. Ao fim da Fase 4 (seção 16.10), são **423 testes**, todos aprovados em `mvn clean test`, com 0 falhas e 0 erros.
 
 Nenhum teste usa o banco principal nem a internet:
 - os testes de persistência usam arquivos SQLite temporários (`@TempDir`);
@@ -631,7 +631,48 @@ A demonstração prática final usou o servidor real, um SQLite temporário e tr
 - temas Claro e Noturno;
 - exportação TXT.
 
-**Qwen real:** a integração está implementada e testada contra um servidor que imita a API, mas **não foi verificada com o serviço real**. O ambiente de desenvolvimento não tinha chave do Model Studio nem Ollama instalado. O procedimento para o teste real está no README.
+**Qwen real:** na entrega original, a integração foi testada só contra um servidor que imita a API. Depois, ela foi verificada com o modelo `qwen2.5:3b` local pelo Ollama (seção 16.10).
+
+### 16.10 Auditoria técnica e Fases 1 a 4
+
+Depois da entrega, uma auditoria apontou riscos de segurança, estabilidade e qualidade. Eles foram tratados em quatro fases, cada uma com testes automatizados (bancos e certificados temporários, provedores de IA simulados) e uma demonstração com o servidor real.
+
+**Fase 1: robustez do servidor.**
+- **Fila de saída por cliente** (`FilaSaida`): limitada e com um único escritor. O broadcast só enfileira, sem fazer I/O dentro de `synchronized (clientes)` ou de `bloqueioMensagens`; um cliente que não lê enche a própria fila e é desconectado, sem atrasar os demais.
+- **Vagas e prazos:** limite global e por IP de conexões (`ControleConexoes`), prazo total para concluir a entrada e heartbeat PING/PONG para sessões v2. O cliente legado não precisa de heartbeat.
+- **Proteção do login** (`ProtecaoAutenticacao`): falhas limitadas por IP e por login com bloqueio temporário, e cálculos PBKDF2 simultâneos limitados. O algoritmo de hash não mudou.
+- **Sessão por conta:** a identidade é o id da conta. Um novo login substitui a sessão anterior, que não consegue mais enviar.
+- **Limites de taxa por sessão** (*token bucket*).
+- **Isolamento da IA:** a participação na conversa é verificada antes do estado da IA.
+
+**Fase 2: identidade, banco e cliente.**
+- **Normalização Unicode** dos nomes (`NormalizacaoNome`: NFKC e minúsculas com `Locale.ROOT`), com recusa de caracteres invisíveis, espaços Unicode e alfabetos misturados.
+- **Migração v4:** `apelido_chave` único. Uma colisão interrompe a migração sem alterar contas.
+- **SQLite:** WAL, `busy_timeout` e transações `BEGIN IMMEDIATE`, com migração única por inicialização.
+- **Cliente:**
+  - escritor serial que preserva a ordem dos envios;
+  - nova tentativa quando o histórico falha;
+  - avisos não modais (`AvisoDiscreto`);
+  - reconexão com *backoff* que pede o login de novo, sem guardar a senha, e restaura as conversas.
+
+**Fase 3: inteligência artificial.**
+- **Prompt em blocos** (`MontadorPrompt`): identidade, personalidade e contexto como dados delimitados, estilo de fala, memória e regras. O histórico tem só mensagens reais.
+- **Orçamento de contexto** que preserva identidade, personalidade e regras.
+- **Memória individual por conversa** (migração v5, `memoria_personagem`): resumo a cada 10 mensagens, feito só com as falas do usuário, filtrado contra dados sensíveis e instruções (`FiltroMemoria`). Só o dono pode vê-la ou apagá-la; apagar mantém o histórico.
+- **Ollama pela API nativa** (`num_ctx`, `keep_alive` por pedido, `repeat_penalty`), uma geração por vez no modo local, com fila limitada.
+- **Respostas truncadas** marcadas com "[…]".
+
+**Fase 4: TLS.**
+- **APIs e protocolos:** `ContextoTls`, `TransporteServidor` e `TransporteCliente` usam o JSSE padrão (`SSLContext`, `SSLServerSocket`, `SSLSocket`, `KeyManagerFactory`, `TrustManagerFactory`), somente com TLS 1.3 e 1.2.
+- **Certificados:** o servidor carrega certificado e chave de um keystore cuja senha vem do ambiente e é apagada da memória após o uso.
+- **Validação no cliente:** cadeia contra o truststore, nome ou IP pelo SAN (identificação de *endpoint* "HTTPS") e datas do certificado, **antes de enviar qualquer dado**.
+- **Sem rebaixamento:** nunca há TrustManager permissivo, verificação de nome desligada nem tentativa automática sem TLS.
+- **TLS é o padrão:** sem keystore, o servidor não inicia. TCP sem TLS existe apenas com `CHAT_SAKURA_MODO=tcp-desenvolvimento` e escuta só no *loopback*.
+- **Handshake no servidor:** acontece antes de qualquer leitura ou escrita, com prazo; uma falha fecha o socket e libera a vaga.
+- **Reconexão:** abre nova conexão TLS, valida o certificado de novo e recusa rebaixar para TCP.
+- **Demonstração:** um relé local gravou os bytes enviados pelo cliente; neles não aparecem senha (nem em Base64), comandos nem mensagens. Não foi feita captura de pacotes da rede.
+
+**Resultado:** 423 testes automatizados aprovados ao fim da Fase 4.
 
 ## 17. Funcionalidades extras
 
@@ -648,28 +689,24 @@ A demonstração prática final usou o servidor real, um SQLite temporário e tr
 
 ## 18. Limitações conhecidas
 
-1. **Sem TLS.** O tráfego TCP não é criptografado. As senhas ficam protegidas no banco (PBKDF2), mas trafegam codificadas em Base64, que não é criptografia. O uso deve se restringir a uma rede local confiável.
-2. **Qwen real não verificado neste ambiente.** O provedor foi testado contra um servidor que imita a API, sem chave do Model Studio nem Ollama disponíveis. Os nomes de modelo, as regiões e as cotas gratuitas do Model Studio podem mudar; o endereço e o modelo podem ser ajustados por variáveis de ambiente.
-3. **Cliente que deixa de ler o socket.**
-   - O envio a um socket acontece dentro das seções críticas.
-   - Se um cliente parar de ler sem fechar a conexão, o buffer TCP pode encher e travar as entregas, porque não há tempo limite de escrita.
-   - Com clientes ativos ou desconectados normalmente, o problema não ocorre.
-4. **Uma thread por conexão, sem limite.** É adequado ao escopo acadêmico, mas não a milhares de conexões.
-5. **Limite de tentativas de login só por conexão.** Não há limite por endereço IP.
-6. **Maiúsculas acentuadas.** No banco, a comparação de apelidos sem diferenciar maiúsculas cobre apenas letras ASCII (`COLLATE NOCASE`).
-7. **Grupos simples.** Não há edição de membros, saída nem exclusão de grupos e personagens.
-8. **Não lidas do Chat Geral.** O contador vale apenas durante a sessão; nas demais conversas, ele é persistido.
-9. **Horário sem fuso.** O horário é gravado como `LocalDateTime` do relógio do servidor.
-10. **Exportação.** O TXT contém a conversa carregada na janela (até as 50 mensagens mais recentes por conversa, mais as recebidas na sessão), e não o histórico completo do banco.
+Várias limitações da entrega original foram resolvidas nas Fases 1 a 4 (seção 16.10): TLS, cliente lento, limite de conexões, tentativas de login por IP e normalização Unicode. As que permanecem:
+
+1. **Certificado autoassinado.** Cada cliente precisa receber o certificado público do servidor. Não há uma autoridade certificadora nem renovação automática.
+2. **Clientes legados sem TLS.** Clientes antigos em texto puro só funcionam com o servidor no modo de desenvolvimento.
+3. **Qualidade do modelo local.** O `qwen2.5:3b` mantém o tom dos personagens, mas comete erros de português e de fatos; às vezes não usa a memória disponível. Na demonstração da Fase 4, o resumo trocou "gato" por "cachorro", provavelmente induzido pelo exemplo do prompt de resumo. Fica registrado para ajuste numa fase de IA.
+4. **Homóglifos de um único alfabeto.** Um nome inteiro em cirílico parecido com um latino ("АНА") é aceito.
+5. **Grupos simples.** Não há edição de membros, saída nem exclusão de grupos e personagens.
+6. **Não lidas do Chat Geral.** O contador vale apenas durante a sessão; nas demais conversas, ele é persistido.
+7. **Horário sem fuso.** O horário é gravado como `LocalDateTime` do relógio do servidor.
+8. **Exportação.** O TXT contém a conversa carregada na janela, não o histórico completo do banco.
 
 ## 19. Melhorias futuras
 
-- TLS (`SSLServerSocket`) para proteger o tráfego e as credenciais.
-- Fila de saída por cliente, retirando o I/O das seções críticas e descartando clientes lentos.
-- `ExecutorService` com limite para as conexões e comando de desligamento ordenado.
+- Revisar o prompt de resumo da memória (sem exemplo que induza fatos) e medir a qualidade com mais conversas.
+- Comando de desligamento ordenado do servidor.
 - Respostas da IA por *streaming* e exibição progressiva.
 - Edição de grupos (adicionar e remover membros, sair) e exclusão de personagens.
-- Limite de tentativas de login por endereço e atraso progressivo.
+- Autoridade certificadora interna para a rede local, evitando distribuir certificados autoassinados.
 - Paginação do histórico na interface (o protocolo já aceita `antesDe`).
 - Horário com fuso (`Instant`) e configuração de porta e banco por arquivo de propriedades.
 
@@ -691,4 +728,4 @@ Sobre essa base, a versão final entrega:
 - avatares persistentes;
 - a Sakura IA com personagens personalizados e histórico próprio, integrada ao **Qwen** por uma interface desacoplada.
 
-As garantias de concorrência continuam valendo: as conversas têm bloqueios independentes, a IA roda fora de qualquer bloqueio e a EDT nunca faz rede. As 306 verificações automatizadas e as 41 da demonstração prática sustentam essas afirmações. As limitações acima indicam a evolução natural do projeto, sem alterar a arquitetura em camadas.
+As garantias de concorrência continuam valendo: as conversas têm bloqueios independentes, a IA roda fora de qualquer bloqueio e a EDT nunca faz rede. Os 423 testes automatizados e as demonstrações práticas de cada fase sustentam essas afirmações. As limitações acima indicam a evolução natural do projeto, sem alterar a arquitetura em camadas.

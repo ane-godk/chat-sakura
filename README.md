@@ -21,7 +21,7 @@ Ele oferece **Chat Geral**, **conversas privadas**, **grupos**, contas com senha
 - **Segurança:** o servidor define a identidade e verifica a autorização em cada operação.
 - **Protocolo:** JSON validado (protocolo v2), com compatibilidade com o protocolo de texto original.
 - **Interface:** sons, animações, preferências, menu "Copiar mensagem" e exportação TXT da conversa ativa.
-- **Testes:** 409 testes automatizados.
+- **Testes:** 423 testes automatizados.
 
 ## Tecnologias
 
@@ -88,11 +88,13 @@ Na **raiz do projeto**:
 mvn clean test
 ```
 
-### 2. Iniciar o servidor
+### 2. Iniciar o servidor (TLS)
 
-Na **raiz do projeto**:
+O servidor usa **TLS por padrão**. Na primeira vez, crie o certificado de desenvolvimento conforme [Conexão segura (TLS)](#conexão-segura-tls) (uma única vez). Depois, na **raiz do projeto**:
 
 ```powershell
+$env:CHAT_SAKURA_TLS_KEYSTORE = "$env:USERPROFILE\chat-sakura-certificados\servidor.p12"
+$env:CHAT_SAKURA_TLS_KEYSTORE_SENHA = Read-Host "Senha do keystore"   # não fica no histórico do terminal
 mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
 ```
 
@@ -102,16 +104,21 @@ Se tudo der certo, o terminal mostra:
 
 ```text
 Servidor iniciado na porta 12345
+Transporte: TLS (TLSv1.3, TLSv1.2) em todas as interfaces
 Aguardando conexões...
 ```
+
+Sem o certificado configurado, o servidor **não inicia** e explica o que falta; ele nunca passa sozinho para TCP sem criptografia. Para testes locais rápidos sem certificado, use o modo de desenvolvimento descrito em [Conexão segura (TLS)](#conexão-segura-tls).
 
 Para encerrar, use `Ctrl + C` (se o Windows perguntar se deseja finalizar o arquivo em lotes, responda `S`).
 
 ### 3. Iniciar os clientes
 
-Em **outro terminal**, na **raiz do projeto**:
+Em **outro terminal**, na **raiz do projeto**, aponte o cliente para o certificado público do servidor (o truststore) e inicie-o:
 
 ```powershell
+$env:CHAT_SAKURA_TRUSTSTORE = "$env:USERPROFILE\chat-sakura-certificados\confianca.p12"
+$env:CHAT_SAKURA_TRUSTSTORE_SENHA = Read-Host "Senha do truststore"
 java -cp "target\classes;$env:USERPROFILE\.m2\repository\com\google\code\gson\gson\2.11.0\gson-2.11.0.jar" br.unicesumar.chat.client.ClienteChat
 ```
 
@@ -131,7 +138,7 @@ Na janela, clique em **Conectar** e escolha um modo:
 | **Criar conta** | login, apelido (nome exibido no chat), senha e confirmação |
 | **Visitante** | apenas um nome, sem conta (como nas versões anteriores) |
 
-Em todos os modos, o endereço do servidor é `localhost` e a porta é `12345`. Veja [Contas e autenticação](#contas-e-autenticação).
+Em todos os modos, o endereço do servidor é `localhost` e a porta é `12345`. A conexão usa TLS; a caixa **Sem TLS (somente desenvolvimento local)** só deve ser marcada com um servidor no modo de desenvolvimento. Veja [Contas e autenticação](#contas-e-autenticação).
 
 **Queda da conexão (com conta).** Se a conexão cair sem você clicar em **Sair**, o selo mostra "Reconectando..." e uma faixa acima da conversa informa as tentativas:
 - O cliente tenta alcançar o servidor com intervalos crescentes: 1 s, 2 s, 4 s... até 30 s.
@@ -167,6 +174,102 @@ mvn -q -f ..\chat-sakura\pom.xml compile exec:java "-Dexec.mainClass=br.unicesum
 
 Nesse caso, o banco é criado em `chat-sakura-demo\chat-sakura.db`, e o banco do projeto não é alterado. Os clientes continuam sendo iniciados na raiz do projeto.
 
+## Conexão segura (TLS)
+
+O cliente e o servidor conversam por **TLS 1.3** (ou 1.2, se a outra ponta não tiver o 1.3). Versões antigas (SSLv3, TLS 1.0 e 1.1) são recusadas. Tudo o que vai pela rede é criptografado: o login, a senha, as mensagens, os comandos e os históricos.
+
+**Antes de enviar qualquer dado, o cliente:**
+- confere se o certificado foi emitido por quem ele confia (o truststore);
+- confere se o certificado vale para o nome ou IP digitado (campo SAN);
+- confere se o certificado está dentro da validade.
+
+Se algo falhar, a conexão é encerrada **sem enviar nada**, e uma mensagem explica o motivo. O cliente nunca tenta de novo sem TLS por conta própria, inclusive na reconexão automática, que refaz toda a validação.
+
+### Criar o certificado de desenvolvimento (uma vez, PowerShell)
+
+Os arquivos ficam **fora do projeto**. O `.gitignore` também recusa `*.p12`, `*.jks`, `*.pfx` e a pasta `certificados/`. O `keytool` vem com o JDK.
+
+```powershell
+mkdir "$env:USERPROFILE\chat-sakura-certificados"
+cd "$env:USERPROFILE\chat-sakura-certificados"
+$senhaKs = Read-Host "Senha do keystore do servidor"
+$senhaTs = Read-Host "Senha do truststore do cliente"
+
+# 1. Par de chaves do servidor (chave privada + certificado), válido para localhost e 127.0.0.1
+keytool -genkeypair -alias chat-sakura -keyalg EC -groupname secp256r1 -dname "CN=localhost" `
+  -ext "SAN=dns:localhost,ip:127.0.0.1" -validity 365 `
+  -keystore servidor.p12 -storetype PKCS12 -storepass $senhaKs
+
+# 2. Exporta só o certificado público (pode ser copiado para os clientes)
+keytool -exportcert -rfc -alias chat-sakura -keystore servidor.p12 -storepass $senhaKs -file chat-sakura.crt
+
+# 3. Truststore dos clientes, com o certificado público
+keytool -importcert -noprompt -alias chat-sakura -file chat-sakura.crt `
+  -keystore confianca.p12 -storetype PKCS12 -storepass $senhaTs
+```
+
+`servidor.p12` contém a **chave privada**: fica só no computador do servidor e nunca vai para o Git nem para os clientes. `confianca.p12` (ou o `chat-sakura.crt`) é público.
+
+### Variáveis de ambiente
+
+| Variável | Onde | Descrição |
+|---|---|---|
+| `CHAT_SAKURA_TLS_KEYSTORE` | servidor | Caminho do keystore (PKCS12 ou JKS) com o certificado e a chave privada. Obrigatória no modo TLS. |
+| `CHAT_SAKURA_TLS_KEYSTORE_SENHA` | servidor | Senha do keystore. Lida do ambiente, nunca do código; não aparece nos logs. |
+| `CHAT_SAKURA_MODO` | servidor | `tls` (padrão) ou `tcp-desenvolvimento`. |
+| `CHAT_SAKURA_ENDERECO` | servidor | Interface de escuta. Padrão: todas no TLS; somente `127.0.0.1` no modo de desenvolvimento. |
+| `CHAT_SAKURA_TRUSTSTORE` | cliente | Truststore com o certificado do servidor. Sem ela, vale o truststore do Java, que não conhece certificados autoassinados. |
+| `CHAT_SAKURA_TRUSTSTORE_SENHA` | cliente | Senha do truststore. |
+
+Para não deixar senhas no histórico do terminal, use `Read-Host`, como nos exemplos. A negociação TLS tem prazo de 10 s nos dois lados. Uma conexão que não negocia é fechada e libera a vaga, preservando os limites de conexões, as tentativas de login e a proteção contra clientes lentos.
+
+### Computadores diferentes na rede local
+
+O certificado precisa conter o endereço que os clientes vão digitar. Inclua o IP (ou o nome) do servidor no SAN ao criar o par de chaves, por exemplo para o IP `192.168.0.10`:
+
+```powershell
+keytool -genkeypair -alias chat-sakura -keyalg EC -groupname secp256r1 -dname "CN=chat-sakura" `
+  -ext "SAN=dns:localhost,ip:127.0.0.1,ip:192.168.0.10" -validity 365 `
+  -keystore servidor.p12 -storetype PKCS12 -storepass $senhaKs
+```
+
+Depois repita os passos 2 e 3, copie o `confianca.p12` (ou o `chat-sakura.crt`) para cada cliente e, no diálogo do cliente, informe `192.168.0.10` como endereço. Libere a porta 12345 (TCP) no firewall do Windows do servidor.
+
+### Renovar ou substituir o certificado
+
+Os comandos acima **não sobrescrevem** arquivos existentes: o `keytool` recusa um alias repetido. Para renovar:
+1. Mova (ou renomeie) o `servidor.p12` e o `confianca.p12` antigos.
+2. Gere de novo com os passos 1 a 3.
+3. Reinicie o servidor.
+4. Distribua o novo `confianca.p12` aos clientes.
+
+Um cliente com o certificado antigo recebe "certificado não confiável" até atualizar o truststore.
+
+### Problemas de certificado
+
+| Mensagem no cliente | Causa e solução |
+|---|---|
+| "O certificado do servidor não é confiável" | O truststore não tem o certificado deste servidor (ou `CHAT_SAKURA_TRUSTSTORE` não está definida). Importe o `chat-sakura.crt`. |
+| "O certificado do servidor não corresponde ao endereço ..." | O nome ou IP digitado não está no SAN. Use o endereço que consta no certificado ou gere um certificado com esse endereço. |
+| "O certificado do servidor expirou" | Renove o certificado (seção acima). |
+| "O servidor não respondeu com TLS" | O servidor está no modo de desenvolvimento sem TLS. Inicie-o com o certificado. |
+| "O servidor encerrou a conexão" | Cliente marcado como "Sem TLS" falando com um servidor TLS. Desmarque a opção. |
+
+### Modo de desenvolvimento (sem TLS)
+
+Somente para testes no próprio computador:
+
+```powershell
+$env:CHAT_SAKURA_MODO = "tcp-desenvolvimento"
+mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
+```
+
+- O servidor escuta **só em 127.0.0.1**, salvo se `CHAT_SAKURA_ENDERECO` indicar outra interface; nesse caso o log mostra um aviso.
+- No cliente, marque **Sem TLS (somente desenvolvimento local)**.
+- Nesse modo, senhas e mensagens trafegam legíveis.
+- Clientes legados em texto puro só funcionam nesse modo.
+- Na reconexão de uma sessão que usava TLS, a opção "Sem TLS" fica bloqueada.
+
 ## Porta e banco de dados
 
 - **Porta:** `12345`, fixa no código (`Servidor.PORTA_PADRAO`).
@@ -198,7 +301,7 @@ Cada conta tem um ID persistente, um **login** (de 3 a 30 caracteres: letras sem
   - Toda linha recebida pelo servidor tem limite de 4096 caracteres.
   - A especificação completa está em `ProtocoloSakura`.
 
-> **Segurança:** o PBKDF2 protege as senhas **armazenadas no banco**, mas **não** protege o tráfego. A conexão TCP não usa TLS, e o Base64 é só uma codificação: a senha trafega legível para quem puder observar a rede. O sistema é adequado para uso acadêmico em rede local confiável e **não deve ser exposto publicamente sem TLS**.
+> **Segurança:** o PBKDF2 protege as senhas **armazenadas no banco**, e o **TLS** protege o tráfego: o cliente valida o certificado e o nome do servidor antes de enviar o login, as mensagens ou qualquer comando. O Base64 do handshake é só uma codificação; por isso, sem TLS (modo de desenvolvimento), a senha trafega legível na rede. Veja [Conexão segura (TLS)](#conexão-segura-tls).
 
 - **Proteção contra força bruta** (`ProtecaoAutenticacao`). Todos os bloqueios são temporários, e a resposta é a mesma para logins existentes e inexistentes (`MUITAS_TENTATIVAS`):
   - 10 falhas de um IP em 5 minutos bloqueiam esse IP por 5 minutos.
@@ -415,7 +518,7 @@ Na raiz do projeto:
 mvn clean test
 ```
 
-A suíte tem **409 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
+A suíte tem **423 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
 
 - robustez do servidor: cliente lento, fila de saída, ordem, vagas global e por IP, prazo de entrada, heartbeat v2, substituição de sessão, limites de taxa e de tentativas de login;
 - usuários, mensagens e repositórios;
@@ -437,9 +540,8 @@ A suíte tem **409 testes JUnit 5**. Todos usam bancos SQLite temporários, e ne
 
 - **Não execute `mvn clean` com o servidor ou os clientes abertos.** O comando apaga a pasta `target`, que eles estão usando.
 - Execute apenas um servidor por vez: a porta `12345` não pode estar em uso.
-- **Sem TLS:** as senhas são protegidas no banco (PBKDF2), mas o tráfego TCP não é criptografado. Use o sistema apenas em rede local confiável.
-- **Qwen real não verificado** no ambiente de desenvolvimento, por falta de chave e de Ollama. A integração foi testada contra um servidor que imita a API. Os nomes de modelo e as cotas gratuitas do Model Studio podem mudar.
-- Um cliente que pare de ler o socket sem fechar a conexão pode atrasar as entregas aos demais.
+- **TLS com certificado autoassinado:** cada cliente precisa receber o certificado público do servidor (truststore). Clientes legados em texto puro, como versões antigas ou `telnet`, não falam TLS: só funcionam com um servidor no modo de desenvolvimento.
+- **Qwen:** verificado com o `qwen2.5:3b` local pelo Ollama. A API do Model Studio foi testada contra um servidor que imita a API; os nomes de modelo e as cotas gratuitas podem mudar.
 - Grupos e personagens não podem ser editados nem excluídos pela interface.
 - A exportação TXT inclui a conversa carregada na janela, não o histórico completo do banco.
 

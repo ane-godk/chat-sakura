@@ -42,12 +42,18 @@ Convenções:
 
 **Comandos:**
 
+O servidor usa TLS: crie antes o certificado de desenvolvimento (README, seção "Conexão segura (TLS)").
+
 - **Servidor (T1, na pasta `chat-sakura-demo`):**
   ```powershell
+  $env:CHAT_SAKURA_TLS_KEYSTORE = "$env:USERPROFILE\chat-sakura-certificados\servidor.p12"
+  $env:CHAT_SAKURA_TLS_KEYSTORE_SENHA = Read-Host "Senha do keystore"
   mvn -q -f ..\chat-sakura\pom.xml compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
   ```
 - **Cliente (T2, T3 e T4, na pasta `chat-sakura`):**
   ```powershell
+  $env:CHAT_SAKURA_TRUSTSTORE = "$env:USERPROFILE\chat-sakura-certificados\confianca.p12"
+  $env:CHAT_SAKURA_TRUSTSTORE_SENHA = Read-Host "Senha do truststore"
   java -cp "target\classes;$env:USERPROFILE\.m2\repository\com\google\code\gson\gson\2.11.0\gson-2.11.0.jar" br.unicesumar.chat.client.ClienteChat
   ```
 

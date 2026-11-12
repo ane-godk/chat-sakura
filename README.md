@@ -21,7 +21,7 @@ Ele oferece **Chat Geral**, **conversas privadas**, **grupos**, contas com senha
 - **Segurança:** o servidor define a identidade e verifica a autorização em cada operação.
 - **Protocolo:** JSON validado (protocolo v2), com compatibilidade com o protocolo de texto original.
 - **Interface:** sons, animações, preferências, menu "Copiar mensagem" e exportação TXT da conversa ativa.
-- **Testes:** 306 testes automatizados.
+- **Testes:** 338 testes automatizados.
 
 ## Tecnologias
 
@@ -190,6 +190,32 @@ Cada conta tem um ID persistente, um **login** (de 3 a 30 caracteres: letras sem
 
 > **Segurança:** o PBKDF2 protege as senhas **armazenadas no banco**, mas **não** protege o tráfego. A conexão TCP não usa TLS, e o Base64 é só uma codificação: a senha trafega legível para quem puder observar a rede. O sistema é adequado para uso acadêmico em rede local confiável e **não deve ser exposto publicamente sem TLS**.
 
+- **Proteção contra força bruta** (`ProtecaoAutenticacao`). Todos os bloqueios são temporários, e a resposta é a mesma para logins existentes e inexistentes (`MUITAS_TENTATIVAS`):
+  - 10 falhas de um IP em 5 minutos bloqueiam esse IP por 5 minutos.
+  - 20 falhas de um mesmo login (de qualquer IP) em 15 minutos bloqueiam esse login por 15 minutos. Um único IP é barrado antes de chegar a esse número, então não consegue bloquear a conta de outra pessoa.
+  - Cada IP pode fazer 5 cadastros a cada 10 minutos.
+  - Os cálculos PBKDF2 simultâneos são limitados ao número de processadores (mínimo 2).
+- **Uma sessão por conta:** um novo login válido substitui a sessão anterior da mesma conta. A sessão antiga recebe `SESSAO_SUBSTITUIDA` e é fechada; não há aviso de saída nem de nova entrada. Visitantes continuam com a regra do nome único.
+
+## Limites e robustez do servidor
+
+O servidor protege-se de clientes lentos, conexões abandonadas e excesso de pedidos (`LimitesServidor`):
+
+| Proteção | Padrão | Variável de ambiente |
+|---|---|---|
+| Conexões simultâneas | 200 | `CHAT_SAKURA_MAX_CONEXOES` |
+| Conexões por IP | 10 | `CHAT_SAKURA_MAX_CONEXOES_IP` |
+| Tempo para concluir nome ou login | 30 s | `CHAT_SAKURA_PRAZO_ENTRADA_S` |
+| PING v2 após inatividade (queda sem resposta em mais um intervalo) | 30 s | `CHAT_SAKURA_PING_S` |
+| Linhas pendentes na fila de saída de cada sessão | 1000 | `CHAT_SAKURA_FILA_SAIDA` |
+| Mensagens por sessão (rajada de 20) | 120 por minuto | `CHAT_SAKURA_MENSAGENS_POR_MINUTO` |
+| Criações (privada, grupo, personagem, avatar) | rajada de 5, 10 por minuto | — |
+| Consultas (listas e históricos) | rajada de 20, 120 por minuto | — |
+
+- **Cliente lento:** cada sessão tem uma fila de saída limitada e um único escritor, e os broadcasts apenas enfileiram, sem I/O sob bloqueio. Uma sessão que não lê enche a própria fila e é desconectada, sem atrasar as demais.
+- **Heartbeat:** só sessões v2 recebem `PING` e respondem `PONG`, o que o cliente atual faz sozinho. Clientes legados não precisam de heartbeat e podem ficar parados; conexões mortas são detectadas pelo keepalive TCP. Um cliente v2 anterior a esta versão, sem `PONG`, cai depois de cerca de 60 s sem enviar nada.
+- **Excesso de pedidos:** é recusado na hora, sem espera, com `ERRO` código `LIMITE` (ou um aviso `SISTEMA:` no legado), no máximo um aviso por segundo.
+
 ## Conversas privadas e grupos
 
 Com uma conta, a janela mostra uma **barra lateral** com:
@@ -334,8 +360,9 @@ Na raiz do projeto:
 mvn clean test
 ```
 
-A suíte tem **306 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
+A suíte tem **338 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
 
+- robustez do servidor: cliente lento, fila de saída, ordem, vagas global e por IP, prazo de entrada, heartbeat v2, substituição de sessão, limites de taxa e de tentativas de login;
 - usuários, mensagens e repositórios;
 - regras do chat e concorrência (`ExecutorService` e `awaitTermination`, sem `Thread.sleep`);
 - migrações do banco (0→3), com backup e rollback;

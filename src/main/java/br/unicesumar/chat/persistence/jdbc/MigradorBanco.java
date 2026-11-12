@@ -10,8 +10,13 @@ import java.sql.Statement;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+
+import br.unicesumar.chat.model.NormalizacaoNome;
 
 /**
  * Migrações versionadas do banco SQLite, controladas por
@@ -24,6 +29,8 @@ import java.util.Objects;
  *   <li><b>2</b>: usuários, conversas, participantes, pares privados e
  *       personagens; toda mensagem pertence a uma conversa.</li>
  *   <li><b>3</b>: {@code conversa_participante.ultima_lida_id} (não lidas).</li>
+ *   <li><b>4</b>: {@code usuario.apelido_chave} único (apelidos equivalentes
+ *       após normalização Unicode não coexistem).</li>
  * </ul>
  *
  * Garantias: antes de alterar um banco existente é feito um backup
@@ -48,7 +55,8 @@ public final class MigradorBanco {
     static final List<Migracao> MIGRACOES = List.of(
             MigradorBanco::migrarParaV1,
             MigradorBanco::migrarParaV2,
-            MigradorBanco::migrarParaV3
+            MigradorBanco::migrarParaV3,
+            MigradorBanco::migrarParaV4
     );
 
     public static final int VERSAO_ATUAL = MIGRACOES.size();
@@ -363,6 +371,69 @@ public final class MigradorBanco {
             comando.executeUpdate(
                     "ALTER TABLE conversa_participante ADD COLUMN "
                             + "ultima_lida_id INTEGER NOT NULL DEFAULT 0"
+            );
+        }
+    }
+
+    /**
+     * Versão 4: {@code usuario.apelido_chave}, a chave normalizada do apelido
+     * (NFKC + minúsculas, {@link NormalizacaoNome}), com índice único. O
+     * apelido exibido não muda.
+     *
+     * Contas existentes com apelidos equivalentes ("Ána" e "ÁNA", "Ana" e
+     * "Ａｎａ") impedem a migração: nenhuma conta é escolhida, renomeada ou
+     * excluída automaticamente. O erro lista as contas envolvidas e a
+     * transação é desfeita (o banco fica na v3, e o backup permanece).
+     */
+    static void migrarParaV4(Connection conexao) throws SQLException {
+
+        try (Statement comando = conexao.createStatement()) {
+            comando.executeUpdate("ALTER TABLE usuario ADD COLUMN apelido_chave TEXT");
+        }
+
+        Map<String, List<String>> contasPorChave = new LinkedHashMap<>();
+        Map<Long, String> chavePorId = new LinkedHashMap<>();
+
+        try (Statement comando = conexao.createStatement();
+             ResultSet contas = comando.executeQuery("SELECT id, apelido FROM usuario ORDER BY id")) {
+            while (contas.next()) {
+                long id = contas.getLong("id");
+                String apelido = contas.getString("apelido");
+                String chave = NormalizacaoNome.chave(apelido);
+                chavePorId.put(id, chave);
+                contasPorChave.computeIfAbsent(chave, c -> new ArrayList<>())
+                        .add("id " + id + " (\"" + apelido + "\")");
+            }
+        }
+
+        List<String> colisoes = new ArrayList<>();
+        contasPorChave.forEach((chave, contas) -> {
+            if (contas.size() > 1) {
+                colisoes.add(String.join(", ", contas));
+            }
+        });
+
+        if (!colisoes.isEmpty()) {
+            throw new SQLException(
+                    "Há contas com apelidos equivalentes após a normalização Unicode: "
+                            + String.join("; ", colisoes)
+                            + ". Nenhuma conta foi alterada. Renomeie manualmente uma"
+                            + " das contas de cada grupo e inicie o servidor novamente."
+            );
+        }
+
+        try (PreparedStatement atualizar = conexao.prepareStatement(
+                "UPDATE usuario SET apelido_chave = ? WHERE id = ?")) {
+            for (Map.Entry<Long, String> conta : chavePorId.entrySet()) {
+                atualizar.setString(1, conta.getValue());
+                atualizar.setLong(2, conta.getKey());
+                atualizar.executeUpdate();
+            }
+        }
+
+        try (Statement comando = conexao.createStatement()) {
+            comando.executeUpdate(
+                    "CREATE UNIQUE INDEX ux_usuario_apelido_chave ON usuario (apelido_chave)"
             );
         }
     }

@@ -285,6 +285,43 @@ class ClienteHandlerAutenticacaoTest {
     }
 
     @Test
+    void nomesUnicodeEquivalentesOuInvisiveisNaoPodemPersonificarContas() throws Exception {
+        iniciarServidor(true);
+        Cliente elia = autenticado(ProtocoloSakura.comandoCadastrar("elia", "Élia", SENHA.toCharArray()));
+        assertTrue(ProtocoloSakura.lerResposta(elia.ler()).sucesso());
+        esperarEstadoInicial(elia);
+        elia.close();
+
+        // Visitantes com nomes equivalentes à conta (caixa Unicode, largura total, acento combinado).
+        for (String nome : new String[] {"ÉLIA", "élia", "Ｅｌｉａ", "Élia", "ELIA"}) {
+            Cliente impostor = new Cliente();
+            impostor.enviar(nome);
+            assertEquals(ClienteHandler.MENSAGEM_NOME_RESERVADO, impostor.ler(), nome);
+            assertTrue(impostor.encerrada(), nome);
+        }
+
+        // Invisíveis, espaço não convencional e alfabetos misturados são recusados para visitantes.
+        for (String nome : new String[] {"Élia​", "Él­ia", "Élia ", "Аna"}) {
+            Cliente invalido = new Cliente();
+            invalido.enviar(nome);
+            assertTrue(invalido.ler().startsWith("SISTEMA: Nome inválido:"), nome);
+            assertTrue(invalido.encerrada(), nome);
+        }
+
+        // Cadastro com apelido equivalente também é recusado.
+        Cliente copia = autenticado(ProtocoloSakura.comandoCadastrar("copia", "ＥＬＩＡ", SENHA.toCharArray()));
+        assertEquals("APELIDO_EM_USO", ProtocoloSakura.lerResposta(copia.ler()).codigo());
+
+        Cliente misturado = autenticado(ProtocoloSakura.comandoCadastrar("misto", "Аna", SENHA.toCharArray()));
+        assertEquals("DADOS_INVALIDOS", ProtocoloSakura.lerResposta(misturado.ler()).codigo());
+
+        // Um visitante comum segue entrando no Chat Geral.
+        Cliente caio = new Cliente();
+        caio.enviar("Caio");
+        assertEquals("SISTEMA: Conectado como Caio", caio.ler());
+    }
+
+    @Test
     void senhaIncorretaDevePermitirNovaTentativaAteOLimite() throws Exception {
         iniciarServidor(true);
         cadastrarAna().close();

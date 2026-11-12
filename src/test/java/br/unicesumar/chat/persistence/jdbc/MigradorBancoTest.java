@@ -468,7 +468,9 @@ class MigradorBancoTest {
         assertEquals(2, versao(arquivo));
         List<List<String>> mensagensAntes = consultar(arquivo, "SELECT * FROM mensagem ORDER BY id");
 
-        MigradorBanco.Resultado resultado = migrador(arquivo).migrar();
+        // Só a etapa v2→v3 (a v4 tem testes próprios).
+        MigradorBanco.Resultado resultado = new MigradorBanco(new ConnectionFactory(arquivo.toString()),
+                MigradorBanco.MIGRACOES.subList(0, 3), RELOGIO).migrar();
 
         assertEquals(2, resultado.versaoAnterior());
         assertEquals(3, versao(arquivo));

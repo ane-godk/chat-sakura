@@ -1,7 +1,6 @@
 
 package br.unicesumar.chat.model;
 
-import java.util.Locale;
 import java.util.Objects;
 
 public final class Usuario {
@@ -10,6 +9,7 @@ public final class Usuario {
 
     private final Long id;
     private final String nome;
+    private final String chave;
 
     /** Participante sem conta (cliente legado ou visitante). */
     public Usuario(String nome) {
@@ -50,6 +50,7 @@ public final class Usuario {
 
         this.id = id;
         this.nome = nomeTratado;
+        this.chave = NormalizacaoNome.chave(nomeTratado);
     }
 
     public String getNome() {
@@ -66,9 +67,9 @@ public final class Usuario {
     }
 
     /*
-     * A igualdade continua pelo nome (sem diferenciar maiúsculas): é a
-     * regra que impede dois participantes ativos com o mesmo nome visível,
-     * tenham ou não conta.
+     * A igualdade continua pelo nome, agora pela chave normalizada (NFKC +
+     * minúsculas, ver NormalizacaoNome): é a regra que impede dois
+     * participantes ativos com nomes equivalentes, tenham ou não conta.
      */
 
     @Override
@@ -82,14 +83,17 @@ public final class Usuario {
             return false;
         }
 
-        return nome.equalsIgnoreCase(outro.nome);
+        return chave.equals(outro.chave);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(
-                nome.toLowerCase(Locale.ROOT)
-        );
+        return Objects.hash(chave);
+    }
+
+    /** Chave normalizada do nome (comparação, nunca exibida). */
+    public String getChave() {
+        return chave;
     }
 
     @Override

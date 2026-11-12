@@ -48,12 +48,21 @@ public final class RegrasConta {
         return normalizado;
     }
 
-    /** Apelido exibido no chat; forma NFC para comparações estáveis. */
+    /**
+     * Apelido exibido no chat (forma NFC preservada). Também rejeita
+     * caracteres invisíveis e mistura de alfabetos ({@link NormalizacaoNome}).
+     * Comparações usam {@link #chaveApelido}.
+     */
     public static String normalizarApelido(String apelido) {
 
         String normalizado = apelido == null
                 ? ""
                 : Normalizer.normalize(apelido.strip(), Normalizer.Form.NFC);
+
+        String problema = NormalizacaoNome.problema(normalizado);
+        if (problema != null) {
+            throw new IllegalArgumentException(problema);
+        }
 
         if (!APELIDO.matcher(normalizado).matches()) {
             throw new IllegalArgumentException(
@@ -64,6 +73,19 @@ public final class RegrasConta {
         }
 
         return normalizado;
+    }
+
+    /** Chave normalizada (NFKC + minúsculas) usada para unicidade e reservas. */
+    public static String chaveApelido(String apelido) {
+        return NormalizacaoNome.chave(apelido);
+    }
+
+    /**
+     * Nome de visitante: as mesmas regras do apelido de conta, para que não
+     * haja nomes com espaços invisíveis, controles ou alfabetos misturados.
+     */
+    public static String normalizarNomeVisitante(String nome) {
+        return normalizarApelido(nome);
     }
 
     /** Valida sem copiar a senha; a mensagem nunca a inclui. */

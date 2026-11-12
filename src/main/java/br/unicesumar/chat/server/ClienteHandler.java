@@ -4,6 +4,7 @@ package br.unicesumar.chat.server;
 import br.unicesumar.chat.model.Conversa;
 import br.unicesumar.chat.model.Mensagem;
 import br.unicesumar.chat.model.PerfilUsuario;
+import br.unicesumar.chat.model.RegrasConta;
 import br.unicesumar.chat.model.Usuario;
 import br.unicesumar.chat.protocolo.ProtocoloJson;
 import br.unicesumar.chat.protocolo.ProtocoloSakura;
@@ -277,6 +278,9 @@ public final class ClienteHandler
                 // o nome de uma conta cadastrada.
                 try {
                     usuario = new Usuario(nome);
+                    // Mesmas regras dos apelidos de conta: sem invisíveis,
+                    // espaços Unicode nem mistura de alfabetos.
+                    RegrasConta.normalizarNomeVisitante(nome);
                 } catch (IllegalArgumentException e) {
                     enviarLinha(
                             "SISTEMA: Nome inválido: " + e.getMessage()

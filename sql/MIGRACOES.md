@@ -1,6 +1,6 @@
 # Migrações do banco SQLite
 
-O esquema do banco é criado e atualizado pelo `MigradorBanco` (`br.unicesumar.chat.persistence.jdbc`). Ele roda sempre que o servidor inicia, porque o `JdbcMensagemRepository` o chama no construtor. A versão do esquema fica gravada no próprio arquivo, em `PRAGMA user_version`.
+O esquema do banco é criado e atualizado pelo `MigradorBanco` (`br.unicesumar.chat.persistence.jdbc`). Ele roda **uma vez** a cada inicialização do servidor, chamado por `ConnectionFactory.garantirEsquema()` na montagem dos serviços. Os construtores dos repositórios também chamam esse método, mas só a primeira chamada trabalha, então nenhum repositório usa um esquema não migrado. A versão do esquema fica gravada no próprio arquivo, em `PRAGMA user_version`.
 
 O esquema atual está em [criar_tabelas.sql](criar_tabelas.sql). Um teste automatizado confere que esse script produz exatamente o mesmo esquema que o migrador.
 
@@ -12,6 +12,20 @@ O esquema atual está em [criar_tabelas.sql](criar_tabelas.sql). Um teste automa
 | 1 | `mensagem` com a coluna `tipo` (`MENSAGEM`, `ENTRADA` ou `SAIDA`). Corresponde à migração que já existia no repositório. |
 | 2 | Tabelas `usuario`, `conversa`, `conversa_participante`, `conversa_privada` e `personagem`. A conversa Geral é criada com `id = 1`. Cada mensagem ganha `conversa_id` e `remetente_id`. |
 | 3 | Coluna `conversa_participante.ultima_lida_id` (padrão 0). Guarda a última mensagem lida por participante, para que o contador de não lidas sobreviva à reconexão e ao reinício. É um `ADD COLUMN` simples, que não altera nenhum dado existente. |
+| 4 | Coluna `usuario.apelido_chave` com índice único. É a chave normalizada do apelido (NFKC + minúsculas com `Locale.ROOT`, calculada em Java por `NormalizacaoNome`). O apelido exibido não muda. |
+
+### Colisões na migração para a versão 4
+
+Antes de criar o índice único, o migrador calcula a chave de cada conta. Se duas contas tiverem apelidos equivalentes (por exemplo "Ána" e "ÁNA", ou "Ana" e "Ａｎａ" em largura total):
+
+- a migração é interrompida com um erro que lista os ids e os apelidos envolvidos;
+- nenhuma conta é escolhida, renomeada ou excluída automaticamente;
+- a transação é desfeita, o banco permanece na versão 3, e o backup criado antes continua disponível;
+- para seguir, renomeie manualmente uma das contas de cada grupo e inicie o servidor de novo.
+
+## Configuração do SQLite
+
+Toda conexão usa `foreign_keys = ON`, `busy_timeout` de 5 s (em vez de falhar na hora com `SQLITE_BUSY`) e transações `BEGIN IMMEDIATE`, que reservam a escrita no início e evitam o impasse de duas transações tentando promover leitura para escrita. Depois da migração o banco passa ao modo **WAL**, em que leitores não bloqueiam o escritor. O WAL cria os arquivos auxiliares `-wal` e `-shm` enquanto houver conexões abertas; eles já são ignorados no Git. O backup das migrações continua consistente, porque `VACUUM INTO` lê também o conteúdo do `-wal`. Para copiar um banco manualmente, pare o servidor antes.
 
 ### O que a migração para a versão 2 faz com o histórico
 

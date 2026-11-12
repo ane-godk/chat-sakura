@@ -98,6 +98,10 @@ public final class Servidor {
         public static Servicos montar(ConnectionFactory fabrica, HashSenha hashSenha, Clock relogio,
                                       ProvedorIA provedor, LimitesServidor limites) {
 
+            // Migração única, antes de qualquer repositório (os construtores
+            // dos repositórios apenas confirmam que ela já ocorreu).
+            fabrica.garantirEsquema();
+
             MensagemRepository mensagens = new JdbcMensagemRepository(fabrica);
             JdbcUsuarioRepository usuarios = new JdbcUsuarioRepository(fabrica);
             JdbcConversaRepository repositorioConversas = new JdbcConversaRepository(fabrica);

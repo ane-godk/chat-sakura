@@ -23,7 +23,7 @@ public final class JdbcConversaRepository implements ConversaRepository {
     public JdbcConversaRepository(ConnectionFactory connectionFactory) {
         this.connectionFactory = Objects.requireNonNull(
                 connectionFactory, "A fábrica de conexões é obrigatória.");
-        new MigradorBanco(connectionFactory).migrar();
+        connectionFactory.garantirEsquema();
     }
 
     @Override

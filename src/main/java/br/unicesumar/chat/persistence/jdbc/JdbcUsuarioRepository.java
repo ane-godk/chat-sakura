@@ -1,5 +1,6 @@
 package br.unicesumar.chat.persistence.jdbc;
 
+import br.unicesumar.chat.model.NormalizacaoNome;
 import br.unicesumar.chat.model.PerfilUsuario;
 import br.unicesumar.chat.persistence.UsuarioRepository;
 
@@ -29,7 +30,7 @@ public final class JdbcUsuarioRepository implements UsuarioRepository {
                 connectionFactory, "A fábrica de conexões é obrigatória.");
 
         // Garante o esquema v2 (idempotente se já estiver atualizado).
-        new MigradorBanco(connectionFactory).migrar();
+        connectionFactory.garantirEsquema();
     }
 
     /**
@@ -63,8 +64,8 @@ public final class JdbcUsuarioRepository implements UsuarioRepository {
 
                 try (PreparedStatement comando = conexao.prepareStatement("""
                         INSERT INTO usuario
-                            (login, apelido, senha_hash, senha_sal, avatar_id, criado_em)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                            (login, apelido, senha_hash, senha_sal, avatar_id, criado_em, apelido_chave)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                         RETURNING id
                         """)) {
 
@@ -74,6 +75,7 @@ public final class JdbcUsuarioRepository implements UsuarioRepository {
                     comando.setString(4, senhaSal);
                     comando.setString(5, avatarId);
                     comando.setString(6, criadoEm.toString());
+                    comando.setString(7, NormalizacaoNome.chave(apelido));
 
                     try (ResultSet chave = comando.executeQuery()) {
                         if (!chave.next()) {
@@ -90,9 +92,12 @@ public final class JdbcUsuarioRepository implements UsuarioRepository {
             } catch (SQLException | RuntimeException e) {
                 conexao.rollback();
 
+                // Última defesa: índices únicos de login e de apelido_chave.
                 if (e instanceof SQLException sql && sql.getMessage() != null
                         && sql.getMessage().contains("UNIQUE")) {
-                    throw new ContaDuplicadaException(ContaDuplicadaException.Campo.LOGIN);
+                    throw new ContaDuplicadaException(sql.getMessage().contains("apelido_chave")
+                            ? ContaDuplicadaException.Campo.APELIDO
+                            : ContaDuplicadaException.Campo.LOGIN);
                 }
 
                 throw e;
@@ -202,15 +207,22 @@ public final class JdbcUsuarioRepository implements UsuarioRepository {
         }
     }
 
+    /**
+     * {@code true} se o nome equivale (chave NFKC + minúsculas) ao login ou ao
+     * apelido de alguma conta. Logins são ASCII em minúsculas, então a chave
+     * também os compara corretamente.
+     */
     private static boolean nomeEmUso(Connection conexao, String nome) throws SQLException {
+
+        String chave = NormalizacaoNome.chave(nome);
 
         try (PreparedStatement comando = conexao.prepareStatement(
                 "SELECT 1 FROM usuario "
-                        + "WHERE login = ? COLLATE NOCASE OR apelido = ? COLLATE NOCASE "
+                        + "WHERE login = ? COLLATE NOCASE OR apelido_chave = ? "
                         + "LIMIT 1")) {
 
-            comando.setString(1, nome);
-            comando.setString(2, nome);
+            comando.setString(1, chave);
+            comando.setString(2, chave);
 
             try (ResultSet resultado = comando.executeQuery()) {
                 return resultado.next();

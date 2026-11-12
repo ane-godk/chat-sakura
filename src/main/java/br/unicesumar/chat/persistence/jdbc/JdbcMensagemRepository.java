@@ -35,7 +35,7 @@ public final class JdbcMensagemRepository
 
         // Cria ou migra o esquema (MigradorBanco). Em caso de falha lança
         // MigracaoBancoException e o servidor não inicia.
-        new MigradorBanco(connectionFactory).migrar();
+        connectionFactory.garantirEsquema();
     }
 
     private static TipoMensagem lerTipo(String valor) {

@@ -1,4 +1,4 @@
--- Chat Sakura - esquema atual do banco SQLite (versão 3).
+-- Chat Sakura - esquema atual do banco SQLite (versão 4).
 --
 -- O servidor NÃO executa este arquivo: o esquema é criado e migrado por
 -- br.unicesumar.chat.persistence.jdbc.MigradorBanco na inicialização
@@ -22,6 +22,10 @@ CREATE TABLE usuario (
     senha_sal TEXT NOT NULL CHECK (length(senha_sal) > 0),
     avatar_id TEXT NOT NULL DEFAULT 'sakura',
     criado_em TEXT NOT NULL
+    -- Versão 4: chave normalizada do apelido (NFKC + minúsculas, calculada
+    -- em Java por NormalizacaoNome), única. A vírgula no início reproduz o
+    -- texto que o ALTER TABLE grava no esquema.
+    , apelido_chave TEXT
 );
 
 -- Personagens de IA criados por um usuário.
@@ -103,8 +107,9 @@ CREATE INDEX idx_privada_maior ON conversa_privada (usuario_maior_id);
 CREATE INDEX idx_personagem_dono ON personagem (dono_id);
 CREATE INDEX idx_mensagem_conversa ON mensagem (conversa_id, id);
 CREATE INDEX idx_mensagem_remetente ON mensagem (remetente_id);
+CREATE UNIQUE INDEX ux_usuario_apelido_chave ON usuario (apelido_chave);
 
 INSERT INTO conversa (id, tipo, nome, criado_em)
 VALUES (1, 'GERAL', 'Chat Geral', strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'));
 
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;

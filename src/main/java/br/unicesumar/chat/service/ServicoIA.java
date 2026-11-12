@@ -121,6 +121,10 @@ public final class ServicoIA {
      */
     public void verificarEnvio(Usuario usuario, long conversaId) throws ConversaException {
 
+        // Autorização primeiro: quem não participa recebe NAO_ENCONTRADA sem
+        // saber se a conversa é de IA, se está gerando, nem gastar cota.
+        servicoConversas.exigirAcesso(usuario, conversaId);
+
         if (!isConversaIA(conversaId)) {
             return;
         }

@@ -23,4 +23,12 @@ public interface ConexaoCliente {
     /** Estado da geração de resposta da IA (GERANDO, CONCLUIDO ou ERRO). Somente sessões v2. */
     default void estadoIA(long conversaId, String estado, String mensagem) throws Exception {
     }
+
+    /**
+     * A sessão foi substituída por um novo login da mesma conta e já saiu do
+     * registro: deve avisar o cliente e fechar a conexão. Chamado sob os
+     * bloqueios do chat, portanto não pode bloquear nem fazer I/O direto.
+     */
+    default void encerrar(String motivo) {
+    }
 }

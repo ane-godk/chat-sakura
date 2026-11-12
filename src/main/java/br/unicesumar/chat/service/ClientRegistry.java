@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -22,7 +23,16 @@ public final class ClientRegistry {
     private final List<ConexaoCliente> clientes =
             Collections.synchronizedList(new ArrayList<>());
 
-    public void registrar(ConexaoCliente cliente) {
+    /**
+     * Registra a sessão. Contas autenticadas são identificadas pelo id: um
+     * novo login da mesma conta substitui a sessão anterior, que sai do
+     * registro aqui mesmo (de forma atômica) e é devolvida para ser
+     * encerrada. Sessões sem conta seguem a regra do nome único.
+     *
+     * @return a sessão substituída, se houver
+     * @throws IllegalArgumentException se outra sessão usa o mesmo nome
+     */
+    public Optional<ConexaoCliente> registrar(ConexaoCliente cliente) {
 
         Objects.requireNonNull(cliente, "Cliente obrigatório.");
 
@@ -34,7 +44,22 @@ public final class ClientRegistry {
         // Verificação e inclusão atômicas: impede nomes duplicados.
         synchronized (clientes) {
 
+            ConexaoCliente substituida = null;
+
             for (ConexaoCliente existente : clientes) {
+
+                if (existente == cliente) {
+                    throw new IllegalArgumentException(
+                            "Já existe um usuário conectado com esse nome."
+                    );
+                }
+
+                Long id = usuario.getId();
+
+                if (id != null && id.equals(existente.getUsuario().getId())) {
+                    substituida = existente;
+                    continue;
+                }
 
                 if (existente.getUsuario().equals(usuario)) {
                     throw new IllegalArgumentException(
@@ -43,8 +68,36 @@ public final class ClientRegistry {
                 }
             }
 
+            if (substituida != null) {
+                removerPorIdentidade(substituida);
+            }
+
             clientes.add(cliente);
+            return Optional.ofNullable(substituida);
         }
+    }
+
+    /** {@code true} se esta mesma sessão (por identidade) está registrada. */
+    public boolean contem(ConexaoCliente cliente) {
+        synchronized (clientes) {
+            for (ConexaoCliente existente : clientes) {
+                if (existente == cliente) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    // Por identidade: duas sessões nunca são "iguais" entre si.
+    private boolean removerPorIdentidade(ConexaoCliente cliente) {
+        for (int i = 0; i < clientes.size(); i++) {
+            if (clientes.get(i) == cliente) {
+                clientes.remove(i);
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -53,7 +106,7 @@ public final class ClientRegistry {
      */
     public boolean remover(ConexaoCliente cliente) {
         synchronized (clientes) {
-            return clientes.remove(cliente);
+            return removerPorIdentidade(cliente);
         }
     }
 

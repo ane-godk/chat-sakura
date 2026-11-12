@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
@@ -20,6 +21,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -65,6 +68,63 @@ class ClienteHandlerTest {
         }
     }
 
+    /**
+     * Entrega {@code inicio} e só libera {@code resto} depois do portão:
+     * como a escrita agora é assíncrona (fila de saída), o teste segura o
+     * "/sair" até a ação disparada pela saída terminar.
+     */
+    private static final class EntradaComPortao extends InputStream {
+
+        private final InputStream inicio;
+        private final InputStream resto;
+        private final CountDownLatch portao;
+
+        EntradaComPortao(String inicio, String resto, CountDownLatch portao) {
+            this.inicio = new ByteArrayInputStream(inicio.getBytes(StandardCharsets.UTF_8));
+            this.resto = new ByteArrayInputStream(resto.getBytes(StandardCharsets.UTF_8));
+            this.portao = portao;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int lido = inicio.read();
+            if (lido != -1) {
+                return lido;
+            }
+            try {
+                if (!portao.await(5, TimeUnit.SECONDS)) {
+                    throw new IOException("Portão não liberado.");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+            return resto.read();
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            if (len == 0) {
+                return 0;
+            }
+            int primeiro = read();
+            if (primeiro == -1) {
+                return -1;
+            }
+            b[off] = (byte) primeiro;
+            int total = 1;
+            // Continua só com o que já está disponível, sem bloquear.
+            while (total < len && (inicio.available() > 0 || (portao.getCount() == 0 && resto.available() > 0))) {
+                int proximo = read();
+                if (proximo == -1) {
+                    break;
+                }
+                b[off + total++] = (byte) proximo;
+            }
+            return total;
+        }
+    }
+
     private static final class SocketFalso extends Socket {
 
         private final InputStream entrada;
@@ -72,9 +132,11 @@ class ClienteHandlerTest {
         private boolean fechado;
 
         SocketFalso(String entrada, OutputStream saida) {
-            this.entrada = new ByteArrayInputStream(
-                    entrada.getBytes(StandardCharsets.UTF_8)
-            );
+            this(new ByteArrayInputStream(entrada.getBytes(StandardCharsets.UTF_8)), saida);
+        }
+
+        SocketFalso(InputStream entrada, OutputStream saida) {
+            this.entrada = entrada;
             this.saida = saida;
         }
 
@@ -126,12 +188,16 @@ class ClienteHandlerTest {
 
         // Broadcast disparado com o cliente já registrado e antes do
         // envio do histórico: a janela da condição de corrida.
-        saida.acao = () -> servico.enviarMensagem(
-                new Usuario("Bia"),
-                "Durante a conexão"
-        );
+        CountDownLatch portao = new CountDownLatch(1);
+        saida.acao = () -> {
+            servico.enviarMensagem(
+                    new Usuario("Bia"),
+                    "Durante a conexão"
+            );
+            portao.countDown();
+        };
 
-        SocketFalso socket = new SocketFalso("Ana\n/sair\n", saida);
+        SocketFalso socket = new SocketFalso(new EntradaComPortao("Ana\n", "/sair\n", portao), saida);
 
         new ClienteHandler(socket, servico).run();
 
@@ -208,13 +274,17 @@ class ClienteHandlerTest {
         ByteArrayOutputStream saidaDuplicada = new ByteArrayOutputStream();
 
         // Enquanto Ana está conectada, outro cliente tenta usar "ana".
-        saidaAna.acao = () -> new ClienteHandler(
-                new SocketFalso("ana\n", saidaDuplicada),
-                servico
-        ).run();
+        CountDownLatch portao = new CountDownLatch(1);
+        saidaAna.acao = () -> {
+            new ClienteHandler(
+                    new SocketFalso("ana\n", saidaDuplicada),
+                    servico
+            ).run();
+            portao.countDown();
+        };
 
         new ClienteHandler(
-                new SocketFalso("Ana\n/sair\n", saidaAna),
+                new SocketFalso(new EntradaComPortao("Ana\n", "/sair\n", portao), saidaAna),
                 servico
         ).run();
 

@@ -57,7 +57,9 @@ public final class ProtocoloJson {
         /** {req, nome, personalidade, contexto}: personagem de IA e sua conversa. */
         CRIAR_PERSONAGEM,
         /** {req, avatarId}: avatar da galeria. */
-        DEFINIR_AVATAR
+        DEFINIR_AVATAR,
+        /** {}: resposta ao PING do servidor (sessão ativa). */
+        PONG
     }
 
     public enum TipoEvento {
@@ -65,7 +67,9 @@ public final class ProtocoloJson {
         /** {req?, perfil:{id, apelido, avatar}}: perfil público alterado. */
         PERFIL,
         /** {conversaId, estado: GERANDO|CONCLUIDO|ERRO, mensagem}: geração da IA. */
-        IA_STATUS
+        IA_STATUS,
+        /** {}: verificação de sessão após inatividade; o cliente responde PONG. */
+        PING
     }
 
     /** Maior inteiro exato em JSON (2^53 - 1). */
@@ -297,6 +301,10 @@ public final class ProtocoloJson {
         objeto.addProperty("estado", estado);
         objeto.addProperty("mensagem", mensagem);
         return GSON.toJson(objeto);
+    }
+
+    public static String eventoPing() {
+        return GSON.toJson(base(TipoEvento.PING, null));
     }
 
     public static String eventoErro(Long req, String codigo, String mensagem) {

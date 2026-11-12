@@ -393,7 +393,13 @@ final class ConexaoServidor {
 
         while (conectado.get() && (linha = entrada.readLine()) != null) {
             try {
-                ouvinte.eventoRecebido(ProtocoloJson.lerEvento(linha));
+                ProtocoloJson.Evento evento = ProtocoloJson.lerEvento(linha);
+                if (evento.tipo() == ProtocoloJson.TipoEvento.PING) {
+                    // Heartbeat: confirma que a sessão continua ativa.
+                    escreverLinha(ProtocoloJson.requisicao(ProtocoloJson.TipoRequisicao.PONG, null));
+                    continue;
+                }
+                ouvinte.eventoRecebido(evento);
             } catch (ProtocoloJson.ProtocoloInvalidoException | RuntimeException e) {
                 System.err.println("Evento ignorado: " + e.getMessage());
             }

@@ -238,6 +238,66 @@ class ServicoIATest {
     }
 
     @Test
+    void usuarioNaoAutorizadoNaoDeveSaberDoPersonagemAlheioNemGastarCota() throws Exception {
+        CountDownLatch entrou = new CountDownLatch(1);
+        CountDownLatch liberar = new CountDownLatch(1);
+        ProvedorIA lento = new ProvedorIA() {
+            @Override
+            public String gerar(PedidoIA pedido) {
+                entrou.countDown();
+                try {
+                    liberar.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return "Dattebayo!";
+            }
+
+            @Override
+            public String descricao() {
+                return "Qwen teste";
+            }
+        };
+        montar(lento);
+        Sessao sBia = conectar(bia);
+        long naruto = criarNaruto();
+
+        // Ana conversa com o personagem; a resposta está sendo gerada.
+        enviar(ana, naruto, "Oi, Naruto!");
+        assertTrue(entrou.await(5, TimeUnit.SECONDS));
+
+        // Bia tenta usar o id da conversa de IA da Ana: mesma resposta de uma
+        // conversa inexistente, nunca LIMITE ("gerando") — e muitas vezes, além da cota.
+        ConversaException alheia = assertThrows(ConversaException.class,
+                () -> servicos.ia().verificarEnvio(bia, naruto));
+        ConversaException inexistente = assertThrows(ConversaException.class,
+                () -> servicos.ia().verificarEnvio(bia, 987_654));
+        assertEquals(NAO_ENCONTRADA, alheia.getCodigo());
+        assertEquals(inexistente.getCodigo(), alheia.getCodigo());
+        assertEquals(inexistente.getMessage(), alheia.getMessage(), "Nada revela que a conversa existe");
+
+        for (int i = 0; i < ServicoIA.GERACOES_POR_MINUTO * 2; i++) {
+            assertEquals(NAO_ENCONTRADA, codigo(() -> enviar(bia, naruto, "invasão")));
+        }
+
+        liberar.countDown();
+        assertTrue(servicos.ia().aguardar(5_000));
+        assertTrue(sBia.estados.isEmpty(), "Bia não recebe o estado da geração alheia: " + sBia.estados);
+
+        // A cota de IA da Bia continua intacta para o próprio personagem.
+        long sasuke = servicos.ia().criarPersonagem(bia, "Sasuke", "sério e reservado", "").conversa().getId();
+        for (int i = 0; i < ServicoIA.GERACOES_POR_MINUTO; i++) {
+            enviar(bia, sasuke, "treino " + i);
+            assertTrue(servicos.ia().aguardar(5_000));
+        }
+
+        // Nada da Bia entrou no histórico da Ana, e a Bia não recebeu nada dele.
+        assertEquals(List.of("Oi, Naruto!", "Dattebayo!"), servicos.conversas().historico(ana, naruto, null, 10)
+                .stream().map(Mensagem::getConteudo).toList());
+        assertTrue(sBia.mensagens.stream().noneMatch(m -> m.getConversaId() == naruto));
+    }
+
+    @Test
     void limiteDeUsoPorContaDeveSerAplicado() throws Exception {
         montar(new ProvedorIAFalso());
         long naruto = criarNaruto();

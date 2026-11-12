@@ -15,25 +15,70 @@ import br.unicesumar.chat.service.ResumoConversa;
 import br.unicesumar.chat.service.ServicoAutenticacao;
 import br.unicesumar.chat.service.ServicoConversas;
 import br.unicesumar.chat.service.ServicoIA;
+import br.unicesumar.chat.service.SessaoEncerradaException;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.InetAddress;
 import java.net.Socket;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Uma conexão com um cliente (legado em texto ou protocolo v2 em JSON).
+ *
+ * Robustez:
+ * <ul>
+ *   <li>toda escrita passa pela {@link FilaSaida} (limitada, um único
+ *       escritor): broadcasts só enfileiram, nunca fazem I/O sob bloqueio;
+ *       fila cheia derruba a sessão (cliente que não lê);</li>
+ *   <li>prazo total para concluir a entrada (nome ou login);</li>
+ *   <li>v2: PING após inatividade e queda se não houver resposta; o legado
+ *       não precisa de heartbeat e pode ficar parado à vontade;</li>
+ *   <li>limites de taxa por sessão (token bucket, sem espera);</li>
+ *   <li>um novo login da mesma conta substitui esta sessão, que é
+ *       encerrada e não consegue mais enviar.</li>
+ * </ul>
+ */
 public final class ClienteHandler
         implements Runnable, ConexaoCliente {
 
     static final int QUANTIDADE_HISTORICO = 20;
 
+    static final String MENSAGEM_LIMITE =
+            "Muitas solicitações em pouco tempo. Aguarde um instante.";
+    static final String MENSAGEM_LIMITE_LEGADO =
+            "SISTEMA: Você está enviando mensagens rápido demais. Aguarde um instante.";
+    static final String MENSAGEM_PRAZO_ENTRADA =
+            "SISTEMA: Tempo para entrar esgotado. Conecte-se novamente.";
+
+    /** Prazos e encerramentos agendados de todas as sessões (uma thread). */
+    private static final ScheduledExecutorService VIGIA =
+            Executors.newSingleThreadScheduledExecutor(tarefa -> {
+                Thread thread = new Thread(tarefa, "chat-vigia");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    private static final long AVISO_LIMITE_NANOS = 1_000_000_000L;
+
     private final Socket socket;
     private final ChatService chatService;
+    private final LimitesServidor limites;
+    private final Runnable aoEncerrar;
+    private final String origem;
 
     // Protegidos pelo monitor deste handler (this).
     private final List<Mensagem> pendentes = new ArrayList<>();
@@ -51,12 +96,27 @@ public final class ClienteHandler
     // Sessão autenticada no protocolo v2 (eventos JSON); definido uma vez.
     private volatile boolean sessaoJson;
 
+    // Substituída por outro login ou derrubada: não atende mais pedidos.
+    private volatile boolean encerrada;
+    private volatile boolean entradaConcluida;
+    private final AtomicBoolean socketFechado = new AtomicBoolean();
+    private final AtomicBoolean vagaLiberada = new AtomicBoolean();
+
+    private final BaldeTokens baldeMensagens;
+    private final BaldeTokens baldeCriacoes;
+    private final BaldeTokens baldeConsultas;
+    private final BaldeTokens baldeLeituras;
+    private final BaldeTokens baldeLinhas;
+    private boolean avisouLimite;
+    private long ultimoAvisoLimite;
+
     private LeitorLinhas entrada;
-    private BufferedWriter saida;
+    private volatile FilaSaida saida;
+    private ScheduledFuture<?> prazoEntrada;
 
     // Identidade da sessão: definida somente pelo servidor, uma única vez,
     // a partir do apelido (modo legado) ou da conta autenticada.
-    private Usuario usuario;
+    private volatile Usuario usuario;
 
     public ClienteHandler(
             Socket socket,
@@ -86,6 +146,22 @@ public final class ClienteHandler
             ServicoConversas conversas,
             ServicoIA ia
     ) {
+        this(socket, chatService, autenticacao, conversas, ia, LimitesServidor.padrao(), () -> { });
+    }
+
+    /**
+     * @param limites    limites de recursos desta sessão
+     * @param aoEncerrar chamado uma única vez ao fim da sessão (libera a vaga)
+     */
+    public ClienteHandler(
+            Socket socket,
+            ChatService chatService,
+            ServicoAutenticacao autenticacao,
+            ServicoConversas conversas,
+            ServicoIA ia,
+            LimitesServidor limites,
+            Runnable aoEncerrar
+    ) {
         this.ia = ia;
 
         if ((autenticacao == null) != (conversas == null)) {
@@ -106,6 +182,17 @@ public final class ClienteHandler
         );
 
         this.autenticacao = autenticacao;
+        this.limites = Objects.requireNonNull(limites, "Limites obrigatórios.");
+        this.aoEncerrar = Objects.requireNonNull(aoEncerrar);
+
+        InetAddress endereco = socket.getInetAddress();
+        this.origem = endereco == null ? null : endereco.getHostAddress();
+
+        this.baldeMensagens = limites.mensagens().novoBalde(limites.relogioNanos());
+        this.baldeCriacoes = limites.criacoes().novoBalde(limites.relogioNanos());
+        this.baldeConsultas = limites.consultas().novoBalde(limites.relogioNanos());
+        this.baldeLeituras = limites.leituras().novoBalde(limites.relogioNanos());
+        this.baldeLinhas = limites.linhas().novoBalde(limites.relogioNanos());
     }
 
     @Override
@@ -114,6 +201,8 @@ public final class ClienteHandler
         boolean registrado = false;
 
         try {
+
+            configurarSocket();
 
             entrada = new LeitorLinhas(
                     new BufferedReader(
@@ -125,12 +214,30 @@ public final class ClienteHandler
                     ProtocoloSakura.TAMANHO_MAXIMO_LINHA
             );
 
-            saida = new BufferedWriter(
-                    new OutputStreamWriter(
-                            socket.getOutputStream(),
-                            StandardCharsets.UTF_8
-                    )
+            saida = new FilaSaida(
+                    limites.capacidadeFila(),
+                    new BufferedWriter(
+                            new OutputStreamWriter(
+                                    socket.getOutputStream(),
+                                    StandardCharsets.UTF_8
+                            )
+                    ),
+                    "chat-saida-" + socket.getPort(),
+                    this::clienteLento,
+                    this::fecharSocket
             );
+            // Encerrada por substituição ou prazo: fecha assim que o aviso
+            // final for entregue (a leitura bloqueada termina na hora).
+            saida.aoConcluir(() -> {
+                if (encerrada) {
+                    fecharSocket();
+                }
+            });
+            saida.iniciar();
+
+            // Prazo total da entrada: impede conexões paradas no handshake.
+            prazoEntrada = VIGIA.schedule(this::prazoDeEntradaEsgotado,
+                    limites.prazoEntrada().toMillis(), TimeUnit.MILLISECONDS);
 
             enviarLinha(
                     "SISTEMA: Bem-vindo ao Chat Sakura!"
@@ -211,6 +318,8 @@ public final class ClienteHandler
                 return;
             }
 
+            concluirEntrada();
+
             if (sessaoJson) {
                 // Protocolo v2: estado inicial e eventos JSON até o fim.
                 iniciarSessaoJson(historico);
@@ -234,62 +343,7 @@ public final class ClienteHandler
                             + chatService.contarClientes()
             );
 
-            while (true) {
-
-                // Depois da entrada, toda linha é conteúdo do chat: comandos
-                // de autenticação não trocam a identidade da sessão.
-                String texto;
-
-                try {
-                    texto = entrada.lerLinha();
-                } catch (LeitorLinhas.LinhaMuitoLongaException e) {
-                    enviarLinha(
-                            "SISTEMA: Mensagem inválida: a linha excede o"
-                                    + " limite do protocolo."
-                    );
-                    continue;
-                }
-
-                if (texto == null) {
-                    break;
-                }
-
-                texto = texto.trim();
-
-                if (texto.equalsIgnoreCase("/sair")) {
-                    break;
-                }
-
-                if (texto.isEmpty()) {
-                    continue;
-                }
-
-                try {
-
-                    chatService.enviarMensagem(
-                            usuario,
-                            texto
-                    );
-
-                } catch (IllegalArgumentException e) {
-
-                    enviarLinha(
-                            "SISTEMA: Mensagem inválida: "
-                                    + e.getMessage()
-                    );
-
-                } catch (IllegalStateException e) {
-
-                    enviarLinha(
-                            "SISTEMA: Não foi possível salvar a mensagem."
-                    );
-
-                    System.err.println(
-                            "Erro de persistência: "
-                                    + e.getMessage()
-                    );
-                }
-            }
+            executarSessaoLegada();
 
         } catch (IOException e) {
 
@@ -297,11 +351,19 @@ public final class ClienteHandler
                     "Conexão encerrada: " + e.getMessage()
             );
 
+        } catch (SessaoEncerradaException e) {
+
+            // Substituída por um novo login: nada mais a fazer.
+
         } finally {
+
+            concluirEntrada();
 
             if (registrado) {
 
-                // Também emite o aviso de saída (uma única vez).
+                // Também emite o aviso de saída (uma única vez). Uma sessão
+                // substituída já saiu do registro: nem aviso, nem remoção
+                // da sessão nova.
                 chatService.desconectarCliente(this);
 
                 System.out.println(
@@ -311,11 +373,88 @@ public final class ClienteHandler
                 );
             }
 
+            // Entrega o que já estava na fila (sem esperar um cliente lento
+            // além do prazo) e só então fecha o socket.
+            FilaSaida fila = saida;
+            if (fila != null) {
+                fila.encerrar();
+                try {
+                    fila.aguardar(limites.prazoEncerramento().toMillis());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            fecharSocket();
+
+            if (vagaLiberada.compareAndSet(false, true)) {
+                aoEncerrar.run();
+            }
+        }
+    }
+
+    /** Laço do cliente legado: sem heartbeat e sem prazo de inatividade. */
+    private void executarSessaoLegada() throws IOException {
+
+        while (!encerrada) {
+
+            // Depois da entrada, toda linha é conteúdo do chat: comandos
+            // de autenticação não trocam a identidade da sessão.
+            String texto;
+
             try {
-                socket.close();
-            } catch (IOException e) {
+                texto = entrada.lerLinha();
+            } catch (LeitorLinhas.LinhaMuitoLongaException e) {
+                enviarLinha(
+                        "SISTEMA: Mensagem inválida: a linha excede o"
+                                + " limite do protocolo."
+                );
+                continue;
+            }
+
+            if (texto == null || encerrada) {
+                break;
+            }
+
+            texto = texto.trim();
+
+            if (texto.equalsIgnoreCase("/sair")) {
+                break;
+            }
+
+            if (texto.isEmpty()) {
+                continue;
+            }
+
+            if (!baldeLinhas.consumir() || !baldeMensagens.consumir()) {
+                avisarLimite(MENSAGEM_LIMITE_LEGADO);
+                continue;
+            }
+
+            try {
+
+                chatService.enviarMensagem(
+                        usuario,
+                        texto,
+                        this
+                );
+
+            } catch (IllegalArgumentException e) {
+
+                enviarLinha(
+                        "SISTEMA: Mensagem inválida: "
+                                + e.getMessage()
+                );
+
+            } catch (IllegalStateException e) {
+
+                enviarLinha(
+                        "SISTEMA: Não foi possível salvar a mensagem."
+                );
+
                 System.err.println(
-                        "Erro ao fechar socket: " + e.getMessage()
+                        "Erro de persistência: "
+                                + e.getMessage()
                 );
             }
         }
@@ -364,8 +503,8 @@ public final class ClienteHandler
 
             try {
                 PerfilUsuario perfil = pedido.isCadastro()
-                        ? autenticacao.cadastrar(pedido.getLogin(), pedido.getApelido(), pedido.getSenha())
-                        : autenticacao.autenticar(pedido.getLogin(), pedido.getSenha());
+                        ? autenticacao.cadastrar(pedido.getLogin(), pedido.getApelido(), pedido.getSenha(), origem)
+                        : autenticacao.autenticar(pedido.getLogin(), pedido.getSenha(), origem);
 
                 enviarLinha(ProtocoloSakura.respostaSucesso(perfil));
 
@@ -373,6 +512,10 @@ public final class ClienteHandler
 
             } catch (AutenticacaoException e) {
                 enviarLinha(ProtocoloSakura.respostaErro(e.getCodigo().name(), e.getMessage()));
+
+                if (e.getCodigo() == AutenticacaoException.Codigo.MUITAS_TENTATIVAS) {
+                    return null;
+                }
 
             } finally {
                 pedido.limpar();
@@ -392,7 +535,7 @@ public final class ClienteHandler
                 "SISTEMA: ===== HISTÓRICO RECENTE ====="
         );
 
-        // Escrita direta: enviar() enfileiraria até o fim do histórico.
+        // Direto na fila: enviar() reteria até o fim do histórico.
         for (Mensagem mensagem : historico) {
             enviarLinha(mensagem.formatar());
         }
@@ -402,18 +545,20 @@ public final class ClienteHandler
         );
     }
 
-    private synchronized void enviarLinha(String texto)
-            throws IOException {
+    /** Só enfileira (sem I/O): seguro sob qualquer bloqueio do chat. */
+    private void enviarLinha(String texto) throws IOException {
 
-        if (saida == null) {
+        FilaSaida fila = saida;
+
+        if (fila == null) {
             throw new IOException(
                     "Canal de saída não inicializado."
             );
         }
 
-        saida.write(texto);
-        saida.newLine();
-        saida.flush();
+        if (!fila.enfileirar(texto)) {
+            throw new IOException("Conexão encerrada.");
+        }
     }
 
     /**
@@ -436,7 +581,12 @@ public final class ClienteHandler
             throws IOException {
 
         if (!historicoEnviado) {
-            // Apenas enfileira (sem I/O), sem atrasar o broadcast.
+            // Apenas guarda (sem I/O), sem atrasar o broadcast; limitado
+            // como a fila de saída.
+            if (pendentes.size() >= limites.capacidadeFila()) {
+                clienteLento();
+                throw new IOException("Fila de saída cheia.");
+            }
             pendentes.add(mensagem);
             return;
         }
@@ -463,6 +613,110 @@ public final class ClienteHandler
         if (sessaoJson && historicoEnviado) {
             enviarLinha(ProtocoloJson.eventoConversa(null, paraJson(resumo)));
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Encerramento, prazos e limites
+    // ------------------------------------------------------------------
+
+    /**
+     * Substituída por um novo login da mesma conta (já fora do registro):
+     * avisa o cliente e fecha a conexão logo após entregar o aviso. Não
+     * bloqueia: chamado sob os bloqueios do chat.
+     */
+    @Override
+    public void encerrar(String motivo) {
+
+        encerrada = true;
+
+        FilaSaida fila = saida;
+        if (fila != null) {
+            fila.enfileirar(sessaoJson
+                    ? ProtocoloJson.eventoErro(null, "SESSAO_SUBSTITUIDA", motivo)
+                    : "SISTEMA: " + motivo);
+            fila.encerrar();
+        }
+
+        System.out.println("Sessão encerrada por novo login: " + nomeParaLog());
+        VIGIA.schedule(this::fecharSocket, limites.prazoEncerramento().toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    /** Fila cheia: o cliente não está lendo; derruba sem afetar os demais. */
+    private void clienteLento() {
+        if (!encerrada) {
+            encerrada = true;
+            System.err.println("Cliente lento desconectado (fila de saída cheia): " + nomeParaLog());
+        }
+        fecharSocket();
+    }
+
+    private void prazoDeEntradaEsgotado() {
+        if (entradaConcluida) {
+            return;
+        }
+        System.err.println("Tempo para entrar esgotado: " + (origem == null ? "?" : origem));
+        encerrada = true;
+        FilaSaida fila = saida;
+        if (fila != null) {
+            fila.enfileirar(MENSAGEM_PRAZO_ENTRADA);
+            fila.encerrar();
+        }
+        // Garantia: fecha mesmo que o aviso não possa ser entregue.
+        VIGIA.schedule(this::fecharSocket, limites.prazoEncerramento().toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    private void concluirEntrada() {
+        entradaConcluida = true;
+        ScheduledFuture<?> prazo = prazoEntrada;
+        if (prazo != null) {
+            prazo.cancel(false);
+        }
+    }
+
+    private void fecharSocket() {
+        if (socketFechado.compareAndSet(false, true)) {
+            try {
+                socket.close();
+            } catch (IOException e) {
+                System.err.println(
+                        "Erro ao fechar socket: " + e.getMessage()
+                );
+            }
+        }
+    }
+
+    private void configurarSocket() {
+        try {
+            // Detecta, pelo sistema operacional, conexões mortas também no
+            // legado (que não usa heartbeat).
+            socket.setKeepAlive(true);
+            socket.setTcpNoDelay(true);
+        } catch (SocketException e) {
+            // Opções indisponíveis: segue sem elas.
+        }
+    }
+
+    private void definirTempoLimite(int milissegundos) {
+        try {
+            socket.setSoTimeout(milissegundos);
+        } catch (SocketException e) {
+            // Socket já fechado: a próxima leitura encerra a sessão.
+        }
+    }
+
+    /** Aviso de limite no máximo uma vez por segundo (o excesso é descartado). */
+    private void avisarLimite(String linha) throws IOException {
+        long agora = limites.relogioNanos().getAsLong();
+        if (!avisouLimite || agora - ultimoAvisoLimite >= AVISO_LIMITE_NANOS) {
+            avisouLimite = true;
+            ultimoAvisoLimite = agora;
+            enviarLinha(linha);
+        }
+    }
+
+    private String nomeParaLog() {
+        Usuario atual = usuario;
+        return atual == null ? (origem == null ? "?" : origem) : atual.getNome();
     }
 
     // ------------------------------------------------------------------
@@ -493,25 +747,49 @@ public final class ClienteHandler
         System.out.println(usuario.getNome() + " entrou (v2). Clientes: " + chatService.contarClientes());
     }
 
+    /**
+     * Laço v2. Após {@code intervaloPing} sem nada recebido, o servidor envia
+     * PING; se outro intervalo passar sem nenhuma linha (PONG ou pedido), a
+     * sessão é considerada inativa e encerrada.
+     */
     private void executarSessaoJson() throws IOException {
 
-        while (true) {
+        definirTempoLimite((int) Math.min(Integer.MAX_VALUE, limites.intervaloPing().toMillis()));
+        boolean pingPendente = false;
+
+        while (!encerrada) {
 
             String linha;
 
             try {
                 linha = entrada.lerLinha();
+            } catch (SocketTimeoutException e) {
+                if (pingPendente) {
+                    System.err.println("Sessão inativa encerrada (sem resposta ao PING): " + nomeParaLog());
+                    return;
+                }
+                pingPendente = true;
+                enviarLinha(ProtocoloJson.eventoPing());
+                continue;
             } catch (LeitorLinhas.LinhaMuitoLongaException e) {
+                pingPendente = false;
                 enviarLinha(ProtocoloJson.eventoErro(null, "LINHA_LONGA",
                         "A linha excede o limite do protocolo."));
                 continue;
             }
 
-            if (linha == null) {
+            pingPendente = false;
+
+            if (linha == null || encerrada) {
                 return;
             }
 
             if (linha.isBlank()) {
+                continue;
+            }
+
+            if (!baldeLinhas.consumir()) {
+                avisarLimite(ProtocoloJson.eventoErro(null, "LIMITE", MENSAGEM_LIMITE));
                 continue;
             }
 
@@ -521,6 +799,10 @@ public final class ClienteHandler
                 requisicao = ProtocoloJson.lerRequisicao(linha);
             } catch (ProtocoloJson.ProtocoloInvalidoException e) {
                 enviarLinha(ProtocoloJson.eventoErro(e.getReq(), "REQUISICAO_INVALIDA", e.getMessage()));
+                continue;
+            }
+
+            if (!dentroDoLimite(requisicao)) {
                 continue;
             }
 
@@ -534,6 +816,31 @@ public final class ClienteHandler
         }
     }
 
+    /**
+     * Token bucket por categoria. Recusa na hora (sem esperar); o aviso de
+     * limite é limitado a um por segundo e a confirmação de leitura em
+     * excesso é descartada em silêncio.
+     */
+    private boolean dentroDoLimite(ProtocoloJson.Requisicao r) throws IOException {
+
+        BaldeTokens balde = switch (r.tipo()) {
+            case ENVIAR -> baldeMensagens;
+            case ABRIR_PRIVADA, CRIAR_GRUPO, CRIAR_PERSONAGEM, DEFINIR_AVATAR -> baldeCriacoes;
+            case LISTAR_CONVERSAS, LISTAR_USUARIOS, HISTORICO -> baldeConsultas;
+            case MARCAR_LIDA -> baldeLeituras;
+            case PONG -> null;
+        };
+
+        if (balde == null || balde.consumir()) {
+            return true;
+        }
+
+        if (r.tipo() != ProtocoloJson.TipoRequisicao.MARCAR_LIDA) {
+            avisarLimite(ProtocoloJson.eventoErro(r.req(), "LIMITE", MENSAGEM_LIMITE));
+        }
+        return false;
+    }
+
     /** O remetente e o leitor são sempre o usuário desta sessão. */
     private void atender(ProtocoloJson.Requisicao r)
             throws IOException, ProtocoloJson.ProtocoloInvalidoException, ConversaException {
@@ -541,6 +848,10 @@ public final class ClienteHandler
         Long req = r.req();
 
         switch (r.tipo()) {
+
+            case PONG -> {
+                // Apenas confirma que a sessão está ativa.
+            }
 
             case LISTAR_CONVERSAS -> enviarLinha(ProtocoloJson.eventoConversas(req,
                     conversas.listar(usuario).stream().map(ClienteHandler::paraJson).toList()));
@@ -559,13 +870,14 @@ public final class ClienteHandler
 
             // A própria mensagem volta pelo broadcast (o remetente participa).
             // Numa conversa de IA, a resposta é gerada depois, em segundo plano.
+            // A participação é verificada antes de qualquer estado da IA.
             case ENVIAR -> {
                 long conversaId = r.id("conversaId");
                 String texto = r.texto("texto");
                 if (ia != null) {
                     ia.verificarEnvio(usuario, conversaId);
                 }
-                Mensagem enviada = conversas.enviar(usuario, conversaId, texto);
+                Mensagem enviada = conversas.enviar(usuario, conversaId, texto, this);
                 if (ia != null) {
                     ia.aposMensagem(usuario, enviada);
                 }

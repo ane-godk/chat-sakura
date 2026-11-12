@@ -8,12 +8,16 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class ChatService {
 
     private final MensagemRepository repositorio;
     private final ClientRegistry registro;
     private final Clock relogio;
+
+    public static final String MOTIVO_SUBSTITUICAO =
+            "Sua conta entrou em outra janela ou computador. Esta sessão foi encerrada.";
 
     private final Object bloqueioMensagens = new Object();
 
@@ -43,6 +47,19 @@ public final class ChatService {
             Usuario remetente,
             String conteudo
     ) {
+        return enviarMensagem(remetente, conteudo, null);
+    }
+
+    /**
+     * @param origem sessão que pede o envio; se informada, precisa continuar
+     *               registrada (uma sessão substituída não envia mais)
+     * @throws SessaoEncerradaException se {@code origem} não está registrada
+     */
+    public Mensagem enviarMensagem(
+            Usuario remetente,
+            String conteudo,
+            ConexaoCliente origem
+    ) {
 
         Objects.requireNonNull(
                 remetente,
@@ -56,6 +73,11 @@ public final class ChatService {
         );
 
         synchronized (bloqueioMensagens) {
+
+            // A substituição de sessão também ocorre sob este bloqueio.
+            if (origem != null && !registro.contem(origem)) {
+                throw new SessaoEncerradaException();
+            }
 
             // Persiste antes de distribuir; o mesmo bloqueio garante
             // a ordem das mensagens e o histórico atômico na conexão.
@@ -121,12 +143,19 @@ public final class ChatService {
             List<Mensagem> historico =
                     repositorio.buscarUltimas(quantidadeHistorico);
 
-            registro.registrar(cliente);
+            Optional<ConexaoCliente> substituida = registro.registrar(cliente);
 
-            registrarAvisoDePresenca(
-                    Mensagem.entrada(cliente.getUsuario(), LocalDateTime.now(relogio)),
-                    cliente
-            );
+            if (substituida.isPresent()) {
+                // Novo login da mesma conta: a pessoa continua presente,
+                // então não há aviso de saída nem de nova entrada.
+                substituida.get().encerrar(MOTIVO_SUBSTITUICAO);
+                System.out.println(cliente.getUsuario().getNome() + ": sessão anterior substituída.");
+            } else {
+                registrarAvisoDePresenca(
+                        Mensagem.entrada(cliente.getUsuario(), LocalDateTime.now(relogio)),
+                        cliente
+                );
+            }
 
             return historico;
         }

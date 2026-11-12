@@ -29,6 +29,13 @@ final class LeitorLinhas {
 
     private boolean ignorarProximoLf;
 
+    // Estado da linha em andamento: preservado se a leitura for interrompida
+    // por tempo limite do socket (SocketTimeoutException), para continuar
+    // de onde parou na próxima chamada.
+    private final StringBuilder linha = new StringBuilder();
+    private boolean leuAlgo;
+    private boolean excedeu;
+
     LeitorLinhas(Reader leitor, int maximo) {
         this.leitor = Objects.requireNonNull(leitor);
         if (maximo < 1) {
@@ -39,10 +46,6 @@ final class LeitorLinhas {
 
     /** @return a linha sem o terminador, ou {@code null} no fim do fluxo */
     String lerLinha() throws IOException {
-
-        StringBuilder linha = new StringBuilder();
-        boolean leuAlgo = false;
-        boolean excedeu = false;
 
         while (true) {
             int lido = leitor.read();
@@ -55,19 +58,25 @@ final class LeitorLinhas {
 
             if (lido == -1) {
                 if (excedeu) {
+                    reiniciar();
                     throw new LinhaMuitoLongaException(maximo);
                 }
-                return leuAlgo ? linha.toString() : null;
+                String resultado = leuAlgo ? linha.toString() : null;
+                reiniciar();
+                return resultado;
             }
 
             leuAlgo = true;
 
             if (lido == '\n' || lido == '\r') {
                 ignorarProximoLf = lido == '\r';
-                if (excedeu) {
+                boolean longa = excedeu;
+                String resultado = linha.toString();
+                reiniciar();
+                if (longa) {
                     throw new LinhaMuitoLongaException(maximo);
                 }
-                return linha.toString();
+                return resultado;
             }
 
             if (!excedeu) {
@@ -79,5 +88,11 @@ final class LeitorLinhas {
                 }
             }
         }
+    }
+
+    private void reiniciar() {
+        linha.setLength(0);
+        leuAlgo = false;
+        excedeu = false;
     }
 }

@@ -268,17 +268,18 @@ class ClienteHandlerAutenticacaoTest {
             assertTrue(impostor.encerrada(), nome);
         }
 
-        // Conta já conectada: um segundo login da mesma conta é recusado.
+        // Conta já conectada: um novo login válido substitui a sessão anterior
+        // (identidade pelo id da conta), que é avisada e encerrada.
         Cliente ana = autenticado(ProtocoloSakura.comandoEntrar("ana.souza", SENHA.toCharArray()));
         assertTrue(ProtocoloSakura.lerResposta(ana.ler()).sucesso());
         esperarEstadoInicial(ana);
 
         Cliente segunda = autenticado(ProtocoloSakura.comandoEntrar("ANA.SOUZA", SENHA.toCharArray()));
         assertTrue(ProtocoloSakura.lerResposta(segunda.ler()).sucesso());
-        String recusa = segunda.ler();
-        assertTrue(recusa.contains("\"ENTRADA_RECUSADA\"")
-                && recusa.contains("Já existe um usuário conectado com esse nome."), recusa);
-        assertTrue(segunda.encerrada());
+        esperarEstadoInicial(segunda);
+
+        ana.esperar(l -> l.contains("\"SESSAO_SUBSTITUIDA\""));
+        assertTrue(ana.encerrada());
 
         assertTrue(mensagens().isEmpty());
     }

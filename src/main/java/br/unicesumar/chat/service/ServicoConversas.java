@@ -201,12 +201,22 @@ public final class ServicoConversas {
 
     /** Grava e entrega a mensagem; o remetente é o usuário da sessão. */
     public Mensagem enviar(Usuario usuario, long conversaId, String texto) throws ConversaException {
+        return enviar(usuario, conversaId, texto, null);
+    }
+
+    /**
+     * @param origem sessão que pede o envio; se informada, precisa continuar
+     *               registrada (verificado sob o bloqueio da conversa)
+     * @throws SessaoEncerradaException se {@code origem} foi substituída ou encerrada
+     */
+    public Mensagem enviar(Usuario usuario, long conversaId, String texto, ConexaoCliente origem)
+            throws ConversaException {
 
         Objects.requireNonNull(usuario, "Usuário obrigatório.");
 
         try {
             if (conversaId == Conversa.ID_GERAL) {
-                return chat.enviarMensagem(usuario, texto);
+                return chat.enviarMensagem(usuario, texto, origem);
             }
 
             long id = exigirConta(usuario);
@@ -220,6 +230,9 @@ public final class ServicoConversas {
                     LocalDateTime.now(relogio), TipoMensagem.MENSAGEM, conversaId);
 
             synchronized (bloqueios.computeIfAbsent(conversaId, chave -> new Object())) {
+                if (origem != null && !registro.contem(origem)) {
+                    throw new SessaoEncerradaException();
+                }
                 Mensagem persistida = protegido("envio", () -> mensagens.salvar(mensagem));
                 registro.transmitirPara(persistida, participantes);
                 return persistida;
@@ -251,6 +264,16 @@ public final class ServicoConversas {
     // ------------------------------------------------------------------
     // IA e perfis (uso interno do servidor)
     // ------------------------------------------------------------------
+
+    /**
+     * Exige conta e participação (fora da Geral) antes de qualquer consulta
+     * ao estado interno da conversa. Inexistente e sem acesso respondem igual.
+     */
+    void exigirAcesso(Usuario usuario, long conversaId) throws ConversaException {
+        if (conversaId != Conversa.ID_GERAL) {
+            exigirParticipacao(exigirConta(usuario), conversaId);
+        }
+    }
 
     /** Conversa pelo id (sem verificação de acesso: uso interno). */
     Optional<Conversa> buscarConversa(long conversaId) {

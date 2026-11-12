@@ -5,7 +5,6 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -72,6 +71,11 @@ final class ConexaoServidor {
          * e não serão reenviados automaticamente (o recebimento é incerto).
          */
         default void enviosDescartados(int quantidade) {
+        }
+
+        /** A conexão segura (TLS) foi recusada; mensagem própria para o usuário. */
+        default void falhaConexaoSegura(String mensagem) {
+            linhaRecebida("SISTEMA: " + mensagem);
         }
     }
 
@@ -192,9 +196,20 @@ final class ConexaoServidor {
      * @return {@code false} se já existe uma conexão ativa ou em andamento
      */
     boolean iniciar(String endereco, int porta, PedidoEntrada pedido) {
+        // Sem transporte indicado: TCP sem TLS (desenvolvimento e testes).
+        return iniciar(endereco, porta, pedido, TransporteCliente.TCP_DESENVOLVIMENTO);
+    }
+
+    /**
+     * @param transporte TLS (recomendado) ou TCP de desenvolvimento; com TLS,
+     *                   nada é enviado antes de o certificado ser validado e
+     *                   uma falha nunca tenta TCP puro
+     */
+    boolean iniciar(String endereco, int porta, PedidoEntrada pedido, TransporteCliente transporte) {
 
         Objects.requireNonNull(endereco, "Endereço obrigatório.");
         Objects.requireNonNull(pedido, "Pedido obrigatório.");
+        Objects.requireNonNull(transporte, "Transporte obrigatório.");
 
         if (conectado.get() || !conectando.compareAndSet(false, true)) {
             pedido.limpar();
@@ -209,7 +224,7 @@ final class ConexaoServidor {
         escritor = envios;
 
         tarefas.iniciar(
-                () -> executarSessao(novaConexao, envios, endereco, porta, pedido),
+                () -> executarSessao(novaConexao, envios, endereco, porta, pedido, transporte),
                 "sakura-conexao"
         );
 
@@ -221,25 +236,26 @@ final class ConexaoServidor {
             ExecutorService envios,
             String endereco,
             int porta,
-            PedidoEntrada pedido
+            PedidoEntrada pedido,
+            TransporteCliente transporte
     ) {
 
+        Socket canal = novaConexao;
+
         try {
-            novaConexao.connect(
-                    new InetSocketAddress(endereco, porta),
-                    TEMPO_LIMITE_CONEXAO_MS
-            );
+            // TLS: conexão e certificado validados aqui, antes de qualquer leitura ou envio.
+            canal = transporte.abrir(novaConexao, endereco, porta, TEMPO_LIMITE_CONEXAO_MS);
 
             BufferedReader entrada = new BufferedReader(
                     new InputStreamReader(
-                            novaConexao.getInputStream(),
+                            canal.getInputStream(),
                             StandardCharsets.UTF_8
                     )
             );
 
             BufferedWriter escritor = new BufferedWriter(
                     new OutputStreamWriter(
-                            novaConexao.getOutputStream(),
+                            canal.getOutputStream(),
                             StandardCharsets.UTF_8
                     )
             );
@@ -295,6 +311,12 @@ final class ConexaoServidor {
                 ouvinte.linhaRecebida(linha);
             }
 
+        } catch (TransporteCliente.FalhaConexaoSegura e) {
+
+            // Certificado ou negociação TLS recusados: nada foi enviado e não
+            // há nova tentativa sem TLS.
+            ouvinte.falhaConexaoSegura(e.getMessage());
+
         } catch (IOException e) {
 
             ouvinte.linhaRecebida("SISTEMA: " + e.getMessage());
@@ -318,6 +340,7 @@ final class ConexaoServidor {
             ouvinte.sessaoEncerrada();
 
             try {
+                canal.close();
                 novaConexao.close();
             } catch (IOException e) {
                 System.err.println("Erro ao fechar conexão: " + e.getMessage());

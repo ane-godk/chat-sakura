@@ -3,6 +3,7 @@ package br.unicesumar.chat.client;
 import br.unicesumar.chat.model.RegrasConta;
 
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
@@ -49,9 +50,14 @@ final class DialogoEntrada {
         }
     }
 
-    /** Dados para iniciar a conexão. */
-    record Escolha(String endereco, int porta, ConexaoServidor.PedidoEntrada pedido) {
+    /** Dados para iniciar a conexão ({@code seguro}: TLS, o padrão). */
+    record Escolha(String endereco, int porta, ConexaoServidor.PedidoEntrada pedido, boolean seguro) {
     }
+
+    // TLS é o padrão; sem TLS só marcando explicitamente (desenvolvimento).
+    private final JCheckBox campoSemTls = new JCheckBox("Sem TLS (somente desenvolvimento local)");
+    private final JLabel avisoSemTls = new JLabel("<html>Sem TLS, a senha e as mensagens trafegam legíveis"
+            + " na rede. Use apenas com um servidor em modo de desenvolvimento.</html>");
 
     private final CampoTextoSakura campoLogin = new CampoTextoSakura(18, "Ex.: ana.souza", null);
     private final CampoTextoSakura campoApelido = new CampoTextoSakura(18, "Nome exibido no chat", null);
@@ -75,23 +81,30 @@ final class DialogoEntrada {
 
     /** Exibe o diálogo (modal, na EDT). */
     static Optional<Escolha> exibir(Component pai) {
-        return new DialogoEntrada().mostrar(pai, "localhost", 12345, null);
+        return new DialogoEntrada().mostrar(pai, "localhost", 12345, null, false);
     }
 
     /**
      * Novo login após a reconexão: servidor, porta e login já preenchidos;
-     * só a senha é pedida (ela não fica guardada entre as sessões).
+     * só a senha é pedida (ela não fica guardada entre as sessões). Se a
+     * sessão anterior usava TLS, a opção "sem TLS" fica bloqueada.
      */
-    static Optional<Escolha> exibirReconexao(Component pai, String endereco, int porta, String login) {
-        return new DialogoEntrada().mostrar(pai, endereco, porta, login);
+    static Optional<Escolha> exibirReconexao(Component pai, String endereco, int porta, String login,
+                                            boolean exigirTls) {
+        return new DialogoEntrada().mostrar(pai, endereco, porta, login, exigirTls);
     }
 
-    private Optional<Escolha> mostrar(Component pai, String endereco, int porta, String login) {
+    private Optional<Escolha> mostrar(Component pai, String endereco, int porta, String login, boolean exigirTls) {
 
         campoServidor.setText(endereco);
         campoPorta.setText(String.valueOf(porta));
         if (login != null) {
             campoLogin.setText(login);
+        }
+        campoSemTls.setSelected(false);
+        campoSemTls.setEnabled(!exigirTls);
+        if (exigirTls) {
+            campoSemTls.setToolTipText("A sessão anterior usava TLS: a reconexão também precisa usar.");
         }
 
         AtomicReference<Escolha> escolha = new AtomicReference<>();
@@ -177,9 +190,23 @@ final class DialogoEntrada {
         posicao.fill = GridBagConstraints.HORIZONTAL;
         posicao.insets = new Insets(0, 0, TemaSakura.ESPACO_M, 0);
 
+        campoSemTls.setOpaque(false);
+        campoSemTls.setFont(TemaSakura.FONTE_PEQUENA);
+        campoSemTls.setForeground(TemaSakura.cores().texto());
+        avisoSemTls.setFont(TemaSakura.FONTE_PEQUENA);
+        avisoSemTls.setForeground(TemaSakura.cores().coralTexto());
+        avisoSemTls.setVisible(false);
+        campoSemTls.addActionListener(e -> {
+            avisoSemTls.setVisible(campoSemTls.isSelected());
+            if (dialogo != null) {
+                dialogo.pack();
+            }
+        });
+
         for (JComponent componente : new JComponent[] {
                 topo, modos, linhaLogin, linhaApelido, linhaSenha, linhaConfirmacao, linhaNome,
-                linha("Endereço do servidor:", campoServidor), linha("Porta:", campoPorta)}) {
+                linha("Endereço do servidor:", campoServidor), linha("Porta:", campoPorta),
+                campoSemTls, avisoSemTls}) {
             formulario.add(componente, posicao);
             posicao.gridy++;
         }
@@ -255,7 +282,7 @@ final class DialogoEntrada {
             throw new IllegalArgumentException("Informe uma porta válida.");
         }
 
-        return new Escolha(endereco, porta, montarPedido());
+        return new Escolha(endereco, porta, montarPedido(), !campoSemTls.isSelected());
     }
 
     private ConexaoServidor.PedidoEntrada montarPedido() {

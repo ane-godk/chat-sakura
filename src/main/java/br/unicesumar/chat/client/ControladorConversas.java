@@ -270,6 +270,8 @@ final class ControladorConversas {
     private boolean saidaVoluntaria;
     private boolean sessaoSubstituida;
     private long idParaRestaurar = -1;
+    private TransporteCliente ultimoTransporte;
+    private boolean aguardandoNovoLogin;
     private boolean modoContas;
     private boolean estadoInicialRecebido;
     private long proximaRequisicao = 1;
@@ -329,11 +331,31 @@ final class ControladorConversas {
      * do servidor; até lá vale o login ou o apelido informado.
      */
     boolean conectar(String endereco, int porta, ConexaoServidor.PedidoEntrada pedido) {
+        // Sem transporte indicado: TCP sem TLS (desenvolvimento e testes).
+        return conectar(endereco, porta, pedido, TransporteCliente.TCP_DESENVOLVIMENTO);
+    }
+
+    /**
+     * @param transporte TLS (padrão da interface) ou TCP de desenvolvimento.
+     *                   Depois de uma queda numa sessão TLS, a nova conexão
+     *                   também precisa ser TLS: não há rebaixamento.
+     */
+    boolean conectar(String endereco, int porta, ConexaoServidor.PedidoEntrada pedido,
+                     TransporteCliente transporte) {
 
         if (conexao.ocupada()) {
             pedido.limpar();
             return false;
         }
+
+        if (aguardandoNovoLogin && !TransporteCliente.mesmoNivel(ultimoTransporte, transporte)) {
+            pedido.limpar();
+            visao.autenticacaoRecusada("A reconexão precisa usar TLS, como a sessão anterior."
+                    + " Conexão sem TLS recusada.");
+            return false;
+        }
+        aguardandoNovoLogin = false;
+        ultimoTransporte = transporte;
 
         String nome;
         String login = null;
@@ -377,7 +399,7 @@ final class ControladorConversas {
         visao.reiniciarConversa(ID_GERAL, nome);
         visao.conversasAtualizadas(itens(), idConversaAtiva);
 
-        boolean iniciada = conexao.iniciar(endereco, porta, pedido);
+        boolean iniciada = conexao.iniciar(endereco, porta, pedido, transporte);
 
         visao.estadoAlterado(estado());
 
@@ -399,6 +421,7 @@ final class ControladorConversas {
     /** "Sair": encerra a sessão e cancela qualquer reconexão (sem reconectar depois). */
     void desconectar() {
         saidaVoluntaria = true;
+        aguardandoNovoLogin = false;
         idParaRestaurar = -1;
         boolean reconectando = reconexao.ativa();
         reconexao.cancelar();
@@ -409,8 +432,14 @@ final class ControladorConversas {
         }
     }
 
+    /** {@code true} se a última conexão usou TLS (a reconexão também precisa usar). */
+    boolean ultimaConexaoSegura() {
+        return ultimoTransporte != null && ultimoTransporte.seguro();
+    }
+
     /** Desiste de esperar o servidor (ou do novo login pedido na reconexão). */
     void cancelarReconexao() {
+        aguardandoNovoLogin = false;
         reconexao.cancelar();
         idParaRestaurar = -1;
         visao.reconexaoEncerrada();
@@ -481,6 +510,7 @@ final class ControladorConversas {
                 if (saidaVoluntaria || ultimoLogin == null) {
                     return;
                 }
+                aguardandoNovoLogin = true;
                 visao.estadoAlterado(estado());
                 visao.reconexaoDisponivel(ultimoEndereco, ultimaPorta, ultimoLogin);
             });
@@ -987,6 +1017,12 @@ final class ControladorConversas {
         public void conexaoConfirmada() {
             edt.execute(() -> sessaoConfirmada = true);
             notificacoes.conexaoConfirmada();
+        }
+
+        @Override
+        public void falhaConexaoSegura(String mensagem) {
+            // Exige ação (certificado, endereço ou modo do servidor): diálogo.
+            edt.execute(() -> visao.autenticacaoRecusada("Conexão segura recusada. " + mensagem));
         }
 
         @Override

@@ -554,8 +554,9 @@ public final class ClienteChat extends JFrame {
 
         // Retorna imediatamente: a conexão e a autenticação ocorrem em
         // segundo plano.
+        // TLS por padrão; TCP sem TLS só se marcado no diálogo.
         DialogoEntrada.exibir(this).ifPresent(escolha -> controlador.conectar(
-                escolha.endereco(), escolha.porta(), escolha.pedido()));
+                escolha.endereco(), escolha.porta(), escolha.pedido(), TransporteCliente.de(escolha.seguro())));
     }
 
     private void enviarMensagem() {
@@ -703,9 +704,12 @@ public final class ClienteChat extends JFrame {
                     true, "Cancelar", controlador::cancelarReconexao);
             aguardandoNovoLogin = true;
             // Depois de repintar o aviso; a senha nunca foi guardada.
-            SwingUtilities.invokeLater(() -> DialogoEntrada.exibirReconexao(ClienteChat.this, endereco, porta, login)
+            // Nova conexão completa: com TLS, o certificado é validado de novo.
+            SwingUtilities.invokeLater(() -> DialogoEntrada.exibirReconexao(ClienteChat.this, endereco, porta, login,
+                            controlador.ultimaConexaoSegura())
                     .ifPresentOrElse(
-                            escolha -> controlador.conectar(escolha.endereco(), escolha.porta(), escolha.pedido()),
+                            escolha -> controlador.conectar(escolha.endereco(), escolha.porta(), escolha.pedido(),
+                                    TransporteCliente.de(escolha.seguro())),
                             controlador::cancelarReconexao));
         }
 

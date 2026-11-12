@@ -17,7 +17,9 @@ public final class AutenticacaoException extends Exception {
         /** Login inexistente ou senha incorreta (indistinguíveis de propósito). */
         CREDENCIAIS_INVALIDAS,
         /** Falha interna; o detalhe fica apenas no log do servidor. */
-        INDISPONIVEL
+        INDISPONIVEL,
+        /** Bloqueio temporário por excesso de tentativas (IP ou login). */
+        MUITAS_TENTATIVAS
     }
 
     private final Codigo codigo;

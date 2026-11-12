@@ -21,7 +21,7 @@ Ele oferece **Chat Geral**, **conversas privadas**, **grupos**, contas com senha
 - **Segurança:** o servidor define a identidade e verifica a autorização em cada operação.
 - **Protocolo:** JSON validado (protocolo v2), com compatibilidade com o protocolo de texto original.
 - **Interface:** sons, animações, preferências, menu "Copiar mensagem" e exportação TXT da conversa ativa.
-- **Testes:** 338 testes automatizados.
+- **Testes:** 377 testes automatizados.
 
 ## Tecnologias
 
@@ -133,6 +133,16 @@ Na janela, clique em **Conectar** e escolha um modo:
 
 Em todos os modos, o endereço do servidor é `localhost` e a porta é `12345`. Veja [Contas e autenticação](#contas-e-autenticação).
 
+**Queda da conexão (com conta).** Se a conexão cair sem você clicar em **Sair**, o selo mostra "Reconectando..." e uma faixa acima da conversa informa as tentativas:
+- O cliente tenta alcançar o servidor com intervalos crescentes: 1 s, 2 s, 4 s... até 30 s.
+- Quando o servidor volta, a janela de login reabre com o servidor, a porta e o login preenchidos. A senha não fica guardada em lugar nenhum, então é pedida de novo.
+- Depois do login, a lista de conversas é recarregada e a conversa que estava aberta volta, com o histórico.
+- **Cancelar** (na faixa) ou **Sair** interrompem a espera.
+- Mensagens que estavam saindo no momento da queda não são reenviadas automaticamente, para não duplicar; a faixa avisa quantas podem não ter chegado.
+- Não há reconexão automática quando outro login da mesma conta assumiu a sessão, nem para visitantes.
+
+**Avisos.** Erros recuperáveis (limite de envio, conversa não encontrada, histórico indisponível) aparecem numa faixa discreta acima da conversa, que some sozinha e nunca se empilha. Diálogos ficam só para o que exige ação, como login recusado.
+
 ### 4. Demonstrar três clientes simultâneos
 
 1. Inicie o servidor (passo 2).
@@ -195,6 +205,11 @@ Cada conta tem um ID persistente, um **login** (de 3 a 30 caracteres: letras sem
   - 20 falhas de um mesmo login (de qualquer IP) em 15 minutos bloqueiam esse login por 15 minutos. Um único IP é barrado antes de chegar a esse número, então não consegue bloquear a conta de outra pessoa.
   - Cada IP pode fazer 5 cadastros a cada 10 minutos.
   - Os cálculos PBKDF2 simultâneos são limitados ao número de processadores (mínimo 2).
+- **Nomes e Unicode** (`NormalizacaoNome`). Apelidos e nomes de visitante são comparados por uma chave normalizada: NFKC, minúsculas com `Locale.ROOT` e NFKC de novo. Assim "Ana", "ANA" e "Ａｎａ" (largura total) são o mesmo nome, e "Élia" equivale a "ÉLIA". O apelido continua exibido como foi digitado.
+  - **Aceito:** letras (com acento) de um único alfabeto, números, ponto, hífen e sublinhado, até 30 caracteres. Japonês (han, hiragana, katakana) e coreano (hangul, han) contam como um alfabeto.
+  - **Recusado:** caracteres invisíveis ou de formatação (U+200B, U+200D, U+2060, U+FEFF, U+00AD, marcas de direção), controles, uso privado, qualquer espaço Unicode (U+00A0, U+3000...) e mistura de alfabetos no mesmo nome (como latim com cirílico em "Аna").
+  - Visitantes não podem usar nomes equivalentes ao login ou ao apelido de uma conta, e duas contas não podem ter apelidos equivalentes (índice único no banco, migração v4).
+  - **Limite:** a normalização não resolve todos os homóglifos. Um nome inteiro em cirílico parecido com um latino ("АНА") é aceito e não colide com "ANA".
 - **Uma sessão por conta:** um novo login válido substitui a sessão anterior da mesma conta. A sessão antiga recebe `SESSAO_SUBSTITUIDA` e é fechada; não há aviso de saída nem de nova entrada. Visitantes continuam com a regra do nome único.
 
 ## Limites e robustez do servidor
@@ -360,14 +375,16 @@ Na raiz do projeto:
 mvn clean test
 ```
 
-A suíte tem **338 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
+A suíte tem **377 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
 
 - robustez do servidor: cliente lento, fila de saída, ordem, vagas global e por IP, prazo de entrada, heartbeat v2, substituição de sessão, limites de taxa e de tentativas de login;
 - usuários, mensagens e repositórios;
 - regras do chat e concorrência (`ExecutorService` e `awaitTermination`, sem `Thread.sleep`);
 - migrações do banco (0→3), com backup e rollback;
 - contas e PBKDF2;
-- handshake, identidade e personificação;
+- handshake, identidade e personificação, incluindo nomes Unicode equivalentes, invisíveis e alfabetos misturados;
+- migração v4 (colisões, rollback e backup), WAL e gravações concorrentes;
+- cliente: ordem de envio, nova tentativa de histórico, avisos não modais e reconexão com restauração das conversas;
 - codec JSON;
 - conversas privadas, grupos, isolamento, mensagens offline e reinício;
 - avatares;

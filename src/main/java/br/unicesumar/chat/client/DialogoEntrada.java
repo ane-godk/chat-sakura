@@ -75,13 +75,24 @@ final class DialogoEntrada {
 
     /** Exibe o diálogo (modal, na EDT). */
     static Optional<Escolha> exibir(Component pai) {
-        return new DialogoEntrada().mostrar(pai);
+        return new DialogoEntrada().mostrar(pai, "localhost", 12345, null);
     }
 
-    private Optional<Escolha> mostrar(Component pai) {
+    /**
+     * Novo login após a reconexão: servidor, porta e login já preenchidos;
+     * só a senha é pedida (ela não fica guardada entre as sessões).
+     */
+    static Optional<Escolha> exibirReconexao(Component pai, String endereco, int porta, String login) {
+        return new DialogoEntrada().mostrar(pai, endereco, porta, login);
+    }
 
-        campoServidor.setText("localhost");
-        campoPorta.setText("12345");
+    private Optional<Escolha> mostrar(Component pai, String endereco, int porta, String login) {
+
+        campoServidor.setText(endereco);
+        campoPorta.setText(String.valueOf(porta));
+        if (login != null) {
+            campoLogin.setText(login);
+        }
 
         AtomicReference<Escolha> escolha = new AtomicReference<>();
 
@@ -111,7 +122,9 @@ final class DialogoEntrada {
 
         aplicarFundo(painel, TemaSakura.cores().fundo());
 
-        dialogo = painel.createDialog(pai, "Conectar ao Chat Sakura");
+        dialogo = painel.createDialog(pai, login == null
+                ? "Conectar ao Chat Sakura"
+                : "O servidor voltou: entre de novo para continuar");
         dialogo.getContentPane().setBackground(TemaSakura.cores().fundo());
         dialogo.getRootPane().setDefaultButton((JButton) painel.getOptions()[0]);
 
@@ -209,7 +222,11 @@ final class DialogoEntrada {
     }
 
     private JTextField primeiroCampo() {
-        return modo == Modo.VISITANTE ? campoNome : campoLogin;
+        if (modo == Modo.VISITANTE) {
+            return campoNome;
+        }
+        // Login já preenchido (reconexão): o foco vai direto para a senha.
+        return campoLogin.getText().isBlank() ? campoLogin : campoSenha;
     }
 
     /**
@@ -248,7 +265,8 @@ final class DialogoEntrada {
             if (nome.isBlank() || nome.length() > 30 || nome.matches(".*\\s+.*")) {
                 throw new IllegalArgumentException("O nome deve ter entre 1 e 30 caracteres, sem espaços.");
             }
-            return new ConexaoServidor.Visitante(nome);
+            // Mesmas regras do servidor (invisíveis, espaços Unicode, alfabetos misturados).
+            return new ConexaoServidor.Visitante(RegrasConta.normalizarNomeVisitante(nome));
         }
 
         String login = RegrasConta.normalizarLogin(campoLogin.getText());

@@ -64,6 +64,9 @@ public final class ClienteChat extends JFrame {
 
     private final IndicadorConexao indicador = new IndicadorConexao();
 
+    // Avisos não modais (um por vez, sem empilhar diálogos).
+    private final AvisoDiscreto aviso = new AvisoDiscreto();
+
     // Rede e estado das conversas; a janela apenas monta e coordena a interface.
     private final transient ControladorConversas controlador =
             new ControladorConversas(new VisaoJanela(), notificacoes);
@@ -138,6 +141,7 @@ public final class ClienteChat extends JFrame {
     @Override
     public void dispose() {
         super.dispose();
+        controlador.encerrar();
         notificacoes.fechar();
         GerenciadorTema.removerOuvinte(aoMudarTema);
         ConfiguracaoAnimacoes.removerOuvinte(aoMudarAnimacoes);
@@ -199,7 +203,13 @@ public final class ClienteChat extends JFrame {
         );
 
         principal.add(criarCabecalho(), BorderLayout.NORTH);
-        principal.add(criarAreaConversa(), BorderLayout.CENTER);
+
+        // Faixa de aviso logo acima da conversa (oculta quando não há aviso).
+        JPanel centro = new JPanel(new BorderLayout(0, TemaSakura.ESPACO_M));
+        centro.setOpaque(false);
+        centro.add(aviso, BorderLayout.NORTH);
+        centro.add(criarAreaConversa(), BorderLayout.CENTER);
+        principal.add(centro, BorderLayout.CENTER);
         principal.add(criarBarraEnvio(), BorderLayout.SOUTH);
 
         setContentPane(principal);
@@ -551,9 +561,7 @@ public final class ClienteChat extends JFrame {
         }
 
         if (texto.length() > LIMITE_MENSAGEM) {
-            mostrarErro(
-                    "A mensagem deve ter no máximo 500 caracteres."
-            );
+            aviso.mostrar("A mensagem deve ter no máximo 500 caracteres.", AvisoDiscreto.Tipo.ERRO);
             return;
         }
 
@@ -574,9 +582,11 @@ public final class ClienteChat extends JFrame {
 
         boolean ativo = estado == ControladorConversas.EstadoConexao.CONECTADO;
         boolean emConexao = estado == ControladorConversas.EstadoConexao.CONECTANDO;
+        boolean reconectando = estado == ControladorConversas.EstadoConexao.RECONECTANDO;
 
-        botaoConectar.setEnabled(!ativo && !emConexao);
-        botaoDesconectar.setEnabled(ativo || emConexao);
+        botaoConectar.setEnabled(!ativo && !emConexao && !reconectando);
+        // Durante a reconexão, "Sair" cancela a espera.
+        botaoDesconectar.setEnabled(ativo || emConexao || reconectando);
         botaoEnviar.setEnabled(ativo);
         campoMensagem.setEnabled(ativo);
         botaoExportar.setEnabled(!controlador.conversaAtiva().texto().isBlank());
@@ -592,6 +602,11 @@ public final class ClienteChat extends JFrame {
             indicador.mostrar(
                     IndicadorConexao.Estado.CONECTANDO,
                     "Conectando..."
+            );
+        } else if (reconectando) {
+            indicador.mostrar(
+                    IndicadorConexao.Estado.CONECTANDO,
+                    "Reconectando..."
             );
         } else {
             indicador.mostrar(
@@ -653,9 +668,41 @@ public final class ClienteChat extends JFrame {
             barraConversas.definirContas(controlador.modoContas());
         }
 
+        // Recuperáveis: faixa discreta, sem diálogo modal.
         @Override
         public void erroConversa(String mensagem) {
-            mostrarErro(mensagem);
+            aviso.mostrar(mensagem, AvisoDiscreto.Tipo.ERRO);
+        }
+
+        private boolean aguardandoNovoLogin;
+
+        @Override
+        public void reconexaoEmAndamento(int tentativa, long proximaEmMs) {
+            String texto = tentativa == 0
+                    ? "Conexão perdida. Tentando reconectar..."
+                    : "Servidor indisponível (tentativa " + tentativa + "). Nova tentativa em "
+                            + Math.max(1, Math.round(proximaEmMs / 1000.0)) + " s.";
+            aviso.mostrar(texto, AvisoDiscreto.Tipo.INFORMACAO, true, "Cancelar",
+                    controlador::cancelarReconexao);
+        }
+
+        @Override
+        public void reconexaoDisponivel(String endereco, int porta, String login) {
+            aviso.mostrar("O servidor voltou. Entre de novo para continuar.", AvisoDiscreto.Tipo.INFORMACAO,
+                    true, "Cancelar", controlador::cancelarReconexao);
+            aguardandoNovoLogin = true;
+            // Depois de repintar o aviso; a senha nunca foi guardada.
+            SwingUtilities.invokeLater(() -> DialogoEntrada.exibirReconexao(ClienteChat.this, endereco, porta, login)
+                    .ifPresentOrElse(
+                            escolha -> controlador.conectar(escolha.endereco(), escolha.porta(), escolha.pedido()),
+                            controlador::cancelarReconexao));
+        }
+
+        @Override
+        public void reconexaoEncerrada() {
+            aguardandoNovoLogin = false;
+            aviso.mostrar("Reconexão cancelada. Use \"Conectar\" quando quiser voltar.",
+                    AvisoDiscreto.Tipo.INFORMACAO);
         }
 
         @Override
@@ -672,6 +719,12 @@ public final class ClienteChat extends JFrame {
         @Override
         public void usuarioIdentificado(String apelido) {
             areaMensagens.definirUsuarioAtual(apelido);
+            if (aguardandoNovoLogin) {
+                aguardandoNovoLogin = false;
+                aviso.mostrar("Reconectado. Suas conversas foram restauradas.", AvisoDiscreto.Tipo.INFORMACAO);
+            } else if (aviso.isVisible() && aviso.tipo() == AvisoDiscreto.Tipo.INFORMACAO) {
+                aviso.ocultar();
+            }
         }
 
         @Override

@@ -41,7 +41,9 @@ final class ControladorConversas {
     enum EstadoConexao {
         DESCONECTADO,
         CONECTANDO,
-        CONECTADO
+        CONECTADO,
+        /** Conexão perdida: aguardando o servidor voltar para pedir o login de novo. */
+        RECONECTANDO
     }
 
     /** Item imutável da barra lateral ({@code avatarId} nulo para Geral e grupos). */
@@ -98,6 +100,25 @@ final class ControladorConversas {
 
         /** A IA começou ou terminou de gerar uma resposta na conversa. */
         default void estadoIA(long idConversa, boolean gerando, String descricao) {
+        }
+
+        /**
+         * Reconexão em andamento: {@code tentativa} falhas até agora (0 no
+         * início) e próxima tentativa em {@code proximaEmMs} (0 se ainda não
+         * agendada).
+         */
+        default void reconexaoEmAndamento(int tentativa, long proximaEmMs) {
+        }
+
+        /**
+         * O servidor voltou. A senha não fica guardada: a interface pede o
+         * login de novo e chama {@code conectar}, ou {@code cancelarReconexao}.
+         */
+        default void reconexaoDisponivel(String endereco, int porta, String login) {
+        }
+
+        /** A reconexão terminou sem novo login (cancelada pelo usuário). */
+        default void reconexaoEncerrada() {
         }
     }
 
@@ -236,7 +257,19 @@ final class ControladorConversas {
     // Estado acessado somente na EDT.
     private final Map<Long, Conversa> conversas = new LinkedHashMap<>();
     private final Map<Long, Consumer<ProtocoloJson.Evento>> pendentes = new HashMap<>();
+    // Ação quando o servidor responde ERRO a um pedido (correlacionado pelo req).
+    private final Map<Long, Runnable> errosPendentes = new HashMap<>();
     private long idConversaAtiva = ID_GERAL;
+
+    // Reconexão (EDT). Guarda endereço, porta e login, nunca a senha.
+    private final ReconexaoAutomatica reconexao;
+    private String ultimoEndereco;
+    private int ultimaPorta;
+    private String ultimoLogin;
+    private boolean sessaoConfirmada;
+    private boolean saidaVoluntaria;
+    private boolean sessaoSubstituida;
+    private long idParaRestaurar = -1;
     private boolean modoContas;
     private boolean estadoInicialRecebido;
     private long proximaRequisicao = 1;
@@ -260,11 +293,24 @@ final class ControladorConversas {
             Executor edt,
             Function<ConexaoServidor.Ouvinte, ConexaoServidor> fabrica
     ) {
+        this(visao, notificacoes, edt, fabrica, ReconexaoAutomatica::new);
+    }
+
+    /** @param fabricaReconexao cria a reconexão (intervalos substituíveis nos testes) */
+    ControladorConversas(
+            Visao visao,
+            NotificacoesSonoras notificacoes,
+            Executor edt,
+            Function<ConexaoServidor.Ouvinte, ConexaoServidor> fabrica,
+            Function<ReconexaoAutomatica.Ouvinte, ReconexaoAutomatica> fabricaReconexao
+    ) {
         this.visao = Objects.requireNonNull(visao, "Visão obrigatória.");
         this.notificacoes = Objects.requireNonNull(notificacoes, "Notificações obrigatórias.");
         this.edt = Objects.requireNonNull(edt, "Executor da EDT obrigatório.");
         this.conexao = Objects.requireNonNull(fabrica, "Fábrica obrigatória.")
                 .apply(new EventosConexao());
+        this.reconexao = Objects.requireNonNull(fabricaReconexao, "Fábrica de reconexão obrigatória.")
+                .apply(new EventosReconexao());
 
         conversas.put(ID_GERAL, new Conversa(ID_GERAL, Tipo.GERAL, TITULO_GERAL));
     }
@@ -290,16 +336,32 @@ final class ControladorConversas {
         }
 
         String nome;
+        String login = null;
 
         if (pedido instanceof ConexaoServidor.Visitante visitante) {
             nome = visitante.nome();
         } else if (pedido instanceof ConexaoServidor.Cadastrar cadastro) {
             nome = cadastro.apelido();
+            login = cadastro.login();
         } else {
             nome = ((ConexaoServidor.Entrar) pedido).login();
+            login = nome;
         }
 
         nomeUsuario = nome;
+
+        // Para uma eventual reconexão: endereço, porta e login, sem senha.
+        // Uma reconexão em andamento termina com este novo pedido.
+        reconexao.cancelar();
+        ultimoEndereco = endereco;
+        ultimaPorta = porta;
+        if (login == null || !login.equals(ultimoLogin)) {
+            idParaRestaurar = -1;
+        }
+        ultimoLogin = login;
+        sessaoConfirmada = false;
+        saidaVoluntaria = false;
+        sessaoSubstituida = false;
 
         // Nova sessão: só o Chat Geral, vazio, antes de qualquer linha chegar.
         Conversa geral = conversas.get(ID_GERAL);
@@ -308,6 +370,7 @@ final class ControladorConversas {
         conversas.put(ID_GERAL, geral);
         idConversaAtiva = ID_GERAL;
         pendentes.clear();
+        errosPendentes.clear();
         modoContas = false;
         estadoInicialRecebido = false;
 
@@ -333,8 +396,31 @@ final class ControladorConversas {
                 "conversaId", idConversaAtiva, "texto", texto));
     }
 
+    /** "Sair": encerra a sessão e cancela qualquer reconexão (sem reconectar depois). */
     void desconectar() {
+        saidaVoluntaria = true;
+        idParaRestaurar = -1;
+        boolean reconectando = reconexao.ativa();
+        reconexao.cancelar();
         conexao.desconectar();
+        if (reconectando) {
+            visao.reconexaoEncerrada();
+            visao.estadoAlterado(estado());
+        }
+    }
+
+    /** Desiste de esperar o servidor (ou do novo login pedido na reconexão). */
+    void cancelarReconexao() {
+        reconexao.cancelar();
+        idParaRestaurar = -1;
+        visao.reconexaoEncerrada();
+        visao.estadoAlterado(estado());
+    }
+
+    /** Libera a thread de reconexão (fechamento da janela). */
+    void encerrar() {
+        desconectar();
+        reconexao.fechar();
     }
 
     EstadoConexao estado() {
@@ -347,7 +433,58 @@ final class ControladorConversas {
             return EstadoConexao.CONECTANDO;
         }
 
+        if (reconexao.ativa()) {
+            return EstadoConexao.RECONECTANDO;
+        }
+
         return EstadoConexao.DESCONECTADO;
+    }
+
+    /**
+     * Fim de sessão (na EDT). Uma sessão com conta que caiu sem o usuário
+     * pedir — e que não foi substituída por outro login — passa a esperar o
+     * servidor voltar. Envios incertos não são repetidos.
+     */
+    private void aoEncerrarSessao() {
+
+        boolean reconectar = modoContas && sessaoConfirmada && !saidaVoluntaria
+                && !sessaoSubstituida && ultimoLogin != null;
+        sessaoConfirmada = false;
+
+        if (!reconectar) {
+            return;
+        }
+
+        idParaRestaurar = idConversaAtiva;
+
+        if (reconexao.iniciar(ultimoEndereco, ultimaPorta)) {
+            adicionarLocal("SISTEMA: Conexão com o servidor perdida. Tentando reconectar...");
+            visao.reconexaoEmAndamento(0, 0);
+            visao.estadoAlterado(estado());
+        }
+    }
+
+    /** Recebe os resultados da reconexão e os leva à EDT. */
+    private final class EventosReconexao implements ReconexaoAutomatica.Ouvinte {
+
+        @Override
+        public void tentativaFalhou(int numero, long proximaEmMs) {
+            edt.execute(() -> {
+                visao.reconexaoEmAndamento(numero, proximaEmMs);
+                visao.estadoAlterado(estado());
+            });
+        }
+
+        @Override
+        public void servidorDisponivel() {
+            edt.execute(() -> {
+                if (saidaVoluntaria || ultimoLogin == null) {
+                    return;
+                }
+                visao.estadoAlterado(estado());
+                visao.reconexaoDisponivel(ultimoEndereco, ultimaPorta, ultimoLogin);
+            });
+        }
     }
 
     String nomeUsuario() {
@@ -387,8 +524,14 @@ final class ControladorConversas {
 
         if (modoContas && !conversa.historicoCarregado && !conversa.historicoSolicitado) {
             conversa.historicoSolicitado = true;
-            requisitar(ProtocoloJson.TipoRequisicao.HISTORICO, evento -> tratarHistorico(evento),
+            // Erro (ou pedido não enviado) libera nova tentativa ao abrir a
+            // conversa de novo; a resposta é aplicada pela conversaId dela.
+            boolean pedido = requisitarComFalha(ProtocoloJson.TipoRequisicao.HISTORICO, this::tratarHistorico,
+                    () -> liberarNovaTentativa(id),
                     "conversaId", id, "limite", HISTORICO_INICIAL);
+            if (!pedido) {
+                liberarNovaTentativa(id);
+            }
         } else {
             marcarLida(conversa);
         }
@@ -475,6 +618,14 @@ final class ControladorConversas {
     private boolean requisitar(ProtocoloJson.TipoRequisicao tipo,
                                Consumer<ProtocoloJson.Evento> aoResponder,
                                Object... campos) {
+        return requisitarComFalha(tipo, aoResponder, null, campos);
+    }
+
+    /** @param aoFalhar executado se o servidor responder ERRO a este pedido (mesmo req) */
+    private boolean requisitarComFalha(ProtocoloJson.TipoRequisicao tipo,
+                                       Consumer<ProtocoloJson.Evento> aoResponder,
+                                       Runnable aoFalhar,
+                                       Object... campos) {
 
         if (!modoContas()) {
             return false;
@@ -482,7 +633,35 @@ final class ControladorConversas {
 
         long req = proximaRequisicao++;
         pendentes.put(req, aoResponder);
-        return conexao.enviarComando(ProtocoloJson.requisicao(tipo, req, campos));
+        if (aoFalhar != null) {
+            errosPendentes.put(req, aoFalhar);
+        }
+        boolean enviado = conexao.enviarComando(ProtocoloJson.requisicao(tipo, req, campos));
+        if (!enviado) {
+            pendentes.remove(req);
+            errosPendentes.remove(req);
+        }
+        return enviado;
+    }
+
+    /**
+     * Depois de um novo login (reconexão): volta à conversa que estava
+     * aberta, se ela ainda existir; o histórico é pedido de novo.
+     */
+    private void restaurarConversaAtiva() {
+        long id = idParaRestaurar;
+        idParaRestaurar = -1;
+        if (id > 0 && id != ID_GERAL && conversas.containsKey(id)) {
+            selecionar(id);
+        }
+    }
+
+    /** O histórico da conversa não veio: abrir a conversa de novo pede outra vez. */
+    private void liberarNovaTentativa(long idConversa) {
+        Conversa conversa = conversas.get(idConversa);
+        if (conversa != null && !conversa.historicoCarregado) {
+            conversa.historicoSolicitado = false;
+        }
     }
 
     private void marcarLida(Conversa conversa) {
@@ -520,6 +699,7 @@ final class ControladorConversas {
 
         Consumer<ProtocoloJson.Evento> resposta =
                 evento.req() == null ? null : pendentes.remove(evento.req());
+        Runnable falha = evento.req() == null ? null : errosPendentes.remove(evento.req());
 
         switch (evento.tipo()) {
 
@@ -528,6 +708,7 @@ final class ControladorConversas {
                 if (!estadoInicialRecebido) {
                     estadoInicialRecebido = true;
                     adicionarLocal(ProtocoloSakuraLocal.confirmacao(nomeUsuario));
+                    restaurarConversaAtiva();
                 }
             }
 
@@ -558,6 +739,13 @@ final class ControladorConversas {
             }
 
             case ERRO -> {
+                if (falha != null) {
+                    falha.run();
+                }
+                if ("SESSAO_SUBSTITUIDA".equals(evento.codigo())) {
+                    // Outro login da mesma conta assumiu: não reconectar sozinho.
+                    sessaoSubstituida = true;
+                }
                 visao.erroConversa(evento.mensagemErro());
                 return;
             }
@@ -593,7 +781,12 @@ final class ControladorConversas {
             }
         }
 
-        conversa.aplicarHistorico(historico);
+        if (conversa.historicoCarregado) {
+            // Resposta repetida ou atrasada: só o que ainda falta, sem duplicar.
+            historico.forEach(conversa::adicionar);
+        } else {
+            conversa.aplicarHistorico(historico);
+        }
 
         if (conversa.id == idConversaAtiva) {
             visao.exibirConversa(conversa);
@@ -753,7 +946,16 @@ final class ControladorConversas {
 
         @Override
         public void conexaoConfirmada() {
+            edt.execute(() -> sessaoConfirmada = true);
             notificacoes.conexaoConfirmada();
+        }
+
+        @Override
+        public void enviosDescartados(int quantidade) {
+            edt.execute(() -> visao.erroConversa(quantidade == 1
+                    ? "Uma mensagem pode não ter sido enviada antes da queda. Confira e envie de novo se precisar."
+                    : quantidade + " mensagens podem não ter sido enviadas antes da queda."
+                            + " Confira e envie de novo se precisar."));
         }
 
         @Override
@@ -770,6 +972,7 @@ final class ControladorConversas {
         @Override
         public void sessaoEncerrada() {
             notificacoes.sessaoEncerrada();
+            edt.execute(ControladorConversas.this::aoEncerrarSessao);
         }
 
         @Override

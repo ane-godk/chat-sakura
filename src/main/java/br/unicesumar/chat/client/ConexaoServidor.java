@@ -13,6 +13,11 @@ import java.util.Objects;
 
 import br.unicesumar.chat.protocolo.ProtocoloJson;
 import br.unicesumar.chat.protocolo.ProtocoloSakura;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -60,6 +65,13 @@ final class ConexaoServidor {
 
         /** Evento do protocolo v2 (sessões com conta). */
         default void eventoRecebido(ProtocoloJson.Evento evento) {
+        }
+
+        /**
+         * A sessão terminou com envios ainda na fila: eles não foram escritos
+         * e não serão reenviados automaticamente (o recebimento é incerto).
+         */
+        default void enviosDescartados(int quantidade) {
         }
     }
 
@@ -135,6 +147,13 @@ final class ConexaoServidor {
     private volatile Socket socket;
     private volatile BufferedWriter saida;
 
+    /** Envios pendentes por sessão (excesso é recusado, nunca bloqueia a EDT). */
+    static final int CAPACIDADE_ENVIOS = 500;
+
+    // Um único escritor por sessão: mensagens e comandos saem na ordem em
+    // que foram pedidos, sem criar uma thread por envio.
+    private volatile ExecutorService escritor;
+
     ConexaoServidor(Ouvinte ouvinte) {
         this(ouvinte, THREADS_DAEMON);
     }
@@ -186,9 +205,11 @@ final class ConexaoServidor {
         // uma tentativa de conexão em andamento.
         Socket novaConexao = new Socket();
         socket = novaConexao;
+        ExecutorService envios = novoEscritor();
+        escritor = envios;
 
         tarefas.iniciar(
-                () -> executarSessao(novaConexao, endereco, porta, pedido),
+                () -> executarSessao(novaConexao, envios, endereco, porta, pedido),
                 "sakura-conexao"
         );
 
@@ -197,6 +218,7 @@ final class ConexaoServidor {
 
     private void executarSessao(
             Socket novaConexao,
+            ExecutorService envios,
             String endereco,
             int porta,
             PedidoEntrada pedido
@@ -283,6 +305,13 @@ final class ConexaoServidor {
 
             conectado.set(false);
             conectando.set(false);
+
+            // Nada é escrito depois do fim da sessão; o que estava na fila
+            // é descartado e informado (sem reenvio automático).
+            int descartados = envios.shutdownNow().size();
+            if (descartados > 0) {
+                ouvinte.enviosDescartados(descartados);
+            }
 
             // Fim da sessão (Sair ou queda): o som toca uma única vez,
             // e só se a conexão chegou a ser confirmada.
@@ -416,19 +445,13 @@ final class ConexaoServidor {
 
         Objects.requireNonNull(linha, "Linha obrigatória.");
 
-        if (!conectado.get()) {
-            return false;
-        }
-
-        tarefas.iniciar(() -> {
+        return agendarEnvio(() -> {
             try {
                 escreverLinha(linha);
             } catch (IOException e) {
                 ouvinte.linhaRecebida("SISTEMA: Falha ao enviar: " + e.getMessage());
             }
-        }, "sakura-comando");
-
-        return true;
+        });
     }
 
     /**
@@ -440,11 +463,7 @@ final class ConexaoServidor {
 
         Objects.requireNonNull(texto, "Texto obrigatório.");
 
-        if (!conectado.get()) {
-            return false;
-        }
-
-        tarefas.iniciar(() -> {
+        return agendarEnvio(() -> {
 
             try {
                 escreverLinha(texto);
@@ -453,10 +472,45 @@ final class ConexaoServidor {
             } catch (IOException e) {
                 ouvinte.linhaRecebida("SISTEMA: Falha ao enviar: " + e.getMessage());
             }
+        });
+    }
 
-        }, "sakura-envio");
+    /**
+     * Coloca o envio na fila do escritor da sessão, sem bloquear.
+     *
+     * @return {@code false} sem conexão confirmada ou com a fila cheia
+     */
+    private boolean agendarEnvio(Runnable envio) {
 
-        return true;
+        ExecutorService atual = escritor;
+
+        if (!conectado.get() || atual == null) {
+            return false;
+        }
+
+        try {
+            atual.execute(() -> {
+                // A sessão pode ter terminado enquanto o envio esperava.
+                if (conectado.get()) {
+                    envio.run();
+                }
+            });
+            return true;
+        } catch (RejectedExecutionException e) {
+            ouvinte.linhaRecebida(atual.isShutdown()
+                    ? "SISTEMA: Não enviado: a conexão foi encerrada."
+                    : "SISTEMA: Não enviado: muitos envios pendentes. Aguarde um instante.");
+            return false;
+        }
+    }
+
+    private static ExecutorService novoEscritor() {
+        return new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(CAPACIDADE_ENVIOS), tarefa -> {
+                    Thread thread = new Thread(tarefa, "sakura-envio");
+                    thread.setDaemon(true);
+                    return thread;
+                });
     }
 
     /** Encerra a sessão atual; não bloqueia (apenas fecha o socket). */

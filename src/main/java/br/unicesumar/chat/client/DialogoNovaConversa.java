@@ -130,6 +130,11 @@ final class DialogoNovaConversa {
 
     static void exibir(Component pai, String tituloJanela, String orientacao,
                                JComponent conteudo, JComponent foco, Runnable confirmar) {
+        exibir(pai, tituloJanela, orientacao, conteudo, foco, "Confirmar", confirmar);
+    }
+
+    static void exibir(Component pai, String tituloJanela, String orientacao,
+                       JComponent conteudo, JComponent foco, String rotuloConfirmar, Runnable confirmar) {
 
         JLabel titulo = new JLabel(orientacao);
         titulo.setFont(TemaSakura.FONTE_PEQUENA_NEGRITO);
@@ -144,7 +149,7 @@ final class DialogoNovaConversa {
         formulario.add(topo, BorderLayout.NORTH);
         formulario.add(conteudo, BorderLayout.CENTER);
 
-        BotaoSakura botaoOk = new BotaoSakura("Confirmar", BotaoSakura.Estilo.PRINCIPAL);
+        BotaoSakura botaoOk = new BotaoSakura(rotuloConfirmar, BotaoSakura.Estilo.PRINCIPAL);
         BotaoSakura botaoCancelar = new BotaoSakura("Cancelar", BotaoSakura.Estilo.SECUNDARIO);
 
         JOptionPane painel = new JOptionPane(formulario, JOptionPane.PLAIN_MESSAGE,

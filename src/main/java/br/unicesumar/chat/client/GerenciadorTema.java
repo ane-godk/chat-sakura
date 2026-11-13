@@ -1,23 +1,27 @@
 package br.unicesumar.chat.client;
 
+import br.unicesumar.chat.model.Aparencia;
+
 import javax.swing.SwingUtilities;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Tema ativo (Sakura Claro ou Sakura Noturno) e aviso aos interessados.
+ * Aparência ativa (paleta floral, modo claro ou escuro e fundo da conversa)
+ * e aviso aos interessados.
  *
  * A troca sempre ocorre na EDT: chamadas de outras threads são repassadas
  * para ela. Os componentes leem a paleta no momento da pintura, por isso a
  * troca não reconstrói a interface: basta repintar.
  *
- * O tema inicial pode vir de {@code -Dchat.sakura.tema=noturno}.
+ * O modo inicial pode vir de {@code -Dchat.sakura.tema=noturno}.
  */
 final class GerenciadorTema {
 
     static final String PROPRIEDADE = "chat.sakura.tema";
 
+    /** Modo (claro ou escuro) da paleta ativa. */
     enum Tema {
         CLARO(PaletaSakura.CLARO),
         NOTURNO(PaletaSakura.NOTURNO);
@@ -28,6 +32,7 @@ final class GerenciadorTema {
             this.paleta = paleta;
         }
 
+        /** Paleta deste modo na flor Sakura (a original). */
         PaletaSakura paleta() {
             return paleta;
         }
@@ -35,16 +40,24 @@ final class GerenciadorTema {
         Tema oposto() {
             return this == CLARO ? NOTURNO : CLARO;
         }
+
+        Aparencia.Modo modo() {
+            return this == NOTURNO ? Aparencia.Modo.ESCURO : Aparencia.Modo.CLARO;
+        }
+
+        static Tema de(Aparencia.Modo modo) {
+            return modo == Aparencia.Modo.ESCURO ? NOTURNO : CLARO;
+        }
     }
 
     private static final List<Runnable> OUVINTES = new CopyOnWriteArrayList<>();
 
-    private static volatile Tema atual = Tema.CLARO;
+    private static volatile Aparencia atual = Aparencia.PADRAO;
 
     static {
-        Tema inicial = interpretar(System.getProperty(PROPRIEDADE));
+        Aparencia inicial = Aparencia.PADRAO.comModo(interpretar(System.getProperty(PROPRIEDADE)).modo());
         atual = inicial;
-        TemaSakura.definirPaleta(inicial.paleta());
+        TemaSakura.definirPaleta(PaletasFlorais.de(inicial));
     }
 
     private GerenciadorTema() {
@@ -60,28 +73,49 @@ final class GerenciadorTema {
         };
     }
 
+    /** Modo ativo. */
     static Tema atual() {
+        return Tema.de(atual.modo());
+    }
+
+    /** Aparência ativa completa. */
+    static Aparencia aparencia() {
         return atual;
     }
 
-    static void alternar() {
-        definir(atual.oposto());
+    /** Fundo da conversa escolhido. */
+    static Aparencia.Fundo fundo() {
+        return atual.fundo();
     }
 
-    /** Define o tema; sem efeito se já estiver ativo. Executa na EDT. */
-    static void definir(Tema tema) {
+    /** Alterna claro/escuro mantendo a flor e o fundo. */
+    static void alternar() {
+        definir(atual().oposto());
+    }
 
+    /** Muda só o modo; sem efeito se já estiver ativo. Executa na EDT. */
+    static void definir(Tema tema) {
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(() -> definir(tema));
             return;
         }
+        definir(atual.comModo(tema.modo()));
+    }
 
-        if (tema == atual) {
+    /** Define a aparência inteira; sem efeito se já estiver ativa. Executa na EDT. */
+    static void definir(Aparencia aparencia) {
+
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> definir(aparencia));
             return;
         }
 
-        atual = tema;
-        TemaSakura.definirPaleta(tema.paleta());
+        if (aparencia == null || aparencia.equals(atual)) {
+            return;
+        }
+
+        atual = aparencia;
+        TemaSakura.definirPaleta(PaletasFlorais.de(aparencia));
         OUVINTES.forEach(Runnable::run);
     }
 

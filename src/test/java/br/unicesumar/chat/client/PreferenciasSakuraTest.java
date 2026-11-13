@@ -43,6 +43,50 @@ class PreferenciasSakuraTest {
     }
 
     @Test
+    void arquivoAntigoSemPaletaEFundoUsaSakuraFloralMantendoOModo() throws Exception {
+        PreferenciasSakura p = preferencias("antigo");
+        escrever(p, "#Preferencias do Chat Sakura (tema, sons, animacoes)\ntema=noturno\nsons=silenciados\n");
+
+        PreferenciasSakura.Valores lidos = semPropriedades(p);
+
+        assertEquals(new br.unicesumar.chat.model.Aparencia(br.unicesumar.chat.model.Aparencia.Paleta.SAKURA,
+                br.unicesumar.chat.model.Aparencia.Modo.ESCURO, br.unicesumar.chat.model.Aparencia.Fundo.FLORAL),
+                lidos.aparencia());
+        assertTrue(lidos.silenciado());
+    }
+
+    @Test
+    void paletaEFundoInvalidosUsamOPadraoSoDaquelaChave() throws Exception {
+        PreferenciasSakura p = preferencias("invalidas");
+        escrever(p, "tema=claro\npaleta=lavanda\nfundo=liso\n");
+        assertEquals(br.unicesumar.chat.model.Aparencia.Paleta.SAKURA, semPropriedades(p).paleta());
+        assertEquals(br.unicesumar.chat.model.Aparencia.Fundo.LISO, semPropriedades(p).fundo());
+
+        escrever(p, "paleta=Fuji\nfundo=xadrez\n");
+        assertEquals(br.unicesumar.chat.model.Aparencia.Paleta.FUJI, semPropriedades(p).paleta());
+        assertEquals(br.unicesumar.chat.model.Aparencia.Fundo.FLORAL, semPropriedades(p).fundo());
+    }
+
+    @Test
+    void aparenciaLocalESalvaJuntaPreservandoAsDemaisChaves() throws Exception {
+        PreferenciasSakura p = preferencias("aparencia");
+        escrever(p, "sons=silenciados\nchave.futura=42\n");
+        br.unicesumar.chat.model.Aparencia myosotis = new br.unicesumar.chat.model.Aparencia(
+                br.unicesumar.chat.model.Aparencia.Paleta.MYOSOTIS, br.unicesumar.chat.model.Aparencia.Modo.ESCURO,
+                br.unicesumar.chat.model.Aparencia.Fundo.NEUTRO);
+
+        p.salvarAparencia(myosotis);
+        assertTrue(p.aguardarGravacoes(5000));
+
+        Properties gravadas = p.ler();
+        assertEquals("noturno", gravadas.getProperty("tema"));
+        assertEquals("myosotis", gravadas.getProperty("paleta"));
+        assertEquals("neutro", gravadas.getProperty("fundo"));
+        assertEquals("42", gravadas.getProperty("chave.futura"));
+        assertEquals(myosotis, semPropriedades(new PreferenciasSakura(p.arquivo())).aparencia());
+    }
+
+    @Test
     void preferenciasDevemSerSalvasERestauradas() {
         PreferenciasSakura p = preferencias("salvar");
         p.salvarTema(Tema.NOTURNO);

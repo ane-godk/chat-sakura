@@ -10,7 +10,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import br.unicesumar.chat.model.Aparencia;
+
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
@@ -19,7 +23,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Preferências locais do usuário em {@code ~/.chat-sakura/preferencias.properties}
- * (nunca no SQLite do chat): tema, sons e animações.
+ * (nunca no SQLite do chat): tema, sons e animações e, desde a Fase 5,
+ * paleta e fundo. A aparência gravada aqui vale para a tela de entrada e
+ * para visitantes; a de uma conta fica no servidor e não é escrita aqui.
  *
  * <h2>Precedência na inicialização</h2>
  * <ol>
@@ -45,10 +51,27 @@ final class PreferenciasSakura {
 
     static final String PROPRIEDADE_SONS = NotificacoesSonoras.PROPRIEDADE;
 
+    /** Fase 5: paleta floral e fundo da conversa (o modo continua na chave "tema"). */
+    static final String CHAVE_PALETA = "paleta";
+    static final String CHAVE_FUNDO = "fundo";
+
     /** Valores efetivos de uma execução. */
-    record Valores(GerenciadorTema.Tema tema, boolean silenciado, ConfiguracaoAnimacoes.Modo animacoes) {
+    record Valores(GerenciadorTema.Tema tema, boolean silenciado, ConfiguracaoAnimacoes.Modo animacoes,
+                   Aparencia.Paleta paleta, Aparencia.Fundo fundo) {
+
         static final Valores PADRAO = new Valores(
-                GerenciadorTema.Tema.CLARO, false, ConfiguracaoAnimacoes.Modo.COMPLETAS);
+                GerenciadorTema.Tema.CLARO, false, ConfiguracaoAnimacoes.Modo.COMPLETAS,
+                Aparencia.PADRAO.paleta(), Aparencia.PADRAO.fundo());
+
+        /** Arquivos antigos (sem paleta e fundo) usam Sakura e floral. */
+        Valores(GerenciadorTema.Tema tema, boolean silenciado, ConfiguracaoAnimacoes.Modo animacoes) {
+            this(tema, silenciado, animacoes, Aparencia.PADRAO.paleta(), Aparencia.PADRAO.fundo());
+        }
+
+        /** Aparência local (visitante e tela de entrada). */
+        Aparencia aparencia() {
+            return new Aparencia(paleta, tema.modo(), fundo);
+        }
     }
 
     private static final class Instancia {
@@ -141,7 +164,10 @@ final class PreferenciasSakura {
                 silenciado(propSons).or(() -> silenciado(arquivo.getProperty(CHAVE_SONS)))
                         .orElse(Valores.PADRAO.silenciado()),
                 animacoes(propAnimacoes).or(() -> animacoes(arquivo.getProperty(CHAVE_ANIMACOES)))
-                        .orElse(Valores.PADRAO.animacoes())
+                        .orElse(Valores.PADRAO.animacoes()),
+                // Leitura tolerante: ausente ou desconhecido vira o padrão daquele campo.
+                Aparencia.ler(arquivo.getProperty(CHAVE_PALETA), null, null).paleta(),
+                Aparencia.ler(null, null, arquivo.getProperty(CHAVE_FUNDO)).fundo()
         );
     }
 
@@ -198,6 +224,15 @@ final class PreferenciasSakura {
         salvar(CHAVE_TEMA, texto(tema));
     }
 
+    /** Grava paleta, modo e fundo juntos (uma única substituição do arquivo). */
+    void salvarAparencia(Aparencia aparencia) {
+        Map<String, String> chaves = new LinkedHashMap<>();
+        chaves.put(CHAVE_TEMA, texto(GerenciadorTema.Tema.de(aparencia.modo())));
+        chaves.put(CHAVE_PALETA, aparencia.paleta().name().toLowerCase(Locale.ROOT));
+        chaves.put(CHAVE_FUNDO, aparencia.fundo().name().toLowerCase(Locale.ROOT));
+        salvar(chaves);
+    }
+
     void salvarSons(boolean silenciado) {
         salvar(CHAVE_SONS, textoSons(silenciado));
     }
@@ -208,8 +243,13 @@ final class PreferenciasSakura {
 
     /** Agenda a gravação de uma chave (fila única, em ordem). Não bloqueia. */
     void salvar(String chave, String valor) {
+        salvar(Map.of(chave, valor));
+    }
+
+    private void salvar(Map<String, String> chaves) {
+        Map<String, String> copia = Map.copyOf(chaves);
         try {
-            gravacao.execute(() -> gravarAgora(chave, valor));
+            gravacao.execute(() -> gravarAgora(copia));
         } catch (RuntimeException e) {
             avisar("gravação recusada: " + e.getMessage());
         }
@@ -224,11 +264,11 @@ final class PreferenciasSakura {
         }
     }
 
-    private void gravarAgora(String chave, String valor) {
+    private void gravarAgora(Map<String, String> chaves) {
         try {
             // Relê para não perder chaves desconhecidas nem outras alterações.
             Properties atuais = ler();
-            atuais.setProperty(chave, valor);
+            chaves.forEach(atuais::setProperty);
 
             Path pasta = arquivo.toAbsolutePath().getParent();
             if (pasta != null) {
@@ -238,7 +278,7 @@ final class PreferenciasSakura {
             Path temporario = Files.createTempFile(pasta, "preferencias", ".tmp");
             try {
                 try (Writer escritor = Files.newBufferedWriter(temporario, StandardCharsets.UTF_8)) {
-                    atuais.store(escritor, "Preferencias do Chat Sakura (tema, sons, animacoes)");
+                    atuais.store(escritor, "Preferencias do Chat Sakura (tema, paleta, fundo, sons, animacoes)");
                 }
                 try {
                     Files.move(temporario, arquivo,

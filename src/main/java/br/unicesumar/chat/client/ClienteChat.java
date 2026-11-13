@@ -1,6 +1,8 @@
 
 package br.unicesumar.chat.client;
 
+import br.unicesumar.chat.model.Aparencia;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
@@ -61,6 +63,8 @@ public final class ClienteChat extends JFrame {
             new BotaoSakura("Sair", BotaoSakura.Estilo.SECUNDARIO);
     private final BotaoSakura botaoExportar =
             new BotaoSakura("Exportar TXT", BotaoSakura.Estilo.SECUNDARIO);
+    private final BotaoSakura botaoAparencia =
+            new BotaoSakura("Aparência", BotaoSakura.Estilo.SECUNDARIO);
 
     private final IndicadorConexao indicador = new IndicadorConexao();
 
@@ -118,21 +122,91 @@ public final class ClienteChat extends JFrame {
 
     private void aplicarPreferenciasIniciais() {
         PreferenciasSakura.Valores valores = preferencias.valoresIniciais();
-        GerenciadorTema.definir(valores.tema());
+        aparenciaLocal = valores.aparencia();
+        GerenciadorTema.definir(aparenciaLocal);
         ConfiguracaoAnimacoes.definirModo(valores.animacoes());
         notificacoes.definirSilenciado(valores.silenciado());
     }
 
+    // Aparência (acessada somente na EDT). A local vale para a tela de entrada
+    // e para visitantes; com conta, vale a que o servidor envia após o login.
+    private Aparencia aparenciaLocal = Aparencia.PADRAO;
+    private boolean aparenciaDaConta;
+    private boolean aplicandoSemSalvar;
+    // Escolha feita sem conexão (durante a reconexão): enviada quando a sessão voltar.
+    private Aparencia pendenteDaConta;
+
     /**
-     * Troca de tema (na EDT): os componentes leem a paleta ao pintar, então
-     * basta recalcular o que depende de estado e repintar. A conversa, a
-     * rolagem e a conexão não são tocadas.
+     * Troca de aparência (na EDT): os componentes leem a paleta ao pintar,
+     * então basta recalcular o que depende de estado e repintar. A conversa,
+     * a rolagem e a conexão não são tocadas.
      */
     private void aplicarTema() {
         atualizarContador();
         atualizarBotaoTema();
-        preferencias.salvarTema(GerenciadorTema.atual());
+        guardarAparencia();
         getRootPane().repaint();
+    }
+
+    /** Escolha do usuário: na conta (servidor) se houver sessão de conta; senão, no arquivo local. */
+    private void guardarAparencia() {
+        if (aplicandoSemSalvar) {
+            return;
+        }
+        Aparencia atual = GerenciadorTema.aparencia();
+        if (aparenciaDaConta) {
+            boolean enviada = controlador.definirAparencia(atual, () -> { });
+            pendenteDaConta = enviada ? null : atual;
+        } else {
+            aparenciaLocal = atual;
+            preferencias.salvarAparencia(atual);
+        }
+    }
+
+    /** Aplica sem gravar (aparência vinda do servidor ou restauração da local). */
+    private void aplicarSemSalvar(Aparencia aparencia) {
+        aplicandoSemSalvar = true;
+        try {
+            GerenciadorTema.definir(aparencia);
+        } finally {
+            aplicandoSemSalvar = false;
+        }
+    }
+
+    /** Aparência da conta recebida do servidor (na EDT). */
+    void aparenciaDaContaRecebida(Aparencia aparencia) {
+        aparenciaDaConta = true;
+        Aparencia pendente = pendenteDaConta;
+        pendenteDaConta = null;
+        if (pendente != null && !pendente.equals(aparencia)) {
+            // Escolhida durante a queda: a escolha mais recente vale e é gravada agora.
+            aplicarSemSalvar(pendente);
+            controlador.definirAparencia(pendente, () -> { });
+            return;
+        }
+        aplicarSemSalvar(aparencia);
+    }
+
+    /** Fim da sessão de conta (saída ou reconexão cancelada): volta a aparência local. */
+    void encerrarAparenciaDaConta() {
+        if (aparenciaDaConta) {
+            aparenciaDaConta = false;
+            pendenteDaConta = null;
+            aplicarSemSalvar(aparenciaLocal);
+        }
+    }
+
+    boolean aparenciaDaConta() {
+        return aparenciaDaConta;
+    }
+
+    /** Controlador da janela (testes). */
+    ControladorConversas controlador() {
+        return controlador;
+    }
+
+    private void abrirAparencia() {
+        DialogoAparencia.exibir(this, GerenciadorTema.aparencia()).ifPresent(GerenciadorTema::definir);
     }
 
     /**
@@ -310,6 +384,9 @@ public final class ClienteChat extends JFrame {
         acoes.add(botaoConectar);
         acoes.add(botaoDesconectar);
         acoes.add(botaoExportar);
+        acoes.add(botaoAparencia);
+        botaoAparencia.setToolTipText("Paleta, modo claro ou escuro e fundo da conversa");
+        botaoAparencia.addActionListener(e -> abrirAparencia());
 
         // O selo nunca fica mais largo que a fileira de botões,
         // para não cobrir o título em janelas estreitas.
@@ -722,6 +799,10 @@ public final class ClienteChat extends JFrame {
 
         @Override
         public void estadoAlterado(ControladorConversas.EstadoConexao estado) {
+            // Na reconexão a aparência da conta continua; ao sair, volta a local.
+            if (estado == ControladorConversas.EstadoConexao.DESCONECTADO) {
+                encerrarAparenciaDaConta();
+            }
             atualizarEstado();
             atualizarBotaoMemoria();
         }
@@ -746,6 +827,11 @@ public final class ClienteChat extends JFrame {
         @Override
         public void autenticacaoRecusada(String mensagem) {
             mostrarErro(mensagem);
+        }
+
+        @Override
+        public void aparenciaRecebida(Aparencia aparencia) {
+            aparenciaDaContaRecebida(aparencia);
         }
     }
 

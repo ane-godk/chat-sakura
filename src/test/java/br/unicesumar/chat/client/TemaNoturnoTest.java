@@ -73,7 +73,7 @@ class TemaNoturnoTest {
     }
 
     /** Pares de texto pequeno e fundo, incluindo as duas pontas de cada degradê. */
-    private static List<Object[]> paresDeTexto(PaletaSakura c) {
+    static List<Object[]> paresDeTexto(PaletaSakura c) {
         List<Object[]> pares = new ArrayList<>();
         for (Color fundo : new Color[] {c.balaoProprioTopo(), c.balaoProprioBase()}) {
             pares.add(new Object[] {"nome próprio / balão próprio", c.nomeProprio(), fundo});

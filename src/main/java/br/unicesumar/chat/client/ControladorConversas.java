@@ -120,6 +120,10 @@ final class ControladorConversas {
         /** A reconexão terminou sem novo login (cancelada pelo usuário). */
         default void reconexaoEncerrada() {
         }
+
+        /** Aparência da conta enviada pelo servidor (após entrar, reconectar ou salvar). */
+        default void aparenciaRecebida(br.unicesumar.chat.model.Aparencia aparencia) {
+        }
     }
 
     /** Conversa do cliente; acessada somente na EDT. */
@@ -621,6 +625,19 @@ final class ControladorConversas {
         return requisitar(ProtocoloJson.TipoRequisicao.DEFINIR_AVATAR, this::aplicarPerfil, "avatarId", avatarId);
     }
 
+    /**
+     * Salva a aparência na conta (o servidor confirma com APARENCIA).
+     *
+     * @param aoFalhar executado na EDT se o servidor recusar ou não puder gravar
+     * @return {@code false} sem sessão de conta (nada é enviado)
+     */
+    boolean definirAparencia(br.unicesumar.chat.model.Aparencia aparencia, Runnable aoFalhar) {
+        return requisitarComFalha(ProtocoloJson.TipoRequisicao.DEFINIR_APARENCIA, evento -> { }, aoFalhar,
+                "paleta", aparencia.paleta().name(),
+                "modo", aparencia.modo().name(),
+                "fundo", aparencia.fundo().name());
+    }
+
     String avatarProprio() {
         return avatarProprio;
     }
@@ -822,6 +839,14 @@ final class ControladorConversas {
                 if (resposta != null) {
                     resposta.accept(evento);
                 }
+                return;
+            }
+
+            case APARENCIA -> {
+                if (resposta != null) {
+                    resposta.accept(evento);
+                }
+                visao.aparenciaRecebida(evento.aparencia());
                 return;
             }
 

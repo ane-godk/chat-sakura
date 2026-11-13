@@ -1,6 +1,7 @@
 package br.unicesumar.chat.client;
 
 import javax.swing.BorderFactory;
+import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -57,11 +58,27 @@ final class DialogoMemoria {
         painel.add(explicacao, BorderLayout.NORTH);
         painel.add(rolagem, BorderLayout.CENTER);
 
-        Object[] opcoes = {"Apagar memória", "Fechar"};
-        int escolha = JOptionPane.showOptionDialog(pai, painel, "Memória de " + personagem,
-                JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, opcoes, opcoes[1]);
+        rolagem.setBorder(BorderFactory.createLineBorder(cores.rosaBorda()));
+        rolagem.getVerticalScrollBar().setUI(new BarraRolagemSakura());
 
-        if (escolha == 0) {
+        // Botões e fundo da paleta ativa (o diálogo segue a aparência escolhida).
+        BotaoSakura botaoApagar = new BotaoSakura("Apagar memória", BotaoSakura.Estilo.SECUNDARIO);
+        BotaoSakura botaoFechar = new BotaoSakura("Fechar", BotaoSakura.Estilo.PRINCIPAL);
+        JOptionPane opcoes = new JOptionPane(painel, JOptionPane.PLAIN_MESSAGE, JOptionPane.DEFAULT_OPTION,
+                null, new Object[] {botaoApagar, botaoFechar}, botaoFechar);
+        botaoApagar.addActionListener(e -> opcoes.setValue(0));
+        botaoFechar.addActionListener(e -> opcoes.setValue(1));
+        pintarFundo(opcoes, cores.fundo());
+
+        JDialog dialogo = opcoes.createDialog(pai, "Memória de " + personagem);
+        dialogo.getContentPane().setBackground(cores.fundo());
+        try {
+            dialogo.setVisible(true);
+        } finally {
+            dialogo.dispose();
+        }
+
+        if (Integer.valueOf(0).equals(opcoes.getValue())) {
             int confirmar = JOptionPane.showConfirmDialog(pai,
                     "Apagar a memória de " + personagem + "?\n"
                             + "As mensagens continuam na conversa, mas " + personagem
@@ -69,6 +86,15 @@ final class DialogoMemoria {
                     "Apagar memória", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirmar == JOptionPane.YES_OPTION) {
                 apagar.run();
+            }
+        }
+    }
+
+    private static void pintarFundo(java.awt.Container container, java.awt.Color cor) {
+        container.setBackground(cor);
+        for (Component filho : container.getComponents()) {
+            if (filho instanceof JPanel subpainel) {
+                pintarFundo(subpainel, cor);
             }
         }
     }

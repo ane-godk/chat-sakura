@@ -49,6 +49,15 @@ class ControladorConversasJsonTest {
             ativa = idAtiva;
         }
 
+        final List<br.unicesumar.chat.model.Aparencia> aparencias = new ArrayList<>();
+        boolean aparenciaNaEdt = true;
+
+        @Override
+        public void aparenciaRecebida(br.unicesumar.chat.model.Aparencia aparencia) {
+            aparenciaNaEdt &= SwingUtilities.isEventDispatchThread();
+            aparencias.add(aparencia);
+        }
+
         ControladorConversas.ItemLateral item(long id) {
             return itens.stream().filter(i -> i.id() == id).findFirst().orElseThrow();
         }
@@ -120,6 +129,31 @@ class ControladorConversasJsonTest {
                 ProtocoloJson.ConversaJson.de(PRIVADA, mensagem(10, 7, 2, "Bia", "Oi!"), 0))));
         evento(ProtocoloJson.eventoHistorico(null, 1, List.of(
                 ProtocoloJson.MensagemJson.de(mensagem(3, 1, 2, "Bia", "Olá, Geral")))));
+    }
+
+    @Test
+    void aparenciaDoServidorChegaAVisaoNaEdtEValoresDesconhecidosViramPadrao() throws Exception {
+        entrarComoAna();
+        br.unicesumar.chat.model.Aparencia fuji = new br.unicesumar.chat.model.Aparencia(
+                br.unicesumar.chat.model.Aparencia.Paleta.FUJI, br.unicesumar.chat.model.Aparencia.Modo.ESCURO,
+                br.unicesumar.chat.model.Aparencia.Fundo.FLORAL);
+
+        evento(ProtocoloJson.eventoAparencia(null, fuji));
+        // Servidor mais novo, com uma paleta que este cliente não conhece.
+        evento("{\"tipo\":\"APARENCIA\",\"paleta\":\"ORQUIDEA\",\"modo\":\"ESCURO\",\"fundo\":\"LISO\"}");
+
+        assertEquals(List.of(fuji, br.unicesumar.chat.model.Aparencia.PADRAO
+                .comModo(br.unicesumar.chat.model.Aparencia.Modo.ESCURO)
+                .comFundo(br.unicesumar.chat.model.Aparencia.Fundo.LISO)), visao.aparencias);
+        assertTrue(visao.aparenciaNaEdt, "Interface atualizada somente na EDT");
+    }
+
+    @Test
+    void semSessaoDeContaAAparenciaNaoEEnviada() throws Exception {
+        criar();
+        AtomicReference<Boolean> enviada = new AtomicReference<>();
+        naEdt(() -> enviada.set(controlador.definirAparencia(br.unicesumar.chat.model.Aparencia.PADRAO, () -> { })));
+        assertFalse(enviada.get());
     }
 
     @Test

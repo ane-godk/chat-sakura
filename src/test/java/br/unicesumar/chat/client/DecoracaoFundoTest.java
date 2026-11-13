@@ -90,6 +90,23 @@ class DecoracaoFundoTest {
         }
     }
 
+    /** O título da conversa fica no canto superior esquerdo do cartão: nenhuma ilustração ali. */
+    @Test
+    void faixaDoTituloFicaLivre() {
+        for (Paleta flor : Paleta.values()) {
+            for (boolean escuro : new boolean[] {false, true}) {
+                PaletaSakura c = PaletasFlorais.de(flor, escuro);
+                BufferedImage img = DecoracaoFundo.compor(c, flor, Fundo.FLORAL, L, A, 1.0);
+                for (int y = 6; y < 24; y += 2) {
+                    for (int x = 12; x < 160; x += 2) {
+                        assertTrue(distancia(img.getRGB(x, y), base(c, Fundo.FLORAL, y)) <= 2,
+                                flor + (escuro ? " escuro" : " claro") + ": decoração sob o título em " + x + "," + y);
+                    }
+                }
+            }
+        }
+    }
+
     @Test
     void neutroQuaseSemCorELisoComOTomDaPaleta() {
         for (Paleta flor : Paleta.values()) {

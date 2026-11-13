@@ -231,18 +231,18 @@ final class DecoracaoFundo {
             florMyosotis(g, largura + b[0] * f, altura + b[1] * f, b[2] * f, petala, escura, miolo);
         }
 
-        // Pequeno buquê no canto superior esquerdo.
+        // Pequeno buquê no canto inferior esquerdo (o superior fica livre para o título).
         g.setColor(folha(c));
-        g.draw(new QuadCurve2D.Double(-4, 22 * f, 30 * f, 18 * f, 54 * f, 40 * f));
-        double[][] alto = {{20, 16, 10}, {40, 30, 8}, {12, 40, 7}, {56, 46, 6}};
-        for (double[] b : alto) {
-            florMyosotis(g, b[0] * f, b[1] * f, b[2] * f, petala, escura, miolo);
+        g.draw(new QuadCurve2D.Double(-4, altura - 22 * f, 30 * f, altura - 18 * f, 54 * f, altura - 40 * f));
+        double[][] baixo = {{20, -16, 10}, {40, -30, 8}, {12, -40, 7}, {58, -46, 6}};
+        for (double[] b : baixo) {
+            florMyosotis(g, b[0] * f, altura + b[1] * f, b[2] * f, petala, escura, miolo);
         }
 
-        // Botões soltos na borda esquerda inferior.
+        // Botões soltos na borda direita, acima do buquê.
         g.setColor(petala);
-        for (double[] p : new double[][] {{16, -40, 4}, {30, -24, 3}, {10, -18, 3}}) {
-            g.fill(new Ellipse2D.Double(p[0] * f - p[2] * f, altura + p[1] * f - p[2] * f,
+        for (double[] p : new double[][] {{-18, -136, 4}, {-34, -150, 3}, {-10, -160, 3}}) {
+            g.fill(new Ellipse2D.Double(largura + p[0] * f - p[2] * f, altura + p[1] * f - p[2] * f,
                     2 * p[2] * f, 2 * p[2] * f));
         }
     }
@@ -273,25 +273,28 @@ final class DecoracaoFundo {
     private static void fuji(Graphics2D g, PaletaSakura c, int largura, int altura) {
         double f = fator(altura);
 
-        // Ramo ao longo do topo, nos dois cantos.
+        // Ramo ao longo do topo, só no canto direito (o esquerdo fica livre para o título).
         g.setColor(folha(c));
         g.setStroke(new BasicStroke((float) (2.6 * f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.draw(new QuadCurve2D.Double(-6, 10 * f, 50 * f, 2 * f, 110 * f, 14 * f));
-        g.draw(new QuadCurve2D.Double(largura + 6, 12 * f, largura - 56 * f, 0, largura - 120 * f, 16 * f));
+        g.draw(new QuadCurve2D.Double(largura + 6, 12 * f, largura - 70 * f, 0, largura - 140 * f, 18 * f));
 
-        folhaOval(g, 70 * f, 12 * f, 20 * f, 7 * f, 20);
-        folhaOval(g, 100 * f, 22 * f, 16 * f, 6 * f, 60);
-        folhaOval(g, largura - 76 * f, 10 * f, 20 * f, 7 * f, -20);
-        folhaOval(g, largura - 108 * f, 22 * f, 16 * f, 6 * f, -60);
+        folhaOval(g, largura - 84 * f, 10 * f, 20 * f, 7 * f, -20);
+        folhaOval(g, largura - 118 * f, 22 * f, 16 * f, 6 * f, -60);
+        folhaOval(g, largura - 132 * f, 14 * f, 14 * f, 5 * f, 10);
 
         Color topo = c.rosa();
         Color ponta = c.rosaFlor();
-        cacho(g, 20 * f, 8 * f, 104 * f, 26 * f, topo, ponta, 1);
-        cacho(g, 52 * f, 10 * f, 76 * f, 22 * f, topo, ponta, 2);
-        cacho(g, 84 * f, 14 * f, 54 * f, 18 * f, topo, ponta, 3);
-        cacho(g, largura - 24 * f, 8 * f, 96 * f, 24 * f, topo, ponta, 4);
-        cacho(g, largura - 58 * f, 10 * f, 70 * f, 20 * f, topo, ponta, 5);
-        cacho(g, largura - 92 * f, 14 * f, 46 * f, 16 * f, topo, ponta, 6);
+        cacho(g, largura - 22 * f, 8 * f, 112 * f, 26 * f, topo, ponta, 4);
+        cacho(g, largura - 52 * f, 10 * f, 84 * f, 22 * f, topo, ponta, 5);
+        cacho(g, largura - 82 * f, 12 * f, 62 * f, 19 * f, topo, ponta, 6);
+        cacho(g, largura - 110 * f, 16 * f, 42 * f, 15 * f, topo, ponta, 7);
+
+        // Florzinhas caídas no canto inferior esquerdo.
+        for (double[] p : new double[][] {{18, -16, 6, 20}, {34, -26, 5, -30}, {14, -34, 4, 60},
+                {50, -12, 5, 10}, {66, -20, 4, -50}, {28, -48, 4, 35}}) {
+            g.setColor(TemaSakura.misturar(topo, ponta, 0.5));
+            petala(g, p[0] * f, altura + p[1] * f, p[2] * f * 1.6, p[3]);
+        }
     }
 
     /** Cacho pendente: florzinhas cada vez menores e mais claras rumo à ponta. */

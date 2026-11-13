@@ -79,6 +79,42 @@ final class IconesDesenhados {
         g2.fill(corpo);
     }
 
+    /** Lupa (pesquisar mensagens). */
+    static void lupa(Graphics2D g2, double x, double y, double tamanho, Color cor) {
+        g2.setColor(cor);
+        g2.setStroke(new BasicStroke((float) Math.max(1.4, tamanho * 0.12),
+                BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        double raio = tamanho * 0.30;
+        double cx = x + tamanho * 0.42;
+        double cy = y + tamanho * 0.42;
+        g2.draw(new java.awt.geom.Ellipse2D.Double(cx - raio, cy - raio, raio * 2, raio * 2));
+        g2.draw(new java.awt.geom.Line2D.Double(cx + raio * 0.72, cy + raio * 0.72,
+                x + tamanho * 0.92, y + tamanho * 0.92));
+    }
+
+    /** Alfinete (mensagens fixadas). */
+    static void alfinete(Graphics2D g2, double x, double y, double tamanho, Color cor) {
+        g2.setColor(cor);
+        java.awt.geom.AffineTransform original = g2.getTransform();
+        g2.rotate(Math.toRadians(35), x + tamanho / 2, y + tamanho / 2);
+        Path2D.Double cabeca = new Path2D.Double();
+        cabeca.moveTo(x + tamanho * 0.30, y + tamanho * 0.08);
+        cabeca.lineTo(x + tamanho * 0.70, y + tamanho * 0.08);
+        cabeca.lineTo(x + tamanho * 0.62, y + tamanho * 0.22);
+        cabeca.lineTo(x + tamanho * 0.66, y + tamanho * 0.48);
+        cabeca.lineTo(x + tamanho * 0.80, y + tamanho * 0.60);
+        cabeca.lineTo(x + tamanho * 0.20, y + tamanho * 0.60);
+        cabeca.lineTo(x + tamanho * 0.34, y + tamanho * 0.48);
+        cabeca.lineTo(x + tamanho * 0.38, y + tamanho * 0.22);
+        cabeca.closePath();
+        g2.fill(cabeca);
+        g2.setStroke(new BasicStroke((float) Math.max(1.2, tamanho * 0.09),
+                BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.draw(new java.awt.geom.Line2D.Double(x + tamanho * 0.50, y + tamanho * 0.60,
+                x + tamanho * 0.50, y + tamanho * 0.96));
+        g2.setTransform(original);
+    }
+
     /** Avião de papel apontando para cima e para a direita. */
     static void aviaoDePapel(
             Graphics2D g2,

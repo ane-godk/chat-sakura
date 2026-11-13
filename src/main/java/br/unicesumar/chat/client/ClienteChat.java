@@ -2,6 +2,7 @@
 package br.unicesumar.chat.client;
 
 import br.unicesumar.chat.model.Aparencia;
+import br.unicesumar.chat.protocolo.ProtocoloJson;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -72,6 +73,11 @@ public final class ClienteChat extends JFrame {
     private final AvisoDiscreto aviso = new AvisoDiscreto();
 
     private final BotaoSakura botaoMemoria = new BotaoSakura("Memória", BotaoSakura.Estilo.SECUNDARIO);
+
+    // Pesquisa e mensagens fixadas: ícones no cabeçalho da conversa e painel lateral.
+    private final BotaoSakura botaoPesquisar = new BotaoSakura("", BotaoSakura.Estilo.SECUNDARIO);
+    private final BotaoSakura botaoFixadas = new BotaoSakura("", BotaoSakura.Estilo.SECUNDARIO);
+    private PainelBuscaFixadas painelLateral;
 
     // Rede e estado das conversas; a janela apenas monta e coordena a interface.
     private final transient ControladorConversas controlador =
@@ -144,6 +150,9 @@ public final class ClienteChat extends JFrame {
     private void aplicarTema() {
         atualizarContador();
         atualizarBotaoTema();
+        if (painelLateral != null) {
+            painelLateral.aplicarTema();
+        }
         guardarAparencia();
         getRootPane().repaint();
     }
@@ -438,11 +447,47 @@ public final class ClienteChat extends JFrame {
         botaoMemoria.setVisible(false);
         botaoMemoria.setToolTipText("Ver ou apagar a memória deste personagem");
         botaoMemoria.addActionListener(e -> verMemoria());
+        configurarIcone(botaoPesquisar, IconesDesenhados::lupa, "Pesquisar mensagens desta conversa");
+        configurarIcone(botaoFixadas, IconesDesenhados::alfinete, "Mensagens fixadas");
+        botaoPesquisar.addActionListener(e -> alternarPainel(PainelBuscaFixadas.Vista.PESQUISA));
+        botaoFixadas.addActionListener(e -> alternarPainel(PainelBuscaFixadas.Vista.FIXADAS));
+
+        JPanel acoesConversa = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        acoesConversa.setOpaque(false);
+        acoesConversa.add(botaoPesquisar);
+        acoesConversa.add(botaoFixadas);
+        acoesConversa.add(botaoMemoria);
+
         JPanel topoConversa = new JPanel(new BorderLayout());
         topoConversa.setOpaque(false);
         topoConversa.add(tituloConversa, BorderLayout.CENTER);
-        topoConversa.add(botaoMemoria, BorderLayout.EAST);
+        topoConversa.add(acoesConversa, BorderLayout.EAST);
         fundoConversa.add(topoConversa, BorderLayout.NORTH);
+
+        painelLateral = new PainelBuscaFixadas(controlador, () -> mostrarPainel(false));
+        painelLateral.setVisible(false);
+        areaMensagens.definirAcoesFixacao(new BalaoMensagem.AcoesFixacao() {
+            @Override
+            public boolean podeFixar() {
+                ControladorConversas.Conversa ativa = controlador.conversaAtiva();
+                return controlador.modoContas() && ativa != null && ativa.podeFixar();
+            }
+
+            @Override
+            public boolean fixada(long mensagemId) {
+                ControladorConversas.Conversa ativa = controlador.conversaAtiva();
+                return ativa != null && ativa.fixada(mensagemId);
+            }
+
+            @Override
+            public void alternar(long mensagemId) {
+                if (fixada(mensagemId)) {
+                    controlador.desafixar(mensagemId);
+                } else {
+                    controlador.fixar(mensagemId);
+                }
+            }
+        });
 
         barraConversas.botaoPrivada.addActionListener(e -> novaConversaPrivada());
         barraConversas.botaoGrupo.addActionListener(e -> novoGrupo());
@@ -454,8 +499,60 @@ public final class ClienteChat extends JFrame {
         area.setOpaque(false);
         area.add(barraConversas, BorderLayout.WEST);
         area.add(fundoConversa, BorderLayout.CENTER);
+        area.add(painelLateral, BorderLayout.EAST);
 
         return area;
+    }
+
+    private static void configurarIcone(BotaoSakura botao, BotaoSakura.DesenhoIcone icone, String nome) {
+        botao.definirIcone(icone);
+        botao.setBorder(new EmptyBorder(4, 7, 4, 7));
+        botao.setToolTipText(nome);
+        botao.getAccessibleContext().setAccessibleName(nome);
+        botao.setVisible(false);
+    }
+
+    /** Abre a vista pedida; se ela já estava aberta, fecha o painel. */
+    void alternarPainel(PainelBuscaFixadas.Vista vista) {
+        if (painelLateral.isVisible() && painelLateral.vista() == vista) {
+            mostrarPainel(false);
+            return;
+        }
+        painelLateral.conversaAtiva(controlador.conversaAtiva());
+        painelLateral.mostrar(vista);
+        mostrarPainel(true);
+    }
+
+    private void mostrarPainel(boolean visivel) {
+        painelLateral.setVisible(visivel);
+        painelLateral.getParent().revalidate();
+        painelLateral.getParent().repaint();
+    }
+
+    /** Ícones do cabeçalho da conversa: só com conta (protocolo v2). */
+    private void atualizarAcoesConversa() {
+        ControladorConversas.Conversa ativa = controlador.conversaAtiva();
+        boolean contas = controlador.modoContas();
+        botaoPesquisar.setVisible(contas);
+        botaoFixadas.setVisible(contas && ativa != null
+                && ativa.tipo() != br.unicesumar.chat.model.Conversa.Tipo.GERAL);
+        int quantidade = ativa == null ? 0 : ativa.fixadas().size();
+        botaoFixadas.setText(quantidade == 0 ? "" : String.valueOf(quantidade));
+        String nome = quantidade == 0 ? "Mensagens fixadas" : "Mensagens fixadas (" + quantidade + ")";
+        botaoFixadas.setToolTipText(nome);
+        botaoFixadas.getAccessibleContext().setAccessibleName(nome);
+        if (!contas && painelLateral.isVisible()) {
+            mostrarPainel(false);
+        }
+    }
+
+    /** Painel lateral (testes). */
+    PainelBuscaFixadas painelLateral() {
+        return painelLateral;
+    }
+
+    PainelConversa areaMensagens() {
+        return areaMensagens;
     }
 
     /**
@@ -731,9 +828,35 @@ public final class ClienteChat extends JFrame {
         @Override
         public void exibirConversa(ControladorConversas.Conversa conversa) {
             acompanhandoFim = true;
-            areaMensagens.carregar(conversa.linhas());
+            areaMensagens.carregar(conversa.linhas(), conversa.idsLinhas());
             tituloConversa.setText(tituloDe(conversa));
             botaoExportar.setEnabled(!conversa.texto().isBlank());
+            painelLateral.conversaAtiva(conversa);
+            atualizarAcoesConversa();
+        }
+
+        @Override
+        public void exibirMensagem(long idConversa, String linha, Long mensagemId) {
+            areaMensagens.adicionarLinha(linha, mensagemId);
+            botaoExportar.setEnabled(true);
+        }
+
+        @Override
+        public void destacarMensagem(long idConversa, long mensagemId) {
+            // Não acompanha o fim: a leitura fica na mensagem destacada.
+            acompanhandoFim = false;
+            if (!areaMensagens.destacar(mensagemId)) {
+                aviso.mostrar("A mensagem não está visível nesta conversa.", AvisoDiscreto.Tipo.INFORMACAO);
+            }
+        }
+
+        @Override
+        public void fixadasAtualizadas(long idConversa, java.util.List<ProtocoloJson.FixadaJson> fixadas) {
+            if (controlador.conversaAtiva().id() == idConversa) {
+                areaMensagens.atualizarFixadas();
+                painelLateral.atualizarFixadas();
+            }
+            atualizarAcoesConversa();
         }
 
         @Override
@@ -755,6 +878,7 @@ public final class ClienteChat extends JFrame {
             barraConversas.atualizar(itens, idAtiva);
             barraConversas.definirContas(controlador.modoContas());
             atualizarBotaoMemoria();
+            atualizarAcoesConversa();
         }
 
         // Recuperáveis: faixa discreta, sem diálogo modal.
@@ -805,6 +929,7 @@ public final class ClienteChat extends JFrame {
             }
             atualizarEstado();
             atualizarBotaoMemoria();
+            atualizarAcoesConversa();
         }
 
         @Override

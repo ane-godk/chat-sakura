@@ -48,7 +48,33 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
             MenuMensagem.EXIBIR_NA_TELA;
     private transient JPopupMenu menu;
 
+    /** Fixação de mensagens, fornecida pela janela (consultada na hora). */
+    interface AcoesFixacao {
+        boolean podeFixar();
+
+        boolean fixada(long mensagemId);
+
+        void alternar(long mensagemId);
+    }
+
+    static final int DURACAO_DESTAQUE_MS = 2400;
+    private static final int TAMANHO_ALFINETE = 11;
+
+    private final Long mensagemId;
+    private final transient AcoesFixacao acoes;
+    private boolean fixadaExibida;
+    private long inicioDestaque = -1;
+    private final transient AnimadorSwing animadorDestaque = new AnimadorSwing(40, this::passoDestaque);
+
     BalaoMensagem(FormatoLinhaChat.Linha linha, boolean propria) {
+        this(linha, propria, null, null);
+    }
+
+    /**
+     * @param mensagemId id da mensagem (nulo no protocolo de texto: sem fixação)
+     * @param acoes      fixação (nulo: indisponível)
+     */
+    BalaoMensagem(FormatoLinhaChat.Linha linha, boolean propria, Long mensagemId, AcoesFixacao acoes) {
 
         if (linha.tipo() != FormatoLinhaChat.Tipo.MENSAGEM) {
             throw new IllegalArgumentException("A linha não é uma mensagem.");
@@ -58,6 +84,9 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
         this.horario = semColchetes(linha.horario());
         this.conteudo = linha.conteudo();
         this.propria = propria;
+        this.mensagemId = mensagemId;
+        this.acoes = acoes;
+        this.fixadaExibida = fixadaAgora();
 
 
         // Nunito para o nome; fonte composta se o nome tiver, por
@@ -90,15 +119,97 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
     }
 
     JPopupMenu menuDeContexto() {
-        // Recriado após uma troca de tema, para seguir a paleta ativa.
-        if (menu == null || paletaDoMenu != TemaSakura.cores()) {
-            menu = MenuMensagem.criar(this::copiarMensagem);
+        // Recriado após uma troca de tema (segue a paleta ativa) ou quando a
+        // opção de fixar muda (fixada, desafixada ou sem permissão).
+        String rotulo = rotuloFixar();
+        if (menu == null || paletaDoMenu != TemaSakura.cores() || !java.util.Objects.equals(rotulo, rotuloDoMenu)) {
+            menu = rotulo == null
+                    ? MenuMensagem.criar(this::copiarMensagem)
+                    : MenuMensagem.criar(this::copiarMensagem, rotulo, () -> acoes.alternar(mensagemId));
             paletaDoMenu = TemaSakura.cores();
+            rotuloDoMenu = rotulo;
         }
         return menu;
     }
 
     private transient PaletaSakura paletaDoMenu;
+    private transient String rotuloDoMenu;
+
+    /** "Fixar mensagem", "Desafixar mensagem" ou nulo (sem id ou sem permissão). */
+    String rotuloFixar() {
+        if (mensagemId == null || acoes == null || !acoes.podeFixar()) {
+            return null;
+        }
+        return acoes.fixada(mensagemId) ? MenuMensagem.ROTULO_DESAFIXAR : MenuMensagem.ROTULO_FIXAR;
+    }
+
+    Long mensagemId() {
+        return mensagemId;
+    }
+
+    /** Leitores de tela: "Mensagem de Bia, 13/11 10:15: texto" (e se está fixada). */
+    @Override
+    public javax.accessibility.AccessibleContext getAccessibleContext() {
+        if (accessibleContext == null) {
+            accessibleContext = new AccessibleJComponent() {
+                private static final long serialVersionUID = 1L;
+
+                @Override
+                public String getAccessibleName() {
+                    String nome = super.getAccessibleName();
+                    return nome != null ? nome : "Mensagem de " + remetente + ", " + horario + ": " + conteudo
+                            + (fixadaExibida ? " (fixada)" : "");
+                }
+
+                @Override
+                public javax.accessibility.AccessibleRole getAccessibleRole() {
+                    return javax.accessibility.AccessibleRole.LABEL;
+                }
+            };
+        }
+        return accessibleContext;
+    }
+
+    private boolean fixadaAgora() {
+        return mensagemId != null && acoes != null && acoes.fixada(mensagemId);
+    }
+
+    boolean fixada() {
+        return fixadaExibida;
+    }
+
+    /** Reavalia o indicador de fixada (só remede se mudou). */
+    void atualizarFixacao() {
+        boolean agora = fixadaAgora();
+        if (agora != fixadaExibida) {
+            fixadaExibida = agora;
+            larguraNatural = -1;
+            revalidate();
+            repaint();
+        }
+    }
+
+    /** Contorno de destaque que some aos poucos (resultado de pesquisa ou fixada aberta). */
+    void destacar() {
+        inicioDestaque = Transicao.agora();
+        getAccessibleContext().setAccessibleDescription("Mensagem destacada");
+        animadorDestaque.iniciar();
+        repaint();
+    }
+
+    boolean destacada() {
+        return inicioDestaque >= 0 && Transicao.agora() - inicioDestaque < DURACAO_DESTAQUE_MS;
+    }
+
+    private boolean passoDestaque() {
+        repaint();
+        if (!destacada()) {
+            inicioDestaque = -1;
+            getAccessibleContext().setAccessibleDescription(null);
+            return false;
+        }
+        return true;
+    }
 
     /**
      * Copia somente o conteúdo da mensagem (sem nome, horário ou
@@ -194,7 +305,8 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
     private int larguraCabecalho() {
         return getFontMetrics(fonteNome).stringWidth(remetente)
                 + ESPACO_NOME_HORARIO
-                + getFontMetrics(TemaSakura.FONTE_PEQUENA).stringWidth(horario);
+                + getFontMetrics(TemaSakura.FONTE_PEQUENA).stringWidth(horario)
+                + (fixadaExibida ? TAMANHO_ALFINETE + 4 : 0);
     }
 
     List<String> linhasPara(int larguraInterna) {
@@ -249,6 +361,16 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
                     : TemaSakura.cores().rosaBorda());
             g2.draw(corpo);
 
+            if (destacada()) {
+                double t = (Transicao.agora() - inicioDestaque) / (double) DURACAO_DESTAQUE_MS;
+                // Sem transições, o contorno fica fixo até sumir (sem esmaecer).
+                int alfa = ConfiguracaoAnimacoes.transicoesAtivas()
+                        ? (int) Math.round(230 * (1 - Math.max(0, Math.min(1, t)))) : 230;
+                g2.setStroke(new BasicStroke(2.6f));
+                g2.setColor(TemaSakura.comAlfa(TemaSakura.cores().rosa(), alfa));
+                g2.draw(new RoundRectangle2D.Float(1.5f, 1.5f, largura - 2.5f, altura - 2f, RAIO, RAIO));
+            }
+
             desenharCabecalho(g2);
             desenharConteudo(g2);
 
@@ -267,11 +389,18 @@ final class BalaoMensagem extends JComponent implements ItemConversa {
         int linhaBase = PREENCHIMENTO_V + nome.getAscent();
 
         int larguraHora = hora.stringWidth(horario);
-        int espacoNome = Math.max(0, direita - esquerda - larguraHora - ESPACO_NOME_HORARIO);
+        int larguraAlfinete = fixadaExibida ? TAMANHO_ALFINETE + 4 : 0;
+        int espacoNome = Math.max(0, direita - esquerda - larguraHora - larguraAlfinete - ESPACO_NOME_HORARIO);
 
         g2.setFont(fonteNome);
         g2.setColor(corNome());
         g2.drawString(abreviar(remetente, nome, espacoNome), esquerda, linhaBase);
+
+        if (fixadaExibida) {
+            // Indicador discreto: alfinete antes do horário.
+            IconesDesenhados.alfinete(g2, direita - larguraHora - larguraAlfinete,
+                    linhaBase - TAMANHO_ALFINETE + 1, TAMANHO_ALFINETE, TemaSakura.cores().textoHorario());
+        }
 
         g2.setFont(TemaSakura.FONTE_PEQUENA);
         g2.setColor(TemaSakura.cores().textoHorario());

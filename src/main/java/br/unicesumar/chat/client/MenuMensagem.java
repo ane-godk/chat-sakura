@@ -67,7 +67,62 @@ final class MenuMensagem {
         }
     }
 
+    static final String ROTULO_FIXAR = "Fixar mensagem";
+    static final String ROTULO_DESAFIXAR = "Desafixar mensagem";
+
     static JPopupMenu criar(Runnable acaoCopiar) {
+        return criar(acaoCopiar, null, null);
+    }
+
+    /**
+     * @param rotuloFixar "Fixar mensagem" ou "Desafixar mensagem"; nulo se a
+     *                    mensagem não pode ser fixada por este usuário
+     */
+    static JPopupMenu criar(Runnable acaoCopiar, String rotuloFixar, Runnable acaoFixar) {
+        JPopupMenu menu = criarBase(acaoCopiar);
+        if (rotuloFixar != null && acaoFixar != null) {
+            JMenuItem fixar = new ItensMenuSakura.Item(rotuloFixar);
+            fixar.setMnemonic(KeyEvent.VK_F);
+            fixar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 12));
+            fixar.setIcon(new IconeDesenhado(IconesDesenhados::alfinete, 14));
+            fixar.addActionListener(e -> acaoFixar.run());
+            menu.add(fixar);
+        }
+        return menu;
+    }
+
+    /** Ícone vetorial na cor de destaque da paleta ativa. */
+    static final class IconeDesenhado implements javax.swing.Icon {
+        private final BotaoSakura.DesenhoIcone desenho;
+        private final int tamanho;
+
+        IconeDesenhado(BotaoSakura.DesenhoIcone desenho, int tamanho) {
+            this.desenho = desenho;
+            this.tamanho = tamanho;
+        }
+
+        @Override
+        public void paintIcon(Component c, java.awt.Graphics g, int x, int y) {
+            java.awt.Graphics2D g2 = TemaSakura.suavizar(g);
+            try {
+                desenho.desenhar(g2, x, y, tamanho, TemaSakura.cores().rosaEscuro());
+            } finally {
+                g2.dispose();
+            }
+        }
+
+        @Override
+        public int getIconWidth() {
+            return tamanho;
+        }
+
+        @Override
+        public int getIconHeight() {
+            return tamanho;
+        }
+    }
+
+    private static JPopupMenu criarBase(Runnable acaoCopiar) {
 
         JPopupMenu menu = new JPopupMenu();
         menu.setBackground(TemaSakura.cores().cartao());

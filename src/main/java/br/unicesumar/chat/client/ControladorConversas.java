@@ -124,7 +124,27 @@ final class ControladorConversas {
         /** Aparência da conta enviada pelo servidor (após entrar, reconectar ou salvar). */
         default void aparenciaRecebida(br.unicesumar.chat.model.Aparencia aparencia) {
         }
+
+        /** Nova linha na conversa ativa, com o id da mensagem (nulo para avisos locais). */
+        default void exibirMensagem(long idConversa, String linha, Long mensagemId) {
+            exibirLinha(idConversa, linha);
+        }
+
+        /** A mensagem pedida (pesquisa ou fixada) está exibida: rolar até ela e destacá-la. */
+        default void destacarMensagem(long idConversa, long mensagemId) {
+        }
+
+        /** Lista de mensagens fixadas da conversa (pedida ou alterada por outro participante). */
+        default void fixadasAtualizadas(long idConversa, List<ProtocoloJson.FixadaJson> fixadas) {
+        }
     }
+
+    /** Uma página de resultados da pesquisa. */
+    record PaginaPesquisa(long conversaId, List<ProtocoloJson.ResultadoJson> resultados, boolean temMais) {
+    }
+
+    /** Páginas de 100 mensagens buscadas para trás ao abrir uma mensagem antiga (até 500). */
+    static final int PAGINAS_PARA_ABRIR = 5;
 
     /** Conversa do cliente; acessada somente na EDT. */
     static final class Conversa {
@@ -145,6 +165,14 @@ final class ControladorConversas {
         private long idPrevia;
         private String avatarId;
         private boolean gerando;
+
+        // Pesquisa e fixadas.
+        private List<ProtocoloJson.ParticipanteJson> participantes = List.of();
+        private boolean podeFixar;
+        private final Set<Long> fixadas = new HashSet<>();
+        private List<ProtocoloJson.FixadaJson> listaFixadas = List.of();
+        private boolean fixadasSolicitadas;
+        private boolean semMaisAntigas;
 
         Conversa(long id, Tipo tipo, String titulo) {
             this.id = id;
@@ -176,6 +204,61 @@ final class ControladorConversas {
             return entradas.stream().map(Entrada::linha).toList();
         }
 
+        /** Id da mensagem de cada linha (nulo para avisos locais e separadores). */
+        List<Long> idsLinhas() {
+            return entradas.stream().map(Entrada::mensagemId).collect(java.util.stream.Collectors.toList());
+        }
+
+        boolean contem(long mensagemId) {
+            return mensagens.contains(mensagemId);
+        }
+
+        boolean fixada(long mensagemId) {
+            return fixadas.contains(mensagemId);
+        }
+
+        List<ProtocoloJson.FixadaJson> fixadas() {
+            return listaFixadas;
+        }
+
+        /** Política exibida na interface (o servidor verifica de novo a cada pedido). */
+        boolean podeFixar() {
+            return podeFixar;
+        }
+
+        List<ProtocoloJson.ParticipanteJson> participantes() {
+            return participantes;
+        }
+
+        private Long maisAntigaId() {
+            return mensagens.stream().min(Long::compare).orElse(null);
+        }
+
+        /** Mensagens anteriores ao histórico já carregado, logo após o separador de início. */
+        private void aplicarAnteriores(List<Mensagem> anteriores) {
+            int inicio = 0;
+            for (int i = 0; i < entradas.size(); i++) {
+                if (FormatoLinhaChat.INICIO_HISTORICO.equals(entradas.get(i).linha())
+                        && entradas.get(i).mensagemId() == null) {
+                    inicio = i + 1;
+                    break;
+                }
+            }
+            List<Entrada> novas = new ArrayList<>();
+            for (Mensagem mensagem : anteriores) {
+                if (mensagens.add(mensagem.getId())) {
+                    novas.add(new Entrada(mensagem.getId(), mensagem.formatar()));
+                }
+            }
+            entradas.addAll(inicio, novas);
+        }
+
+        private void aplicarFixadas(List<ProtocoloJson.FixadaJson> lista) {
+            listaFixadas = List.copyOf(lista);
+            fixadas.clear();
+            lista.forEach(f -> fixadas.add(f.mensagem().id()));
+        }
+
         /** Texto puro da conversa (base da exportação TXT). */
         String texto() {
             StringBuilder texto = new StringBuilder();
@@ -194,6 +277,10 @@ final class ControladorConversas {
             previa = "";
             ultimaId = 0;
             idPrevia = 0;
+            fixadas.clear();
+            listaFixadas = List.of();
+            fixadasSolicitadas = false;
+            semMaisAntigas = false;
         }
 
         /** @return {@code false} se a mensagem já estava na conversa */
@@ -570,7 +657,147 @@ final class ControladorConversas {
             marcarLida(conversa);
         }
 
+        // Fixadas: pedidas uma vez por sessão; depois chegam as alterações.
+        if (modoContas && conversa.tipo != Tipo.GERAL && !conversa.fixadasSolicitadas) {
+            conversa.fixadasSolicitadas = true;
+            if (!requisitarComFalha(ProtocoloJson.TipoRequisicao.LISTAR_FIXADAS, evento -> { },
+                    () -> conversa.fixadasSolicitadas = false, "conversaId", id)) {
+                conversa.fixadasSolicitadas = false;
+            }
+        }
+
         visao.conversasAtualizadas(itens(), idConversaAtiva);
+    }
+
+    // ------------------------------------------------------------------
+    // Pesquisa e mensagens fixadas
+    // ------------------------------------------------------------------
+
+    /**
+     * Pesquisa no histórico persistido da conversa ativa (no servidor; não
+     * bloqueia a EDT). Campos opcionais nulos não são enviados.
+     *
+     * @param aoFalhar executado na EDT se o servidor recusar (a mensagem chega por {@code erroConversa})
+     */
+    boolean pesquisar(String texto, Long remetenteId, java.time.LocalDate de, java.time.LocalDate ate, Long antesDe,
+                      Consumer<PaginaPesquisa> aoReceber, Runnable aoFalhar) {
+        long conversaId = idConversaAtiva;
+        List<Object> campos = new ArrayList<>(List.of("conversaId", conversaId, "texto", texto));
+        if (remetenteId != null) {
+            campos.addAll(List.of("remetenteId", remetenteId));
+        }
+        if (de != null) {
+            campos.addAll(List.of("de", de.toString()));
+        }
+        if (ate != null) {
+            campos.addAll(List.of("ate", ate.toString()));
+        }
+        if (antesDe != null) {
+            campos.addAll(List.of("antesDe", antesDe));
+        }
+        return requisitarComFalha(ProtocoloJson.TipoRequisicao.PESQUISAR,
+                evento -> aoReceber.accept(new PaginaPesquisa(conversaId, evento.resultados(), evento.temMais())),
+                aoFalhar, campos.toArray());
+    }
+
+    /** Fixa uma mensagem da conversa ativa (a lista atualizada chega como FIXADAS). */
+    boolean fixar(long mensagemId) {
+        return requisitar(ProtocoloJson.TipoRequisicao.FIXAR, evento -> { },
+                "conversaId", idConversaAtiva, "mensagemId", mensagemId);
+    }
+
+    boolean desafixar(long mensagemId) {
+        return requisitar(ProtocoloJson.TipoRequisicao.DESAFIXAR, evento -> { },
+                "conversaId", idConversaAtiva, "mensagemId", mensagemId);
+    }
+
+    /** Mensagem a localizar na conversa (resultado de pesquisa ou fixada). */
+    private record Destino(long conversaId, long mensagemId, int paginasRestantes) {
+    }
+
+    private Destino destino;
+
+    /**
+     * Abre a conversa e destaca a mensagem. Se ela for mais antiga que o
+     * histórico carregado, busca páginas anteriores (sem lacunas) até
+     * encontrá-la, no máximo {@value #PAGINAS_PARA_ABRIR} páginas.
+     */
+    void abrirMensagem(long conversaId, long mensagemId) {
+        if (!conversas.containsKey(conversaId)) {
+            return;
+        }
+        if (idConversaAtiva != conversaId) {
+            selecionar(conversaId);
+        }
+        destino = new Destino(conversaId, mensagemId, PAGINAS_PARA_ABRIR);
+        continuarAbertura();
+    }
+
+    private void continuarAbertura() {
+
+        Destino alvo = destino;
+        if (alvo == null) {
+            return;
+        }
+        Conversa conversa = conversas.get(alvo.conversaId());
+        if (conversa == null || idConversaAtiva != alvo.conversaId()) {
+            destino = null;      // o usuário trocou de conversa
+            return;
+        }
+        if (!conversa.historicoCarregado) {
+            return;              // continua quando o histórico inicial chegar
+        }
+        if (conversa.contem(alvo.mensagemId())) {
+            destino = null;
+            visao.destacarMensagem(conversa.id, alvo.mensagemId());
+            return;
+        }
+        Long antes = conversa.maisAntigaId();
+        if (antes == null || conversa.semMaisAntigas || alvo.paginasRestantes() == 0) {
+            destino = null;
+            visao.erroConversa("Essa mensagem é antiga demais para abrir aqui. O trecho aparece no resultado.");
+            return;
+        }
+        destino = new Destino(alvo.conversaId(), alvo.mensagemId(), alvo.paginasRestantes() - 1);
+        boolean pedido = requisitarComFalha(ProtocoloJson.TipoRequisicao.HISTORICO, this::aplicarAnteriores,
+                () -> destino = null, "conversaId", conversa.id, "antesDe", antes,
+                "limite", br.unicesumar.chat.service.ServicoConversas.HISTORICO_MAXIMO);
+        if (!pedido) {
+            destino = null;
+        }
+    }
+
+    private void aplicarAnteriores(ProtocoloJson.Evento evento) {
+        Conversa conversa = conversas.get(evento.conversaId());
+        if (conversa == null) {
+            return;
+        }
+        List<Mensagem> anteriores = new ArrayList<>();
+        for (ProtocoloJson.MensagemJson json : evento.mensagens()) {
+            try {
+                anteriores.add(json.paraMensagem());
+            } catch (RuntimeException e) {
+                System.err.println("Mensagem do histórico ignorada: " + e.getMessage());
+            }
+        }
+        if (anteriores.size() < br.unicesumar.chat.service.ServicoConversas.HISTORICO_MAXIMO) {
+            conversa.semMaisAntigas = true;
+        }
+        conversa.aplicarAnteriores(anteriores);
+        if (conversa.id == idConversaAtiva) {
+            visao.exibirConversa(conversa);
+        }
+        continuarAbertura();
+    }
+
+    private void aplicarFixadas(ProtocoloJson.Evento evento) {
+        Conversa conversa = conversas.get(evento.conversaId());
+        if (conversa == null) {
+            return;
+        }
+        conversa.fixadasSolicitadas = true;
+        conversa.aplicarFixadas(evento.fixadas());
+        visao.fixadasAtualizadas(conversa.id, conversa.fixadas());
     }
 
     /** Lista de usuários cadastrados (exceto o próprio), entregue na EDT. */
@@ -850,6 +1077,21 @@ final class ControladorConversas {
                 return;
             }
 
+            case RESULTADOS -> {
+                if (resposta != null) {
+                    resposta.accept(evento);
+                }
+                return;
+            }
+
+            case FIXADAS -> {
+                if (resposta != null) {
+                    resposta.accept(evento);
+                }
+                aplicarFixadas(evento);
+                return;
+            }
+
             case PING -> {
                 // Respondido pela conexão; nunca chega aqui.
             }
@@ -888,6 +1130,7 @@ final class ControladorConversas {
         }
 
         visao.conversasAtualizadas(itens(), idConversaAtiva);
+        continuarAbertura();
     }
 
     /** Cria ou atualiza a conversa a partir do servidor. */
@@ -904,6 +1147,15 @@ final class ControladorConversas {
         conversa.tipo = tipo;
         conversa.titulo = titulo(json);
         conversa.avatarId = avatarDe(json);
+        conversa.participantes = json.participantes() == null ? List.of() : List.copyOf(json.participantes());
+        // Mesma política do servidor (ServicoMensagens): privada e IA, qualquer
+        // participante; grupo, só ADMIN; Geral, ninguém.
+        conversa.podeFixar = switch (tipo) {
+            case GERAL -> false;
+            case PRIVADA, IA -> true;
+            case GRUPO -> conversa.participantes.stream()
+                    .anyMatch(p -> p.id() == idProprio && "ADMIN".equals(p.papel()));
+        };
 
         if (json.ultima() != null) {
             try {
@@ -988,7 +1240,7 @@ final class ControladorConversas {
         boolean propria = mensagem.getRemetente().getNome().equalsIgnoreCase(nomeUsuario);
 
         if (ativa) {
-            visao.exibirLinha(conversa.id, linha);
+            visao.exibirMensagem(conversa.id, linha, mensagem.getId());
             marcarLida(conversa);
         } else if (!propria && !mensagem.isAvisoDePresenca()) {
             conversa.naoLidas++;

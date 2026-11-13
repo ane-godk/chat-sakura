@@ -186,7 +186,43 @@ final class PainelConversa extends JPanel implements Scrollable {
         usuarioAtual = nome == null ? "" : nome;
     }
 
+    private transient BalaoMensagem.AcoesFixacao acoesFixacao;
+    private final transient Map<Long, BalaoMensagem> baloesPorId = new java.util.HashMap<>();
+
+    /** Fixação de mensagens nos balões (menu e indicador). */
+    void definirAcoesFixacao(BalaoMensagem.AcoesFixacao acoes) {
+        this.acoesFixacao = acoes;
+    }
+
+    /** Reavalia o indicador de fixada de todos os balões. */
+    void atualizarFixadas() {
+        baloesPorId.values().forEach(BalaoMensagem::atualizarFixacao);
+    }
+
+    BalaoMensagem balao(long mensagemId) {
+        return baloesPorId.get(mensagemId);
+    }
+
+    /**
+     * Rola até a mensagem e a destaca.
+     *
+     * @return {@code false} se ela não está exibida
+     */
+    boolean destacar(long mensagemId) {
+        BalaoMensagem balao = baloesPorId.get(mensagemId);
+        if (balao == null) {
+            return false;
+        }
+        validate();
+        Rectangle area = balao.getBounds();
+        area.grow(0, 24);
+        scrollRectToVisible(area);
+        balao.destacar();
+        return true;
+    }
+
     void limpar() {
+        baloesPorId.clear();
         linhas.clear();
         entradas.clear();
         limitador.limpar();
@@ -210,10 +246,17 @@ final class PainelConversa extends JPanel implements Scrollable {
      * animação, e o estado do histórico segue os separadores recebidos.
      */
     void carregar(List<String> novas) {
+        carregar(novas, null);
+    }
+
+    /** @param ids id da mensagem de cada linha (nulo, ou itens nulos, sem id) */
+    void carregar(List<String> novas, List<Long> ids) {
         limpar();
         carregando = true;
         try {
-            novas.forEach(this::adicionarLinha);
+            for (int i = 0; i < novas.size(); i++) {
+                adicionarLinha(novas.get(i), ids == null || i >= ids.size() ? null : ids.get(i));
+            }
         } finally {
             carregando = false;
         }
@@ -222,12 +265,20 @@ final class PainelConversa extends JPanel implements Scrollable {
     private boolean carregando;
 
     void adicionarLinha(String linha) {
+        adicionarLinha(linha, null);
+    }
+
+    void adicionarLinha(String linha, Long mensagemId) {
 
         String original = Objects.requireNonNullElse(linha, "");
         linhas.add(original);
 
         FormatoLinhaChat.Linha analisada = FormatoLinhaChat.analisar(original);
-        JComponent item = criarItem(analisada);
+        JComponent item = criarItem(analisada, mensagemId);
+
+        if (item instanceof BalaoMensagem balao && mensagemId != null) {
+            baloesPorId.put(mensagemId, balao);
+        }
 
         add(item);
         registrarEntrada(item, analisada);
@@ -236,9 +287,9 @@ final class PainelConversa extends JPanel implements Scrollable {
         repaint();
     }
 
-    private JComponent criarItem(FormatoLinhaChat.Linha linha) {
+    private JComponent criarItem(FormatoLinhaChat.Linha linha, Long mensagemId) {
         return switch (linha.tipo()) {
-            case MENSAGEM -> new BalaoMensagem(linha, linha.enviadaPor(usuarioAtual));
+            case MENSAGEM -> new BalaoMensagem(linha, linha.enviadaPor(usuarioAtual), mensagemId, acoesFixacao);
             case SISTEMA -> new LinhaTexto(linha.texto(), LinhaTexto.Estilo.SISTEMA);
             case SEPARADOR_HISTORICO -> new SeparadorHistorico(linha.texto());
             case AVISO_PRESENCA -> new AvisoPresenca(linha);

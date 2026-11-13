@@ -120,7 +120,12 @@ O servidor usa TLS: crie antes o certificado de desenvolvimento (README, seção
 - **[TELA]** Na janela da Ana, clique em **Aparência**, escolha **Fuji**, **Escuro** e fundo **Floral**, observe a prévia e clique em **Aplicar**. Na janela da Bia, escolha **Myosotis**, **Claro** e fundo **Liso**. Mostre que uma janela não muda a outra. Clique no botão de lua/sol para alternar só o modo. Mostre também **Exportar TXT** da conversa ativa.
 - **[FALA]** "Cada conta escolhe a paleta (Sakura, Myosotis, Fuji ou Suzuran), o modo claro ou escuro e o fundo da conversa. A escolha fica no servidor e volta no próximo login. Há ainda sons, animações e exportação em TXT."
 
-## 11. Conclusão (5:40 – 6:00)
+## 10b. Pesquisa e mensagens fixadas (5:40 – 6:00)
+
+- **[TELA]** No grupo, clique na **lupa**, pesquise "reunião" e clique num resultado: a mensagem original é destacada. Clique com o botão direito numa mensagem e escolha **Fixar mensagem**; abra o **alfinete** para ver a lista. Na janela da Bia (membro), o alfinete aparece, mas o menu não oferece fixar.
+- **[FALA]** "A pesquisa usa o histórico salvo, sem diferenciar acentos, com filtros de remetente e período. Cada conversa pode ter até 10 mensagens fixadas; nos grupos, só a administração fixa. O servidor verifica tudo."
+
+## 11. Conclusão (6:00 – 6:20)
 
 - **[TELA]** Mostre no VS Code a estrutura de pacotes (`model`, `persistence`, `service`, `protocolo`, `ia`, `server`, `client`) e o resultado `Tests run: 306, Failures: 0`.
 - **[FALA]** "O projeto separa domínio, persistência, serviços, protocolo, IA, servidor e cliente, e tem 306 testes automatizados. Os detalhes estão no README e no relatório técnico. Obrigada!"

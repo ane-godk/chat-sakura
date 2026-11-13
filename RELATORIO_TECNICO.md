@@ -452,7 +452,7 @@ No cliente Swing, a perda de conexão é exibida como mensagem `SISTEMA: ...`. O
 
 ## 15. Testes automatizados
 
-A suíte da entrega original possuía **306 testes JUnit 5**. Ao fim da Fase 5 (seção 16.11), são **473 testes**, todos aprovados em `mvn clean test`, com 0 falhas e 0 erros.
+A suíte da entrega original possuía **306 testes JUnit 5**. Ao fim da Fase 6A (seção 16.12), são **506 testes**, todos aprovados em `mvn clean test`, com 0 falhas e 0 erros.
 
 Nenhum teste usa o banco principal nem a internet:
 - os testes de persistência usam arquivos SQLite temporários (`@TempDir`);
@@ -713,6 +713,43 @@ O modo escuro herda o desenho do Sakura Noturno (sem preto puro, textos claros s
 
 **Resultado:** 473 testes automatizados aprovados ao fim da Fase 5.
 
+### 16.12 Fase 6A: pesquisa de mensagens e mensagens fixadas
+
+**Pesquisa.**
+- **Onde:** o `ServicoMensagens` pesquisa no histórico persistido da conversa pedida.
+- **Forma de pesquisa:** a migração v7 acrescenta `mensagem.texto_busca`, calculada em Java por `TextoBusca` (NFKD, sem marcas diacríticas, minúsculas com `Locale.ROOT`, espaços reduzidos) e preenchida para todas as mensagens existentes. O texto original não muda.
+- **Consulta:**
+  - `instr` sobre a forma de pesquisa, por isso `%` e `_` não são curingas;
+  - todos os valores vão como parâmetros do `PreparedStatement`;
+  - filtros opcionais de remetente e período;
+  - ordem decrescente por id, com paginação por `antesDe` (*keyset*), o que dá páginas estáveis, sem repetições nem lacunas.
+- **Tamanho da página:** no máximo 50 itens. O servidor busca um a mais só para indicar se há outra página.
+- **Trecho:** o resultado traz um trecho de até 140 caracteres e a posição do termo no texto original, mesmo quando a normalização muda o tamanho do texto.
+
+**Mensagens fixadas.**
+- **Armazenamento:** a tabela `mensagem_fixada` tem chave (`conversa_id`, `mensagem_id`). Apagar a mensagem ou a conversa apaga a fixação (`ON DELETE CASCADE`); apagar a conta de quem fixou mantém a fixação sem o autor (`ON DELETE SET NULL`). Há índices em `mensagem_id` e `fixada_por`.
+- **Limite de 10 por conversa:** verificado numa transação `BEGIN IMMEDIATE`, que reserva a escrita antes de contar, e sob um bloqueio por conversa. Um teste com dois "servidores" sobre o mesmo arquivo e 24 pedidos simultâneos termina com exatamente 10.
+- **Política, sem cargos novos:**
+  - privada: qualquer participante;
+  - grupo: só o papel ADMIN, já existente;
+  - IA: o dono;
+  - Geral: ninguém.
+- **Aviso aos participantes:** a lista atualizada chega por `FIXADAS` aos demais participantes conectados.
+
+**Acesso.**
+- Toda operação exige conta e participação (no Geral, só a conta, pois o histórico já é público).
+- Conversa alheia e conversa inexistente têm a mesma resposta (`NAO_ENCONTRADA`).
+- Falta de papel responde com o novo código `SEM_PERMISSAO`.
+- O cliente esconde as ações não permitidas, mas o servidor verifica de novo cada pedido.
+
+**Cliente.**
+- **Painel lateral não modal** (`PainelBuscaFixadas`): pesquisa com filtros e página seguinte, e lista de fixadas. Ele descarta respostas atrasadas de pesquisas ou de conversas anteriores.
+- **Balões:** os balões passam a conhecer o id da mensagem, para o item de menu "Fixar mensagem" e o alfinete discreto.
+- **Abrir uma mensagem:** destaca a original. Se ela for mais antiga que o histórico carregado, o cliente busca páginas anteriores (até 500 mensagens) e as insere antes das demais, sem lacunas.
+- **Rede e temas:** tudo é pedido em segundo plano, e a EDT nunca espera a rede. As cores vêm da paleta ativa nas oito combinações.
+
+**Resultado:** 506 testes automatizados aprovados ao fim da Fase 6A.
+
 ## 17. Funcionalidades extras
 
 - **Interface gráfica Swing com tema Sakura.** A janela usa cores em tons de rosa e tem:
@@ -743,6 +780,11 @@ Várias limitações da entrega original foram resolvidas nas Fases 1 a 4 (seç�
    - Os nomes dos participantes usam as mesmas cinco cores em todas as paletas.
    - Na Suzuran, o verde do indicador "online" fica próximo do tom da paleta.
    - O logotipo continua sendo a flor de cerejeira, recolorida.
+10. **Pesquisa e fixadas.**
+    - A pesquisa percorre as mensagens da conversa (sem índice de texto completo). É adequada ao volume de um chat acadêmico, mas ficaria lenta em conversas com centenas de milhares de mensagens.
+    - Abrir uma mensagem com mais de 500 mensagens depois dela mostra só o aviso e o trecho.
+    - O Chat Geral não tem mensagens fixadas.
+    - Não há exclusão de mensagens pela interface; a regra de exclusão vale para o banco (e para uma futura exclusão).
 
 ## 19. Melhorias futuras
 
@@ -771,6 +813,7 @@ Sobre essa base, a versão final entrega:
 - barra lateral com não lidas;
 - avatares persistentes;
 - quatro paletas florais em claro e escuro, com três fundos e aparência guardada por conta;
+- pesquisa no histórico salvo e mensagens fixadas, com acesso verificado no servidor;
 - a Sakura IA com personagens personalizados e histórico próprio, integrada ao **Qwen** por uma interface desacoplada.
 
-As garantias de concorrência continuam valendo: as conversas têm bloqueios independentes, a IA roda fora de qualquer bloqueio e a EDT nunca faz rede. Os 473 testes automatizados e as demonstrações práticas de cada fase sustentam essas afirmações. As limitações acima indicam a evolução natural do projeto, sem alterar a arquitetura em camadas.
+As garantias de concorrência continuam valendo: as conversas têm bloqueios independentes, a IA roda fora de qualquer bloqueio e a EDT nunca faz rede. Os 506 testes automatizados e as demonstrações práticas de cada fase sustentam essas afirmações. As limitações acima indicam a evolução natural do projeto, sem alterar a arquitetura em camadas.

@@ -22,7 +22,8 @@ Ele oferece **Chat Geral**, **conversas privadas**, **grupos**, contas com senha
 - **Protocolo:** JSON validado (protocolo v2), com compatibilidade com o protocolo de texto original.
 - **Interface:** sons, animações, preferências, menu "Copiar mensagem" e exportação TXT da conversa ativa.
 - **Aparência:** quatro paletas florais (Sakura, Myosotis, Fuji e Suzuran), cada uma em modo claro e escuro, e três fundos de conversa (floral, liso e neutro). Cada conta guarda a própria escolha no servidor.
-- **Testes:** 473 testes automatizados.
+- **Pesquisa e mensagens fixadas:** pesquisa no histórico salvo da conversa, com filtros de remetente e período, e até 10 mensagens fixadas por conversa.
+- **Testes:** 506 testes automatizados.
 
 ## Tecnologias
 
@@ -359,8 +360,8 @@ O botão **Conversa** inicia uma conversa privada com outra conta cadastrada. Se
 
 Depois do `AUTH OK`, cada linha é um objeto JSON com o campo `tipo`. As linhas são processadas pela Gson em modo estrito e têm limite de 4096 caracteres. A especificação completa está em `ProtocoloJson`.
 
-- **Requisições do cliente:** `LISTAR_CONVERSAS`, `LISTAR_USUARIOS`, `ABRIR_PRIVADA`, `CRIAR_GRUPO`, `ENVIAR`, `HISTORICO`, `MARCAR_LIDA` e `DEFINIR_APARENCIA` (`paleta`, `modo`, `fundo`).
-- **Eventos do servidor:** `CONVERSAS`, `CONVERSA`, `USUARIOS`, `HISTORICO`, `MENSAGEM`, `APARENCIA` e `ERRO`. A presença no Geral chega como `MENSAGEM` do tipo `ENTRADA` ou `SAIDA`. `APARENCIA` é enviado logo após a entrada (também na reconexão) e em resposta a `DEFINIR_APARENCIA`; clientes antigos o ignoram.
+- **Requisições do cliente:** `LISTAR_CONVERSAS`, `LISTAR_USUARIOS`, `ABRIR_PRIVADA`, `CRIAR_GRUPO`, `ENVIAR`, `HISTORICO`, `MARCAR_LIDA`, `DEFINIR_APARENCIA` (`paleta`, `modo`, `fundo`), `PESQUISAR` (`conversaId`, `texto`, `remetenteId?`, `de?`, `ate?`, `antesDe?`, `limite?`), `LISTAR_FIXADAS`, `FIXAR` e `DESAFIXAR` (`conversaId`, `mensagemId`).
+- **Eventos do servidor:** `CONVERSAS`, `CONVERSA`, `USUARIOS`, `HISTORICO`, `MENSAGEM`, `APARENCIA`, `RESULTADOS`, `FIXADAS` e `ERRO`. A presença no Geral chega como `MENSAGEM` do tipo `ENTRADA` ou `SAIDA`. `APARENCIA` é enviado logo após a entrada (também na reconexão) e em resposta a `DEFINIR_APARENCIA`. `FIXADAS` responde a `LISTAR_FIXADAS`, `FIXAR` e `DESAFIXAR` e também chega, sem pedido, aos demais participantes quando a lista muda. Clientes antigos ignoram eventos que não conhecem.
 - **Correlação:** o campo opcional `req` é repetido na resposta.
 - **Dados públicos apenas:** os eventos não contêm login, senha, hash nem sal.
 
@@ -369,6 +370,40 @@ Exemplo:
 ```json
 {"tipo":"ENVIAR","req":7,"conversaId":3,"texto":"Oi, turma!"}
 ```
+
+## Pesquisa e mensagens fixadas
+
+Com uma conta conectada, o cabeçalho da conversa tem dois ícones: a **lupa** (pesquisar) e o **alfinete** (mensagens fixadas, com a quantidade ao lado). Eles abrem um painel à direita da conversa, sem janela modal; o mesmo ícone fecha o painel.
+
+### Pesquisa
+
+- **Onde:** no histórico salvo no servidor da conversa aberta, não só nas mensagens carregadas na tela.
+- **Termo:** palavra ou trecho, de 2 a 100 caracteres. Acentos e maiúsculas não importam ("reuniao" encontra "REUNIÃO"), e `%` e `_` são texto comum, nunca curingas.
+- **Filtros opcionais:**
+  - remetente: um dos participantes da conversa;
+  - período: datas no formato dd/mm/aaaa, inclusive nas duas pontas.
+- **Resultados:** remetente, data e trecho da mensagem com o termo em destaque, das mais recentes para as mais antigas, 20 por vez; **Mais resultados** traz a próxima página, sem repetir nem pular mensagens.
+- **Abrir:** clicar num resultado abre a mensagem original, rola até ela e a destaca por alguns segundos. Se ela for mais antiga que o histórico carregado, o cliente busca as páginas anteriores (até 500 mensagens para trás), sem lacunas.
+- **Avisos e entradas e saídas do Geral** não aparecem nos resultados. Quando nada é encontrado, o painel informa "Nenhuma mensagem encontrada."
+
+### Mensagens fixadas
+
+- **Fixar:** pelo menu de contexto da mensagem (**Fixar mensagem** ou **Desafixar mensagem**). Uma mensagem fixada mostra um pequeno alfinete ao lado do horário.
+- **Lista:** o painel do alfinete mostra as fixadas da conversa; clicar localiza e destaca a mensagem; **Desafixar** remove a fixação da selecionada (a mensagem continua na conversa).
+- **Quem pode fixar e desafixar:**
+  - **conversa privada:** qualquer uma das duas pessoas (elas têm os mesmos direitos na conversa);
+  - **grupo:** só quem tem o papel ADMIN, que já existia (o criador do grupo); os membros veem a lista, mas não alteram;
+  - **conversa com personagem:** o dono da conversa;
+  - **Chat Geral:** ninguém, por ser aberto a todos.
+- **Limite:** 10 fixadas por conversa, verificado no servidor, inclusive com pedidos simultâneos.
+- **Exclusões:** apagar uma mensagem ou uma conversa apaga as fixações dela; se a conta de quem fixou for apagada, a fixação continua, sem o autor.
+
+### Segurança
+
+- O servidor verifica a conta e a participação em cada pedido; o cliente não decide nada sozinho.
+- Uma conversa de que você não participa responde exatamente como uma conversa inexistente, sem revelar mensagens nem que ela existe.
+- A pesquisa usa SQL com parâmetros (o texto digitado nunca entra no comando) e limita cada página a 50 resultados.
+- O texto das mensagens nunca é alterado: a migração v7 grava, numa coluna à parte (`texto_busca`), a forma usada na pesquisa.
 
 ## Exportação TXT
 
@@ -546,7 +581,7 @@ Na raiz do projeto:
 mvn clean test
 ```
 
-A suíte tem **473 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
+A suíte tem **506 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
 
 - robustez do servidor: cliente lento, fila de saída, ordem, vagas global e por IP, prazo de entrada, heartbeat v2, substituição de sessão, limites de taxa e de tentativas de login;
 - usuários, mensagens e repositórios;
@@ -563,7 +598,8 @@ A suíte tem **473 testes JUnit 5**. Todos usam bancos SQLite temporários, e ne
 - personagens de IA;
 - provedor Qwen contra um servidor HTTP local que imita a API, incluindo erros, tempo limite e chave fora de logs e eventos;
 - interface: barra lateral, não lidas, temas e exportação;
-- aparência: as oito paletas (contraste, matiz, cache), alternância de modo, três fundos (centro livre, decoração só nas bordas), tela com prévia, preferência local e compatibilidade com arquivos antigos, gravação por conta (isolamento, reinício, valores inválidos, migração v6), entrega após login e reconexão, e atualização da interface somente na EDT.
+- aparência: as oito paletas (contraste, matiz, cache), alternância de modo, três fundos (centro livre, decoração só nas bordas), tela com prévia, preferência local e compatibilidade com arquivos antigos, gravação por conta (isolamento, reinício, valores inválidos, migração v6), entrega após login e reconexão, e atualização da interface somente na EDT;
+- pesquisa e fixadas: normalização Unicode e trechos, resultados e ausência deles, paginação sem repetições, filtros, termo literal, acesso negado sem revelar a conversa, fixar e desafixar em privadas e grupos (papel ADMIN), limite de 10 com pedidos concorrentes em dois servidores sobre o mesmo banco, persistência após reinício, exclusão de mensagens e conversas, migração v7, protocolo sobre TLS, abertura de mensagem antiga com destaque e interface nas oito paletas.
 
 ## Observações e limitações
 

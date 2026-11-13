@@ -452,7 +452,7 @@ No cliente Swing, a perda de conexão é exibida como mensagem `SISTEMA: ...`. O
 
 ## 15. Testes automatizados
 
-A suíte da entrega original possuía **306 testes JUnit 5**. Ao fim da Fase 4 (seção 16.10), são **423 testes**, todos aprovados em `mvn clean test`, com 0 falhas e 0 erros.
+A suíte da entrega original possuía **306 testes JUnit 5**. Ao fim da Fase 5 (seção 16.11), são **473 testes**, todos aprovados em `mvn clean test`, com 0 falhas e 0 erros.
 
 Nenhum teste usa o banco principal nem a internet:
 - os testes de persistência usam arquivos SQLite temporários (`@TempDir`);
@@ -674,6 +674,45 @@ Depois da entrega, uma auditoria apontou riscos de segurança, estabilidade e qu
 
 **Resultado:** 423 testes automatizados aprovados ao fim da Fase 4.
 
+### 16.11 Fase 5: personalização visual e temas florais
+
+**Paletas.** `PaletasFlorais` calcula, uma única vez, oito paletas: Sakura, Myosotis, Fuji e Suzuran, cada uma em claro e escuro. Sakura Claro e Sakura Escuro são exatamente as paletas originais (`PaletaSakura.CLARO` e `NOTURNO`). As demais partem delas:
+- cada papel da paleta recebe o matiz e a saturação da flor, mantendo só parte do desvio de matiz que tinha em relação ao rosa (assim o ameixa do Noturno vira azul-noite, e não verde-água);
+- cores de estado (online, aviso, erro) e nomes dos participantes não mudam;
+- no modo claro, as cores de referência da flor entram nos papéis principais (destaque, seleção e fundo da janela);
+- por fim, cada par de texto e fundo é ajustado até pelo menos 4,5:1.
+
+O modo escuro herda o desenho do Sakura Noturno (sem preto puro, textos claros sem branco puro), em vez de escurecer o claro. Banner e flor do projeto são recoloridos em memória para cada flor; o original não muda.
+
+**Fundos.** `DecoracaoFundo` compõe os três fundos para qualquer paleta: floral (degradê e ilustrações originais da flor, desenhadas em Java2D, só nos cantos e bordas), liso (pastel da paleta) e neutro (sem cor nem decoração). O centro, onde ficam as mensagens, e a faixa do título ficam livres, o que é verificado pixel a pixel nos testes.
+
+**Aplicação sem reiniciar.** `GerenciadorTema` guarda a aparência completa (`Aparencia`: paleta, modo e fundo), troca a paleta na EDT e avisa os componentes, que leem as cores ao pintar. A tela **Aparência** (`DialogoAparencia`) mostra uma prévia (`PreviaAparencia`) pintada com a paleta candidata; nada muda na janela até **Aplicar**.
+
+**Desempenho.**
+- As paletas são calculadas uma vez.
+- O fundo da conversa fica em cache e só é refeito quando muda o tamanho, a escala, a paleta ou o fundo.
+- As flores recoloridas ficam em cache. Dos banners recoloridos (1500 × 500), só os dois mais recentes ficam na memória.
+- As pétalas animadas só rodam no fundo floral.
+
+**Preferências por conta.**
+- **Servidor:** a migração v6 cria `preferencia_aparencia`, com uma linha por conta e `ON DELETE CASCADE`. O `ServicoPreferencias` usa sempre a conta da sessão autenticada.
+- **Protocolo:** `DEFINIR_APARENCIA` é validado estritamente (valor inválido → `DADOS_INVALIDOS`) e entra no balde de criações do limite de taxa. O evento `APARENCIA` é enviado após a entrada e após cada gravação.
+- **Valores antigos ou desconhecidos** no banco viram o padrão daquele campo. Falha no banco nunca impede o login.
+- **Cliente:**
+  - aplica a aparência da conta recebida do servidor;
+  - ao sair, volta à aparência local (`~/.chat-sakura/preferencias.properties`, chaves `tema`, `paleta` e `fundo`);
+  - na reconexão, mantém a aparência da conta e envia uma escolha feita sem conexão quando a sessão volta.
+- **Arquivos antigos**, só com `tema`, abrem em Sakura com fundo floral.
+
+**Demonstração (banco temporário, servidor real em TLS).**
+- Sem keystore, o servidor recusou iniciar e nenhum banco foi criado.
+- Com TLS, Ana escolheu Fuji / Escuro / Floral e Bia escolheu Myosotis / Claro / Liso. O banco ficou com uma linha por conta, e nenhuma escolha chegou à outra conta.
+- Geral, privada e grupo funcionaram, e o Qwen respondeu.
+- Após reiniciar o servidor, cada uma recebeu a própria aparência.
+- Foram feitas capturas da janela real nas oito combinações.
+
+**Resultado:** 473 testes automatizados aprovados ao fim da Fase 5.
+
 ## 17. Funcionalidades extras
 
 - **Interface gráfica Swing com tema Sakura.** A janela usa cores em tons de rosa e tem:
@@ -699,6 +738,11 @@ Várias limitações da entrega original foram resolvidas nas Fases 1 a 4 (seç�
 6. **Não lidas do Chat Geral.** O contador vale apenas durante a sessão; nas demais conversas, ele é persistido.
 7. **Horário sem fuso.** O horário é gravado como `LocalDateTime` do relógio do servidor.
 8. **Exportação.** O TXT contém a conversa carregada na janela, não o histórico completo do banco.
+9. **Aparência.**
+   - Diálogos de confirmação e de erro simples (`JOptionPane`) e o seletor de arquivos seguem o visual do sistema, não a paleta.
+   - Os nomes dos participantes usam as mesmas cinco cores em todas as paletas.
+   - Na Suzuran, o verde do indicador "online" fica próximo do tom da paleta.
+   - O logotipo continua sendo a flor de cerejeira, recolorida.
 
 ## 19. Melhorias futuras
 
@@ -726,6 +770,7 @@ Sobre essa base, a versão final entrega:
 - conversas privadas e grupos com autorização em toda operação;
 - barra lateral com não lidas;
 - avatares persistentes;
+- quatro paletas florais em claro e escuro, com três fundos e aparência guardada por conta;
 - a Sakura IA com personagens personalizados e histórico próprio, integrada ao **Qwen** por uma interface desacoplada.
 
-As garantias de concorrência continuam valendo: as conversas têm bloqueios independentes, a IA roda fora de qualquer bloqueio e a EDT nunca faz rede. Os 423 testes automatizados e as demonstrações práticas de cada fase sustentam essas afirmações. As limitações acima indicam a evolução natural do projeto, sem alterar a arquitetura em camadas.
+As garantias de concorrência continuam valendo: as conversas têm bloqueios independentes, a IA roda fora de qualquer bloqueio e a EDT nunca faz rede. Os 473 testes automatizados e as demonstrações práticas de cada fase sustentam essas afirmações. As limitações acima indicam a evolução natural do projeto, sem alterar a arquitetura em camadas.

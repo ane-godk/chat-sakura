@@ -115,10 +115,10 @@ O servidor usa TLS: crie antes o certificado de desenvolvimento (README, seção
 - **[TELA]** Mostre que o avatar, a conversa privada, o grupo e o **Naruto** continuam lá, com o histórico.
 - **[FALA]** "Contas, conversas, avatares, personagens e históricos ficam no SQLite e voltam após reiniciar."
 
-## 10. Temas Claro e Noturno (5:20 – 5:40)
+## 10. Aparência e temas florais (5:20 – 5:40)
 
-- **[TELA]** Clique no botão de lua para ativar o **Sakura Noturno** e volte ao Claro. Mostre também **Exportar TXT** da conversa ativa.
-- **[FALA]** "A interface tem os temas Claro e Noturno, sons, animações e exportação da conversa em TXT."
+- **[TELA]** Na janela da Ana, clique em **Aparência**, escolha **Fuji**, **Escuro** e fundo **Floral**, observe a prévia e clique em **Aplicar**. Na janela da Bia, escolha **Myosotis**, **Claro** e fundo **Liso**. Mostre que uma janela não muda a outra. Clique no botão de lua/sol para alternar só o modo. Mostre também **Exportar TXT** da conversa ativa.
+- **[FALA]** "Cada conta escolhe a paleta (Sakura, Myosotis, Fuji ou Suzuran), o modo claro ou escuro e o fundo da conversa. A escolha fica no servidor e volta no próximo login. Há ainda sons, animações e exportação em TXT."
 
 ## 11. Conclusão (5:40 – 6:00)
 

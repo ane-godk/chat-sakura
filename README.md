@@ -21,7 +21,8 @@ Ele oferece **Chat Geral**, **conversas privadas**, **grupos**, contas com senha
 - **Segurança:** o servidor define a identidade e verifica a autorização em cada operação.
 - **Protocolo:** JSON validado (protocolo v2), com compatibilidade com o protocolo de texto original.
 - **Interface:** sons, animações, preferências, menu "Copiar mensagem" e exportação TXT da conversa ativa.
-- **Testes:** 423 testes automatizados.
+- **Aparência:** quatro paletas florais (Sakura, Myosotis, Fuji e Suzuran), cada uma em modo claro e escuro, e três fundos de conversa (floral, liso e neutro). Cada conta guarda a própria escolha no servidor.
+- **Testes:** 473 testes automatizados.
 
 ## Tecnologias
 
@@ -358,8 +359,8 @@ O botão **Conversa** inicia uma conversa privada com outra conta cadastrada. Se
 
 Depois do `AUTH OK`, cada linha é um objeto JSON com o campo `tipo`. As linhas são processadas pela Gson em modo estrito e têm limite de 4096 caracteres. A especificação completa está em `ProtocoloJson`.
 
-- **Requisições do cliente:** `LISTAR_CONVERSAS`, `LISTAR_USUARIOS`, `ABRIR_PRIVADA`, `CRIAR_GRUPO`, `ENVIAR`, `HISTORICO`, `MARCAR_LIDA`.
-- **Eventos do servidor:** `CONVERSAS`, `CONVERSA`, `USUARIOS`, `HISTORICO`, `MENSAGEM` e `ERRO`. A presença no Geral chega como `MENSAGEM` do tipo `ENTRADA` ou `SAIDA`.
+- **Requisições do cliente:** `LISTAR_CONVERSAS`, `LISTAR_USUARIOS`, `ABRIR_PRIVADA`, `CRIAR_GRUPO`, `ENVIAR`, `HISTORICO`, `MARCAR_LIDA` e `DEFINIR_APARENCIA` (`paleta`, `modo`, `fundo`).
+- **Eventos do servidor:** `CONVERSAS`, `CONVERSA`, `USUARIOS`, `HISTORICO`, `MENSAGEM`, `APARENCIA` e `ERRO`. A presença no Geral chega como `MENSAGEM` do tipo `ENTRADA` ou `SAIDA`. `APARENCIA` é enviado logo após a entrada (também na reconexão) e em resposta a `DEFINIR_APARENCIA`; clientes antigos o ignoram.
 - **Correlação:** o campo opcional `req` é repetido na resposta.
 - **Dados públicos apenas:** os eventos não contêm login, senha, hash nem sal.
 
@@ -387,6 +388,33 @@ Com uma conta conectada, clique no **avatar ao lado do botão de tema**, no cabe
 Os avatares são desenhados em Java2D a partir de um identificador do catálogo `CatalogoAvatares`. Não há upload nem caminhos de arquivo, e o servidor recusa identificadores fora do catálogo.
 
 A escolha é gravada em `usuario.avatar_id`, volta após reconexão ou reinício do servidor e é anunciada aos demais clientes. Ela aparece no cabeçalho e no item das conversas privadas.
+
+## Aparência
+
+O botão **Aparência**, no cabeçalho, abre uma tela com três escolhas e uma prévia ao vivo:
+
+| Paleta | Flor | Cores de referência (modo claro) |
+|---|---|---|
+| **Sakura** (padrão) | cerejeira japonesa | rosa `#B65F88`, `#F8D7E5`, `#FFF3F7` |
+| **Myosotis** | não-me-esqueças | azul `#5589B5`, `#D9ECFA`, `#F2F9FF` |
+| **Fuji** | glicínia japonesa | lilás `#9071BA`, `#E9DDF8`, `#F8F3FF` |
+| **Suzuran** | lírio-do-vale | verde `#659876`, `#DCEEDC`, `#F3FAF2` |
+
+- **Modo:** claro ou escuro. O escuro de cada flor parte do desenho do Sakura Noturno (fundos profundos sem preto puro e textos claros sem branco puro); não é o claro escurecido. O botão de lua/sol continua alternando só o modo.
+- **Fundo da conversa:**
+  - **floral:** degradê da paleta e ilustrações originais da flor nos cantos, desenhadas em Java2D (a Sakura usa a flor do projeto); o centro, onde ficam as mensagens, e a faixa do título ficam sempre livres;
+  - **liso:** um tom pastel da paleta;
+  - **neutro:** tom quase sem cor, sem decoração.
+- **Botões:** **Aplicar** troca a aparência na hora, sem reiniciar; **Restaurar padrão** volta as opções a Sakura, claro e floral (ainda é preciso aplicar); **Cancelar** descarta.
+
+Banner, ícones, botões, balões, barra lateral, campos, menus, avisos, indicador de conexão e os diálogos (entrada, memória, novas conversas) usam a paleta ativa. Todos os textos pequenos têm contraste de pelo menos 4,5:1 nas oito combinações (verificado em teste). As pétalas caindo só aparecem no fundo floral.
+
+### Onde a aparência fica guardada
+
+- **Com conta:** no servidor, na tabela `preferencia_aparencia` do SQLite (migração v6), uma linha por conta, apagada junto com a conta. O servidor a envia logo após o login e após cada reconexão, por isso ela vale em qualquer computador. Uma conta nunca recebe nem altera a aparência de outra.
+- **Sem conta (tela de entrada e visitantes):** no arquivo local `~/.chat-sakura/preferencias.properties`, nas chaves `tema` (modo), `paleta` e `fundo`. Ao sair de uma conta, a janela volta a essa aparência local. A escolha feita com a conta conectada não é gravada nesse arquivo.
+- **Valores antigos ou inválidos:** um arquivo antigo, só com `tema`, abre em Sakura com fundo floral. Valores desconhecidos, no arquivo ou no banco, viram o padrão só daquele campo. O servidor recusa pedidos com valores inválidos (`DADOS_INVALIDOS`).
+- **Durante uma reconexão:** a aparência da conta continua; uma escolha feita sem conexão é enviada quando a sessão volta.
 
 ## Sakura IA (Qwen)
 
@@ -518,7 +546,7 @@ Na raiz do projeto:
 mvn clean test
 ```
 
-A suíte tem **423 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
+A suíte tem **473 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
 
 - robustez do servidor: cliente lento, fila de saída, ordem, vagas global e por IP, prazo de entrada, heartbeat v2, substituição de sessão, limites de taxa e de tentativas de login;
 - usuários, mensagens e repositórios;
@@ -534,7 +562,8 @@ A suíte tem **423 testes JUnit 5**. Todos usam bancos SQLite temporários, e ne
 - avatares;
 - personagens de IA;
 - provedor Qwen contra um servidor HTTP local que imita a API, incluindo erros, tempo limite e chave fora de logs e eventos;
-- interface: barra lateral, não lidas, temas e exportação.
+- interface: barra lateral, não lidas, temas e exportação;
+- aparência: as oito paletas (contraste, matiz, cache), alternância de modo, três fundos (centro livre, decoração só nas bordas), tela com prévia, preferência local e compatibilidade com arquivos antigos, gravação por conta (isolamento, reinício, valores inválidos, migração v6), entrega após login e reconexão, e atualização da interface somente na EDT.
 
 ## Observações e limitações
 

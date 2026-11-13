@@ -1,7 +1,9 @@
 
 package br.unicesumar.chat.persistence.jdbc;
 
+import br.unicesumar.chat.model.FiltroPesquisa;
 import br.unicesumar.chat.model.Mensagem;
+import br.unicesumar.chat.model.TextoBusca;
 import br.unicesumar.chat.model.TipoMensagem;
 import br.unicesumar.chat.model.Usuario;
 import br.unicesumar.chat.persistence.MensagemRepository;
@@ -69,9 +71,10 @@ public final class JdbcMensagemRepository
                     texto,
                     horario,
                     tipo,
-                    remetente_id
+                    remetente_id,
+                    texto_busca
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """;
 
         try (
@@ -119,6 +122,9 @@ public final class JdbcMensagemRepository
             } else {
                 comando.setLong(6, remetenteId);
             }
+
+            // Forma de pesquisa derivada do texto (o texto em si não muda).
+            comando.setString(7, TextoBusca.normalizar(mensagem.getConteudo()));
 
             int linhasAfetadas = comando.executeUpdate();
 
@@ -232,6 +238,68 @@ public final class JdbcMensagemRepository
         Collections.reverse(mensagens);
 
         return mensagens;
+    }
+
+    /**
+     * Pesquisa por substring na forma de pesquisa ({@code instr}, sem
+     * curingas: o termo é tratado literalmente). Todos os valores vêm por
+     * parâmetro; a ordem por id dá páginas estáveis, sem repetições.
+     */
+    @Override
+    public List<Mensagem> pesquisar(FiltroPesquisa filtro) {
+
+        String sql = """
+                SELECT id, remetente_id, remetente, texto, horario, tipo
+                FROM mensagem
+                WHERE conversa_id = ?
+                  AND id < ?
+                  AND tipo IN ('MENSAGEM', 'IA')
+                  AND instr(coalesce(texto_busca, lower(texto)), ?) > 0
+                  AND (? IS NULL OR remetente_id = ?)
+                  AND (? IS NULL OR horario >= ?)
+                  AND (? IS NULL OR horario < ?)
+                ORDER BY id DESC
+                LIMIT ?
+                """;
+
+        List<Mensagem> encontradas = new ArrayList<>();
+
+        try (Connection conexao = connectionFactory.abrirConexao();
+             PreparedStatement comando = conexao.prepareStatement(sql)) {
+
+            String inicio = filtro.inicio() == null ? null : filtro.inicio().toString();
+            String fim = filtro.fimExclusivo() == null ? null : filtro.fimExclusivo().toString();
+
+            comando.setLong(1, filtro.conversaId());
+            comando.setLong(2, filtro.antesDeId() == null ? Long.MAX_VALUE : filtro.antesDeId());
+            comando.setString(3, filtro.termo());
+            definirOpcional(comando, 4, filtro.remetenteId());
+            definirOpcional(comando, 5, filtro.remetenteId());
+            comando.setString(6, inicio);
+            comando.setString(7, inicio);
+            comando.setString(8, fim);
+            comando.setString(9, fim);
+            comando.setInt(10, filtro.limite());
+
+            try (ResultSet resultado = comando.executeQuery()) {
+                while (resultado.next()) {
+                    encontradas.add(lerMensagem(resultado, filtro.conversaId()));
+                }
+            }
+
+        } catch (SQLException e) {
+            throw new IllegalStateException("Erro ao pesquisar mensagens no SQLite.", e);
+        }
+
+        return encontradas;
+    }
+
+    private static void definirOpcional(PreparedStatement comando, int indice, Long valor) throws SQLException {
+        if (valor == null) {
+            comando.setNull(indice, Types.INTEGER);
+        } else {
+            comando.setLong(indice, valor);
+        }
     }
 
     static Mensagem lerMensagem(ResultSet resultado, long conversaId) throws SQLException {

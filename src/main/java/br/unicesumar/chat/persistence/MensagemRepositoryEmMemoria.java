@@ -2,7 +2,10 @@
 package br.unicesumar.chat.persistence;
 
 import br.unicesumar.chat.model.Conversa;
+import br.unicesumar.chat.model.FiltroPesquisa;
 import br.unicesumar.chat.model.Mensagem;
+import br.unicesumar.chat.model.TextoBusca;
+import br.unicesumar.chat.model.TipoMensagem;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,5 +66,23 @@ public final class MensagemRepositoryEmMemoria
         return new ArrayList<>(
                 daConversa.subList(inicio, daConversa.size())
         );
+    }
+
+    @Override
+    public synchronized List<Mensagem> pesquisar(FiltroPesquisa filtro) {
+        List<Mensagem> encontradas = new ArrayList<>();
+        for (int i = mensagens.size() - 1; i >= 0 && encontradas.size() < filtro.limite(); i--) {
+            Mensagem m = mensagens.get(i);
+            if (m.getConversaId() == filtro.conversaId()
+                    && (filtro.antesDeId() == null || m.getId() < filtro.antesDeId())
+                    && (m.getTipo() == TipoMensagem.MENSAGEM || m.getTipo() == TipoMensagem.IA)
+                    && TextoBusca.normalizar(m.getConteudo()).contains(filtro.termo())
+                    && (filtro.remetenteId() == null || filtro.remetenteId().equals(m.getRemetente().getId()))
+                    && (filtro.inicio() == null || !m.getHorario().isBefore(filtro.inicio()))
+                    && (filtro.fimExclusivo() == null || m.getHorario().isBefore(filtro.fimExclusivo()))) {
+                encontradas.add(m);
+            }
+        }
+        return encontradas;
     }
 }

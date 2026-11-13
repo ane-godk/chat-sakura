@@ -168,7 +168,7 @@ class MigracaoV4ConcorrenciaTest {
                 MigradorBanco.MIGRACOES, RELOGIO).migrar();
 
         assertEquals(0, resultado.versaoAnterior());
-        assertEquals(6, MigradorBanco.VERSAO_ATUAL);
+        assertEquals(7, MigradorBanco.VERSAO_ATUAL);
         assertEquals(MigradorBanco.VERSAO_ATUAL, versao(arquivo));
         assertEquals(List.of("legado"), coluna(arquivo, "SELECT texto FROM mensagem"));
         assertEquals(List.of("ux_usuario_apelido_chave"),

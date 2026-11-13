@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import br.unicesumar.chat.model.NormalizacaoNome;
+import br.unicesumar.chat.model.TextoBusca;
 
 /**
  * Migrações versionadas do banco SQLite, controladas por
@@ -33,6 +34,8 @@ import br.unicesumar.chat.model.NormalizacaoNome;
  *       após normalização Unicode não coexistem).</li>
  *   <li><b>5</b>: {@code memoria_personagem} (memória resumida por conversa).</li>
  *   <li><b>6</b>: {@code preferencia_aparencia} (paleta, modo e fundo por conta).</li>
+ *   <li><b>7</b>: {@code mensagem.texto_busca} (forma de pesquisa, preenchida
+ *       para as mensagens existentes) e {@code mensagem_fixada}.</li>
  * </ul>
  *
  * Garantias: antes de alterar um banco existente é feito um backup
@@ -60,7 +63,8 @@ public final class MigradorBanco {
             MigradorBanco::migrarParaV3,
             MigradorBanco::migrarParaV4,
             MigradorBanco::migrarParaV5,
-            MigradorBanco::migrarParaV6
+            MigradorBanco::migrarParaV6,
+            MigradorBanco::migrarParaV7
     );
 
     public static final int VERSAO_ATUAL = MIGRACOES.size();
@@ -492,6 +496,61 @@ public final class MigradorBanco {
                         atualizada_em TEXT NOT NULL
                     )
                     """);
+        }
+    }
+
+    /**
+     * Versão 7: pesquisa e mensagens fixadas.
+     *
+     * <ul>
+     *   <li>{@code mensagem.texto_busca}: forma de pesquisa do texto
+     *       ({@link TextoBusca}), calculada em Java para cada mensagem
+     *       existente; o texto original não muda;</li>
+     *   <li>{@code mensagem_fixada}: uma linha por mensagem fixada, apagada
+     *       junto com a mensagem ou a conversa.</li>
+     * </ul>
+     */
+    static void migrarParaV7(Connection conexao) throws SQLException {
+
+        try (Statement comando = conexao.createStatement()) {
+            comando.executeUpdate("ALTER TABLE mensagem ADD COLUMN texto_busca TEXT");
+        }
+
+        List<Long> ids = new ArrayList<>();
+        List<String> formas = new ArrayList<>();
+        try (Statement comando = conexao.createStatement();
+             ResultSet mensagens = comando.executeQuery("SELECT id, texto FROM mensagem ORDER BY id")) {
+            while (mensagens.next()) {
+                ids.add(mensagens.getLong("id"));
+                formas.add(TextoBusca.normalizar(mensagens.getString("texto")));
+            }
+        }
+
+        try (PreparedStatement atualizar = conexao.prepareStatement(
+                "UPDATE mensagem SET texto_busca = ? WHERE id = ?")) {
+            for (int i = 0; i < ids.size(); i++) {
+                atualizar.setString(1, formas.get(i));
+                atualizar.setLong(2, ids.get(i));
+                atualizar.addBatch();
+            }
+            atualizar.executeBatch();
+        }
+
+        try (Statement comando = conexao.createStatement()) {
+            comando.executeUpdate("""
+                    CREATE TABLE mensagem_fixada (
+                        conversa_id INTEGER NOT NULL
+                            REFERENCES conversa (id) ON DELETE CASCADE,
+                        mensagem_id INTEGER NOT NULL
+                            REFERENCES mensagem (id) ON DELETE CASCADE,
+                        fixada_por INTEGER
+                            REFERENCES usuario (id) ON DELETE SET NULL,
+                        fixada_em TEXT NOT NULL,
+                        PRIMARY KEY (conversa_id, mensagem_id)
+                    )
+                    """);
+            comando.executeUpdate("CREATE INDEX idx_fixada_mensagem ON mensagem_fixada (mensagem_id)");
+            comando.executeUpdate("CREATE INDEX idx_fixada_usuario ON mensagem_fixada (fixada_por)");
         }
     }
 

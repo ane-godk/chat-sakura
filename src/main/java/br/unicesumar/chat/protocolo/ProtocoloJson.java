@@ -39,6 +39,9 @@ import java.util.Objects;
  *   HISTORICO        {req, conversaId, antesDe?, limite?}
  *   MARCAR_LIDA      {conversaId, mensagemId}
  *   DEFINIR_APARENCIA {req, paleta, modo, fundo}
+ *   PESQUISAR        {req, conversaId, texto, remetenteId?, de?, ate?, antesDe?, limite?}
+ *   LISTAR_FIXADAS   {req, conversaId}
+ *   FIXAR / DESAFIXAR {req, conversaId, mensagemId}
  *
  * Servidor → cliente
  *   CONVERSAS {req?, conversas:[conversa]}   (o primeiro confirma a entrada)
@@ -48,6 +51,8 @@ import java.util.Objects;
  *   MENSAGEM  {mensagem}                     (presença: tipo ENTRADA/SAIDA na Geral)
  *   ERRO      {req?, codigo, mensagem}
  *   APARENCIA {req?, paleta, modo, fundo}    (após a entrada e ao salvar)
+ *   RESULTADOS {req, conversaId, resultados:[{mensagem, trecho, inicio, fim}], temMais}
+ *   FIXADAS   {req?, conversaId, fixadas:[{mensagem, fixadaPor, fixadaEm}]}
  * </pre>
  *
  * Nenhum evento contém login, senha, hash ou sal. O servidor ignora
@@ -68,7 +73,15 @@ public final class ProtocoloJson {
         /** {req, conversaId}: apaga a memória do personagem, sem apagar o histórico. */
         MEMORIA_APAGAR,
         /** {req, paleta, modo, fundo}: aparência da própria conta. */
-        DEFINIR_APARENCIA
+        DEFINIR_APARENCIA,
+        /** {req, conversaId, texto, remetenteId?, de?, ate?, antesDe?, limite?}: pesquisa no histórico. */
+        PESQUISAR,
+        /** {req, conversaId}: mensagens fixadas da conversa. */
+        LISTAR_FIXADAS,
+        /** {req, conversaId, mensagemId}: fixa uma mensagem. */
+        FIXAR,
+        /** {req, conversaId, mensagemId}: desafixa (a mensagem continua na conversa). */
+        DESAFIXAR
     }
 
     public enum TipoEvento {
@@ -82,7 +95,11 @@ public final class ProtocoloJson {
         /** {req, conversaId, resumo, atualizadaEm}: memória do personagem. */
         MEMORIA,
         /** {req?, paleta, modo, fundo}: aparência da conta (após entrar e após DEFINIR_APARENCIA). */
-        APARENCIA
+        APARENCIA,
+        /** {req, conversaId, resultados:[{mensagem, trecho, inicio, fim}], temMais}: resposta a PESQUISAR. */
+        RESULTADOS,
+        /** {req?, conversaId, fixadas:[{mensagem, fixadaPor, fixadaEm}]}: lista atual de fixadas. */
+        FIXADAS
     }
 
     /** Maior inteiro exato em JSON (2^53 - 1). */
@@ -135,6 +152,14 @@ public final class ProtocoloJson {
     }
 
     public record UsuarioJson(long id, String apelido, String avatar, boolean online) {
+    }
+
+    /** Resultado de pesquisa: a mensagem, o trecho exibido e a posição do termo nele (fim exclusivo). */
+    public record ResultadoJson(MensagemJson mensagem, String trecho, int inicio, int fim) {
+    }
+
+    /** Mensagem fixada; {@code fixadaPor} é o apelido (nulo se a conta não existe mais). */
+    public record FixadaJson(MensagemJson mensagem, String fixadaPor, String fixadaEm) {
     }
 
     // ------------------------------------------------------------------
@@ -220,6 +245,23 @@ public final class ProtocoloJson {
                 throw new ProtocoloInvalidoException(req, "Campo longo demais: " + campo + ".");
             }
             return texto;
+        }
+
+        /** Data opcional no formato ISO ({@code 2026-11-13}). */
+        public java.time.LocalDate dataOpcional(String campo) throws ProtocoloInvalidoException {
+            JsonElement valor = dados.get(campo);
+            if (valor == null || valor.isJsonNull()) {
+                return null;
+            }
+            if (!valor.isJsonPrimitive() || !valor.getAsJsonPrimitive().isString()
+                    || valor.getAsString().length() != 10) {
+                throw new ProtocoloInvalidoException(req, "Data inválida: " + campo + ".");
+            }
+            try {
+                return java.time.LocalDate.parse(valor.getAsString());
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new ProtocoloInvalidoException(req, "Data inválida: " + campo + ".");
+            }
         }
 
         public List<Long> ids(String campo, int maximo) throws ProtocoloInvalidoException {
@@ -333,6 +375,22 @@ public final class ProtocoloJson {
         return GSON.toJson(objeto);
     }
 
+    public static String eventoResultados(Long req, long conversaId, List<ResultadoJson> resultados,
+                                          boolean temMais) {
+        JsonObject objeto = base(TipoEvento.RESULTADOS, req);
+        objeto.addProperty("conversaId", conversaId);
+        objeto.add("resultados", GSON.toJsonTree(resultados));
+        objeto.addProperty("temMais", temMais);
+        return GSON.toJson(objeto);
+    }
+
+    public static String eventoFixadas(Long req, long conversaId, List<FixadaJson> fixadas) {
+        JsonObject objeto = base(TipoEvento.FIXADAS, req);
+        objeto.addProperty("conversaId", conversaId);
+        objeto.add("fixadas", GSON.toJsonTree(fixadas));
+        return GSON.toJson(objeto);
+    }
+
     public static String eventoPing() {
         return GSON.toJson(base(TipoEvento.PING, null));
     }
@@ -416,6 +474,22 @@ public final class ProtocoloJson {
         public String memoriaAtualizadaEm() {
             JsonElement data = dados.get("atualizadaEm");
             return data == null || data.isJsonNull() ? null : data.getAsString();
+        }
+
+        /** Resultados de pesquisa ({@code RESULTADOS}). */
+        public List<ResultadoJson> resultados() {
+            return lista("resultados", ResultadoJson.class);
+        }
+
+        /** {@code true} se a pesquisa tem outra página. */
+        public boolean temMais() {
+            JsonElement valor = dados.get("temMais");
+            return valor != null && valor.isJsonPrimitive() && valor.getAsBoolean();
+        }
+
+        /** Mensagens fixadas ({@code FIXADAS}). */
+        public List<FixadaJson> fixadas() {
+            return lista("fixadas", FixadaJson.class);
         }
 
         /** Aparência ({@code APARENCIA}); campos ausentes ou desconhecidos viram o padrão. */

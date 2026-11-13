@@ -14,7 +14,9 @@ public final class ConversaException extends Exception {
         CONTA_NECESSARIA,
         /** Aguarde: resposta da IA em andamento ou limite de uso atingido. */
         LIMITE,
-        INDISPONIVEL
+        INDISPONIVEL,
+        /** Participante sem o papel exigido (por exemplo, fixar num grupo sem ser ADMIN). */
+        SEM_PERMISSAO
     }
 
     private final Codigo codigo;

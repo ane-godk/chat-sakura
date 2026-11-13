@@ -24,6 +24,11 @@ public interface ConexaoCliente {
     default void estadoIA(long conversaId, String estado, String mensagem) throws Exception {
     }
 
+    /** Lista de mensagens fixadas da conversa alterada por outro participante. Somente sessões v2. */
+    default void fixadasAlteradas(long conversaId, java.util.List<br.unicesumar.chat.model.MensagemFixada> fixadas)
+            throws Exception {
+    }
+
     /**
      * A sessão foi substituída por um novo login da mesma conta e já saiu do
      * registro: deve avisar o cliente e fechar a conexão. Chamado sob os

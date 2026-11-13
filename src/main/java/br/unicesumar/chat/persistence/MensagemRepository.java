@@ -18,4 +18,12 @@ public interface MensagemRepository {
     default List<Mensagem> buscarHistorico(long conversaId, Long antesDeId, int quantidade) {
         throw new UnsupportedOperationException("Histórico por conversa não suportado.");
     }
+
+    /**
+     * Mensagens escritas (participantes e IA, nunca avisos de presença) que
+     * contêm o termo, da mais recente para a mais antiga, até {@code limite}.
+     */
+    default List<Mensagem> pesquisar(br.unicesumar.chat.model.FiltroPesquisa filtro) {
+        throw new UnsupportedOperationException("Pesquisa não suportada.");
+    }
 }

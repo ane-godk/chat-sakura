@@ -167,14 +167,15 @@ class MigradorBancoTest {
         assertEquals(MigradorBanco.VERSAO_ATUAL, versao(arquivo));
 
         for (String tabela : List.of("usuario", "conversa", "conversa_participante",
-                "conversa_privada", "personagem", "mensagem")) {
+                "conversa_privada", "personagem", "mensagem", "mensagem_fixada")) {
             assertTrue(existeTabela(arquivo, tabela), tabela);
         }
 
         assertEquals(List.of(List.of("1", "GERAL", "Chat Geral")),
                 consultar(arquivo, "SELECT id, tipo, nome FROM conversa"));
         assertEquals("0", valor(arquivo, "SELECT count(*) FROM mensagem"));
-        assertEquals(List.of("id", "conversa_id", "remetente_id", "remetente", "texto", "horario", "tipo"),
+        assertEquals(List.of("id", "conversa_id", "remetente_id", "remetente", "texto", "horario", "tipo",
+                        "texto_busca"),
                 colunas(arquivo, "mensagem"));
     }
 

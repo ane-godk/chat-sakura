@@ -153,6 +153,66 @@ class TlsServidorTest {
     }
 
     @Test
+    void pesquisaEMensagensFixadasSobreTlsComAcessoVerificadoNoServidor() throws Exception {
+        iniciar(LimitesServidor.padrao());
+        Cliente ana = new Cliente().conta("ana", true);
+        Cliente bia = new Cliente().conta("bia", true);
+        Cliente caio = new Cliente().conta("caio", true);
+
+        long idBia = ana.resposta(ana.pedir(TipoRequisicao.LISTAR_USUARIOS)).usuarios().stream()
+                .filter(x -> x.apelido().equals("BIA")).findFirst().orElseThrow().id();
+        long grupo = ana.resposta(ana.pedir(TipoRequisicao.CRIAR_GRUPO, "nome", "Jardim",
+                "participantes", List.of(idBia))).conversa().id();
+        for (String texto : new String[] {"Reunião às 18h", "Levar flores", "reuniao confirmada 🌸"}) {
+            ana.pedir(TipoRequisicao.ENVIAR, "conversaId", grupo, "texto", texto);
+            bia.esperar(l -> l.contains(texto));
+        }
+
+        // Pesquisa (paginada pelo protocolo) sem diferenciar acentos.
+        ProtocoloJson.Evento pagina1 = bia.resposta(bia.pedir(TipoRequisicao.PESQUISAR, "conversaId", grupo,
+                "texto", "REUNIAO", "limite", 1));
+        assertEquals(ProtocoloJson.TipoEvento.RESULTADOS, pagina1.tipo());
+        assertEquals(1, pagina1.resultados().size());
+        assertTrue(pagina1.temMais());
+        ProtocoloJson.ResultadoJson primeiro = pagina1.resultados().get(0);
+        assertEquals("reuniao confirmada 🌸", primeiro.mensagem().texto());
+        assertEquals("reuniao", primeiro.trecho().substring(primeiro.inicio(), primeiro.fim()));
+        ProtocoloJson.Evento pagina2 = bia.resposta(bia.pedir(TipoRequisicao.PESQUISAR, "conversaId", grupo,
+                "texto", "reunião", "limite", 1, "antesDe", primeiro.mensagem().id()));
+        assertEquals("Reunião às 18h", pagina2.resultados().get(0).mensagem().texto());
+        assertFalse(pagina2.temMais());
+
+        // Quem não participa recebe a mesma resposta de uma conversa inexistente.
+        String alheia = bruta(caio, caio.pedir(TipoRequisicao.PESQUISAR, "conversaId", grupo, "texto", "reuniao"));
+        assertTrue(alheia.contains("NAO_ENCONTRADA") && !alheia.contains("Reunião"), alheia);
+        assertTrue(bruta(caio, caio.pedir(TipoRequisicao.LISTAR_FIXADAS, "conversaId", grupo))
+                .contains("NAO_ENCONTRADA"));
+        assertTrue(bruta(bia, bia.pedir(TipoRequisicao.PESQUISAR, "conversaId", grupo, "texto", "flores",
+                "de", "13/11/2026")).contains("REQUISICAO_INVALIDA"));
+
+        // Ana (ADMIN) fixa; Bia recebe a lista atualizada sem pedir; Bia (MEMBRO) não pode fixar.
+        long mensagemId = primeiro.mensagem().id();
+        ProtocoloJson.Evento fixadas = ana.resposta(ana.pedir(TipoRequisicao.FIXAR, "conversaId", grupo,
+                "mensagemId", mensagemId));
+        assertEquals(List.of(mensagemId), fixadas.fixadas().stream().map(f -> f.mensagem().id()).toList());
+        String aviso = bia.esperar(l -> l.startsWith("{\"tipo\":\"FIXADAS\""));
+        assertTrue(aviso.contains("\"fixadaPor\":\"ANA\""), aviso);
+        String recusa = bruta(bia, bia.pedir(TipoRequisicao.FIXAR, "conversaId", grupo, "mensagemId", mensagemId));
+        assertTrue(recusa.contains("SEM_PERMISSAO"), recusa);
+        assertTrue(caio.recebidas.stream().noneMatch(l -> l.contains("FIXADAS")), "Nada vaza para quem não participa");
+
+        assertTrue(ana.resposta(ana.pedir(TipoRequisicao.DESAFIXAR, "conversaId", grupo, "mensagemId", mensagemId))
+                .fixadas().isEmpty());
+        assertEquals(3, bia.resposta(bia.pedir(TipoRequisicao.HISTORICO, "conversaId", grupo)).mensagens().stream()
+                .filter(m -> m.tipo().equals("MENSAGEM")).count(), "Desafixar não apaga a mensagem");
+    }
+
+    /** Linha bruta da resposta ao pedido {@code numero}. */
+    private static String bruta(Cliente cliente, long numero) throws IOException {
+        return cliente.esperar(l -> l.contains("\"req\":" + numero + ",") || l.contains("\"req\":" + numero + "}"));
+    }
+
+    @Test
     void fluxoCompletoDoChatFuncionaSobreTls() throws Exception {
         iniciar(LimitesServidor.padrao());
 

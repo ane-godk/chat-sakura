@@ -1,4 +1,4 @@
--- Chat Sakura - esquema atual do banco SQLite (versão 6).
+-- Chat Sakura - esquema atual do banco SQLite (versão 7).
 --
 -- O servidor NÃO executa este arquivo: o esquema é criado e migrado por
 -- br.unicesumar.chat.persistence.jdbc.MigradorBanco na inicialização
@@ -86,7 +86,7 @@ CREATE TABLE conversa_privada (
 
 -- Mensagens e avisos de presença. remetente guarda o apelido exibido;
 -- remetente_id fica NULL nas mensagens legadas e enquanto não houver login.
--- tipo: MENSAGEM, ENTRADA ou SAIDA.
+-- tipo: MENSAGEM, ENTRADA, SAIDA ou IA.
 CREATE TABLE mensagem (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     conversa_id INTEGER NOT NULL
@@ -97,6 +97,9 @@ CREATE TABLE mensagem (
     texto TEXT NOT NULL,
     horario TEXT NOT NULL,
     tipo TEXT NOT NULL DEFAULT 'MENSAGEM'
+    -- Versão 7: forma de pesquisa do texto (NFKD, sem acentos, minúsculas),
+    -- calculada em Java por TextoBusca. O texto original não muda.
+    , texto_busca TEXT
 );
 
 -- Versão 5: memória resumida de cada conversa com um personagem de IA.
@@ -129,6 +132,20 @@ CREATE TABLE preferencia_aparencia (
     atualizada_em TEXT NOT NULL
 );
 
+-- Versão 7: mensagens fixadas (no máximo 10 por conversa, verificado no
+-- servidor). Apagar a mensagem ou a conversa apaga a fixação; apagar a
+-- conta de quem fixou mantém a fixação sem o autor.
+CREATE TABLE mensagem_fixada (
+    conversa_id INTEGER NOT NULL
+        REFERENCES conversa (id) ON DELETE CASCADE,
+    mensagem_id INTEGER NOT NULL
+        REFERENCES mensagem (id) ON DELETE CASCADE,
+    fixada_por INTEGER
+        REFERENCES usuario (id) ON DELETE SET NULL,
+    fixada_em TEXT NOT NULL,
+    PRIMARY KEY (conversa_id, mensagem_id)
+);
+
 CREATE UNIQUE INDEX ux_conversa_geral ON conversa (tipo) WHERE tipo = 'GERAL';
 CREATE INDEX idx_conversa_personagem ON conversa (personagem_id);
 CREATE INDEX idx_conversa_criador ON conversa (criador_id);
@@ -139,8 +156,10 @@ CREATE INDEX idx_mensagem_conversa ON mensagem (conversa_id, id);
 CREATE INDEX idx_mensagem_remetente ON mensagem (remetente_id);
 CREATE UNIQUE INDEX ux_usuario_apelido_chave ON usuario (apelido_chave);
 CREATE INDEX idx_memoria_dono ON memoria_personagem (dono_id);
+CREATE INDEX idx_fixada_mensagem ON mensagem_fixada (mensagem_id);
+CREATE INDEX idx_fixada_usuario ON mensagem_fixada (fixada_por);
 
 INSERT INTO conversa (id, tipo, nome, criado_em)
 VALUES (1, 'GERAL', 'Chat Geral', strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'));
 
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;

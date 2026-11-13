@@ -18,6 +18,9 @@ import br.unicesumar.chat.service.ServicoAutenticacao;
 import br.unicesumar.chat.service.ServicoConversas;
 import br.unicesumar.chat.service.ServicoIA;
 import br.unicesumar.chat.service.ServicoPreferencias;
+import br.unicesumar.chat.service.ServicoMensagens;
+import br.unicesumar.chat.model.FiltroPesquisa;
+import br.unicesumar.chat.model.MensagemFixada;
 import br.unicesumar.chat.model.Aparencia;
 import br.unicesumar.chat.service.SessaoEncerradaException;
 
@@ -98,6 +101,7 @@ public final class ClienteHandler
     private final ServicoConversas conversas;
     private final ServicoIA ia;
     private final ServicoPreferencias preferencias;
+    private final ServicoMensagens servicoMensagens;
 
     // Sessão autenticada no protocolo v2 (eventos JSON); definido uma vez.
     private volatile boolean sessaoJson;
@@ -168,10 +172,9 @@ public final class ClienteHandler
             LimitesServidor limites,
             Runnable aoEncerrar
     ) {
-        this(socket, chatService, autenticacao, conversas, ia, limites, aoEncerrar, null);
+        this(socket, chatService, autenticacao, conversas, ia, limites, aoEncerrar, null, null);
     }
 
-    /** @param preferencias aparência por conta (nulo: recurso indisponível) */
     public ClienteHandler(
             Socket socket,
             ChatService chatService,
@@ -182,8 +185,27 @@ public final class ClienteHandler
             Runnable aoEncerrar,
             ServicoPreferencias preferencias
     ) {
+        this(socket, chatService, autenticacao, conversas, ia, limites, aoEncerrar, preferencias, null);
+    }
+
+    /**
+     * @param preferencias aparência por conta (nulo: recurso indisponível)
+     * @param mensagens    pesquisa e mensagens fixadas (nulo: recurso indisponível)
+     */
+    public ClienteHandler(
+            Socket socket,
+            ChatService chatService,
+            ServicoAutenticacao autenticacao,
+            ServicoConversas conversas,
+            ServicoIA ia,
+            LimitesServidor limites,
+            Runnable aoEncerrar,
+            ServicoPreferencias preferencias,
+            ServicoMensagens mensagens
+    ) {
         this.ia = ia;
         this.preferencias = preferencias;
+        this.servicoMensagens = mensagens;
 
         if ((autenticacao == null) != (conversas == null)) {
             throw new IllegalArgumentException(
@@ -894,8 +916,8 @@ public final class ClienteHandler
         BaldeTokens balde = switch (r.tipo()) {
             case ENVIAR -> baldeMensagens;
             case ABRIR_PRIVADA, CRIAR_GRUPO, CRIAR_PERSONAGEM, DEFINIR_AVATAR, MEMORIA_APAGAR,
-                 DEFINIR_APARENCIA -> baldeCriacoes;
-            case LISTAR_CONVERSAS, LISTAR_USUARIOS, HISTORICO, MEMORIA_VER -> baldeConsultas;
+                 DEFINIR_APARENCIA, FIXAR, DESAFIXAR -> baldeCriacoes;
+            case LISTAR_CONVERSAS, LISTAR_USUARIOS, HISTORICO, MEMORIA_VER, PESQUISAR, LISTAR_FIXADAS -> baldeConsultas;
             case MARCAR_LIDA -> baldeLeituras;
             case PONG -> null;
         };
@@ -1011,6 +1033,56 @@ public final class ClienteHandler
                 }
                 enviarLinha(ProtocoloJson.eventoAparencia(req, preferencias.definir(usuario, aparencia)));
             }
+
+            // Pesquisa e fixações: acesso e papel verificados no ServicoMensagens.
+            case PESQUISAR -> {
+                long conversaId = r.id("conversaId");
+                ServicoMensagens.Pagina pagina = exigirMensagens().pesquisar(usuario, conversaId, r.texto("texto"),
+                        r.idOpcional("remetenteId"), r.dataOpcional("de"), r.dataOpcional("ate"),
+                        r.idOpcional("antesDe"),
+                        r.inteiro("limite", 1, FiltroPesquisa.LIMITE_MAXIMO, FiltroPesquisa.LIMITE_PADRAO));
+                enviarLinha(ProtocoloJson.eventoResultados(req, conversaId, pagina.resultados().stream()
+                        .map(e -> new ProtocoloJson.ResultadoJson(ProtocoloJson.MensagemJson.de(e.mensagem()),
+                                e.trecho().texto(), e.trecho().inicio(), e.trecho().fim()))
+                        .toList(), pagina.temMais()));
+            }
+
+            case LISTAR_FIXADAS -> {
+                long conversaId = r.id("conversaId");
+                enviarLinha(ProtocoloJson.eventoFixadas(req, conversaId,
+                        paraJson(exigirMensagens().fixadas(usuario, conversaId))));
+            }
+
+            case FIXAR, DESAFIXAR -> {
+                long conversaId = r.id("conversaId");
+                long mensagemId = r.id("mensagemId");
+                List<MensagemFixada> lista = r.tipo() == ProtocoloJson.TipoRequisicao.FIXAR
+                        ? exigirMensagens().fixar(usuario, conversaId, mensagemId)
+                        : exigirMensagens().desafixar(usuario, conversaId, mensagemId);
+                enviarLinha(ProtocoloJson.eventoFixadas(req, conversaId, paraJson(lista)));
+            }
+        }
+    }
+
+    private ServicoMensagens exigirMensagens() throws ConversaException {
+        if (servicoMensagens == null) {
+            throw new ConversaException(ConversaException.Codigo.INDISPONIVEL,
+                    "Este servidor não oferece pesquisa nem mensagens fixadas.");
+        }
+        return servicoMensagens;
+    }
+
+    private static List<ProtocoloJson.FixadaJson> paraJson(List<MensagemFixada> fixadas) {
+        return fixadas.stream()
+                .map(f -> new ProtocoloJson.FixadaJson(ProtocoloJson.MensagemJson.de(f.mensagem()), f.fixadaPor(),
+                        f.fixadaEm().toString()))
+                .toList();
+    }
+
+    @Override
+    public synchronized void fixadasAlteradas(long conversaId, List<MensagemFixada> fixadas) throws IOException {
+        if (sessaoJson && historicoEnviado) {
+            enviarLinha(ProtocoloJson.eventoFixadas(null, conversaId, paraJson(fixadas)));
         }
     }
 

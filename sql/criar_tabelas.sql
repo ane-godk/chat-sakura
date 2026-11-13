@@ -1,4 +1,4 @@
--- Chat Sakura - esquema atual do banco SQLite (versão 5).
+-- Chat Sakura - esquema atual do banco SQLite (versão 6).
 --
 -- O servidor NÃO executa este arquivo: o esquema é criado e migrado por
 -- br.unicesumar.chat.persistence.jdbc.MigradorBanco na inicialização
@@ -117,6 +117,18 @@ CREATE TABLE memoria_personagem (
     atualizada_em TEXT NOT NULL
 );
 
+-- Versão 6: aparência escolhida por cada conta (paleta, modo e fundo).
+-- Sem linha, vale o padrão (SAKURA, CLARO, FLORAL); valores desconhecidos
+-- também são lidos como o padrão daquele campo.
+CREATE TABLE preferencia_aparencia (
+    usuario_id INTEGER PRIMARY KEY
+        REFERENCES usuario (id) ON DELETE CASCADE,
+    paleta TEXT NOT NULL,
+    modo TEXT NOT NULL,
+    fundo TEXT NOT NULL,
+    atualizada_em TEXT NOT NULL
+);
+
 CREATE UNIQUE INDEX ux_conversa_geral ON conversa (tipo) WHERE tipo = 'GERAL';
 CREATE INDEX idx_conversa_personagem ON conversa (personagem_id);
 CREATE INDEX idx_conversa_criador ON conversa (criador_id);
@@ -131,4 +143,4 @@ CREATE INDEX idx_memoria_dono ON memoria_personagem (dono_id);
 INSERT INTO conversa (id, tipo, nome, criado_em)
 VALUES (1, 'GERAL', 'Chat Geral', strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'));
 
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;

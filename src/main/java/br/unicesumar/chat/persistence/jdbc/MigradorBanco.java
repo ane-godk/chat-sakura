@@ -32,6 +32,7 @@ import br.unicesumar.chat.model.NormalizacaoNome;
  *   <li><b>4</b>: {@code usuario.apelido_chave} único (apelidos equivalentes
  *       após normalização Unicode não coexistem).</li>
  *   <li><b>5</b>: {@code memoria_personagem} (memória resumida por conversa).</li>
+ *   <li><b>6</b>: {@code preferencia_aparencia} (paleta, modo e fundo por conta).</li>
  * </ul>
  *
  * Garantias: antes de alterar um banco existente é feito um backup
@@ -58,7 +59,8 @@ public final class MigradorBanco {
             MigradorBanco::migrarParaV2,
             MigradorBanco::migrarParaV3,
             MigradorBanco::migrarParaV4,
-            MigradorBanco::migrarParaV5
+            MigradorBanco::migrarParaV5,
+            MigradorBanco::migrarParaV6
     );
 
     public static final int VERSAO_ATUAL = MIGRACOES.size();
@@ -467,6 +469,29 @@ public final class MigradorBanco {
             comando.executeUpdate(
                     "CREATE INDEX idx_memoria_dono ON memoria_personagem (dono_id)"
             );
+        }
+    }
+
+    /**
+     * Versão 6: {@code preferencia_aparencia}, a aparência escolhida por cada
+     * conta (paleta, modo e fundo). Uma linha por conta, apagada junto com a
+     * conta. Contas sem linha usam o padrão (Sakura, claro, floral). Os
+     * valores são texto livre de propósito: um valor desconhecido (de uma
+     * versão futura, por exemplo) é lido como o padrão daquele campo, sem
+     * impedir o login. Nenhum dado existente muda.
+     */
+    static void migrarParaV6(Connection conexao) throws SQLException {
+        try (Statement comando = conexao.createStatement()) {
+            comando.executeUpdate("""
+                    CREATE TABLE preferencia_aparencia (
+                        usuario_id INTEGER PRIMARY KEY
+                            REFERENCES usuario (id) ON DELETE CASCADE,
+                        paleta TEXT NOT NULL,
+                        modo TEXT NOT NULL,
+                        fundo TEXT NOT NULL,
+                        atualizada_em TEXT NOT NULL
+                    )
+                    """);
         }
     }
 

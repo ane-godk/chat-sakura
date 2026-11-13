@@ -1,5 +1,6 @@
 package br.unicesumar.chat.protocolo;
 
+import br.unicesumar.chat.model.Aparencia;
 import br.unicesumar.chat.model.Conversa;
 import br.unicesumar.chat.model.Mensagem;
 import br.unicesumar.chat.model.TipoMensagem;
@@ -37,6 +38,7 @@ import java.util.Objects;
  *   ENVIAR           {req, conversaId, texto}
  *   HISTORICO        {req, conversaId, antesDe?, limite?}
  *   MARCAR_LIDA      {conversaId, mensagemId}
+ *   DEFINIR_APARENCIA {req, paleta, modo, fundo}
  *
  * Servidor → cliente
  *   CONVERSAS {req?, conversas:[conversa]}   (o primeiro confirma a entrada)
@@ -45,6 +47,7 @@ import java.util.Objects;
  *   HISTORICO {req?, conversaId, mensagens:[mensagem]}
  *   MENSAGEM  {mensagem}                     (presença: tipo ENTRADA/SAIDA na Geral)
  *   ERRO      {req?, codigo, mensagem}
+ *   APARENCIA {req?, paleta, modo, fundo}    (após a entrada e ao salvar)
  * </pre>
  *
  * Nenhum evento contém login, senha, hash ou sal. O servidor ignora
@@ -63,7 +66,9 @@ public final class ProtocoloJson {
         /** {req, conversaId}: memória do personagem (somente o dono). */
         MEMORIA_VER,
         /** {req, conversaId}: apaga a memória do personagem, sem apagar o histórico. */
-        MEMORIA_APAGAR
+        MEMORIA_APAGAR,
+        /** {req, paleta, modo, fundo}: aparência da própria conta. */
+        DEFINIR_APARENCIA
     }
 
     public enum TipoEvento {
@@ -75,7 +80,9 @@ public final class ProtocoloJson {
         /** {}: verificação de sessão após inatividade; o cliente responde PONG. */
         PING,
         /** {req, conversaId, resumo, atualizadaEm}: memória do personagem. */
-        MEMORIA
+        MEMORIA,
+        /** {req?, paleta, modo, fundo}: aparência da conta (após entrar e após DEFINIR_APARENCIA). */
+        APARENCIA
     }
 
     /** Maior inteiro exato em JSON (2^53 - 1). */
@@ -318,6 +325,14 @@ public final class ProtocoloJson {
         return GSON.toJson(objeto);
     }
 
+    public static String eventoAparencia(Long req, Aparencia aparencia) {
+        JsonObject objeto = base(TipoEvento.APARENCIA, req);
+        objeto.addProperty("paleta", aparencia.paleta().name());
+        objeto.addProperty("modo", aparencia.modo().name());
+        objeto.addProperty("fundo", aparencia.fundo().name());
+        return GSON.toJson(objeto);
+    }
+
     public static String eventoPing() {
         return GSON.toJson(base(TipoEvento.PING, null));
     }
@@ -401,6 +416,17 @@ public final class ProtocoloJson {
         public String memoriaAtualizadaEm() {
             JsonElement data = dados.get("atualizadaEm");
             return data == null || data.isJsonNull() ? null : data.getAsString();
+        }
+
+        /** Aparência ({@code APARENCIA}); campos ausentes ou desconhecidos viram o padrão. */
+        public Aparencia aparencia() {
+            return Aparencia.ler(textoOpcional("paleta"), textoOpcional("modo"), textoOpcional("fundo"));
+        }
+
+        private String textoOpcional(String campo) {
+            JsonElement valor = dados.get(campo);
+            return valor != null && valor.isJsonPrimitive() && valor.getAsJsonPrimitive().isString()
+                    ? valor.getAsString() : null;
         }
 
         private <T> List<T> lista(String campo, Class<T> classe) {

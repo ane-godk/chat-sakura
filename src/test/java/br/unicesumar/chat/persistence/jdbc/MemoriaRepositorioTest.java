@@ -50,7 +50,9 @@ class MemoriaRepositorioTest {
             s.execute("INSERT INTO mensagem (conversa_id, remetente, texto, horario) VALUES (1, 'Ana', 'oi', '2026-11-10')");
         }
 
-        MigradorBanco.Resultado resultado = new MigradorBanco(new ConnectionFactory(arquivo.toString())).migrar();
+        MigradorBanco.Resultado resultado = new MigradorBanco(new ConnectionFactory(arquivo.toString()),
+                MigradorBanco.MIGRACOES.subList(0, 5),
+                Clock.fixed(Instant.parse("2026-11-12T12:00:00Z"), ZoneId.of("UTC"))).migrar();
 
         assertEquals(4, resultado.versaoAnterior());
         assertEquals(List.of("5"), coluna(arquivo, "PRAGMA user_version"));

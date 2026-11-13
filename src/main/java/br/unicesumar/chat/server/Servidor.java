@@ -8,6 +8,8 @@ import br.unicesumar.chat.service.ServicoIA;
 import br.unicesumar.chat.persistence.jdbc.ConnectionFactory;
 import br.unicesumar.chat.persistence.jdbc.JdbcConversaRepository;
 import br.unicesumar.chat.persistence.jdbc.JdbcMemoriaRepository;
+import br.unicesumar.chat.persistence.jdbc.JdbcAparenciaRepository;
+import br.unicesumar.chat.service.ServicoPreferencias;
 import br.unicesumar.chat.persistence.jdbc.JdbcMensagemRepository;
 import br.unicesumar.chat.persistence.jdbc.JdbcUsuarioRepository;
 import br.unicesumar.chat.service.ChatService;
@@ -84,7 +86,7 @@ public final class Servidor {
 
     /** Serviços completos (chat, contas e conversas) sobre o mesmo banco. */
     public record Servicos(ChatService chat, ServicoAutenticacao autenticacao, ServicoConversas conversas,
-                           ServicoIA ia, LimitesServidor limites) {
+                           ServicoIA ia, LimitesServidor limites, ServicoPreferencias preferencias) {
 
         /** Provedor de IA conforme as variáveis de ambiente (Qwen, SIMULADO ou indisponível). */
         public static Servicos montar(ConnectionFactory fabrica, HashSenha hashSenha, Clock relogio) {
@@ -117,7 +119,8 @@ public final class Servidor {
                     conversas,
                     new ServicoIA(repositorioConversas, mensagens, conversas, provedor,
                             new JdbcMemoriaRepository(fabrica), relogio),
-                    limites
+                    limites,
+                    new ServicoPreferencias(new JdbcAparenciaRepository(fabrica), relogio)
             );
         }
 
@@ -127,7 +130,7 @@ public final class Servidor {
 
         /** @param aoEncerrar chamado uma vez ao fim da sessão (libera a vaga) */
         public ClienteHandler atender(Socket socket, Runnable aoEncerrar) {
-            return new ClienteHandler(socket, chat, autenticacao, conversas, ia, limites, aoEncerrar);
+            return new ClienteHandler(socket, chat, autenticacao, conversas, ia, limites, aoEncerrar, preferencias);
         }
     }
 

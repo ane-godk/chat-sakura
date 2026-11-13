@@ -17,6 +17,8 @@ import br.unicesumar.chat.service.ResumoConversa;
 import br.unicesumar.chat.service.ServicoAutenticacao;
 import br.unicesumar.chat.service.ServicoConversas;
 import br.unicesumar.chat.service.ServicoIA;
+import br.unicesumar.chat.service.ServicoPreferencias;
+import br.unicesumar.chat.model.Aparencia;
 import br.unicesumar.chat.service.SessaoEncerradaException;
 
 import java.io.BufferedReader;
@@ -95,6 +97,7 @@ public final class ClienteHandler
     private final ServicoAutenticacao autenticacao;
     private final ServicoConversas conversas;
     private final ServicoIA ia;
+    private final ServicoPreferencias preferencias;
 
     // Sessão autenticada no protocolo v2 (eventos JSON); definido uma vez.
     private volatile boolean sessaoJson;
@@ -165,7 +168,22 @@ public final class ClienteHandler
             LimitesServidor limites,
             Runnable aoEncerrar
     ) {
+        this(socket, chatService, autenticacao, conversas, ia, limites, aoEncerrar, null);
+    }
+
+    /** @param preferencias aparência por conta (nulo: recurso indisponível) */
+    public ClienteHandler(
+            Socket socket,
+            ChatService chatService,
+            ServicoAutenticacao autenticacao,
+            ServicoConversas conversas,
+            ServicoIA ia,
+            LimitesServidor limites,
+            Runnable aoEncerrar,
+            ServicoPreferencias preferencias
+    ) {
         this.ia = ia;
+        this.preferencias = preferencias;
 
         if ((autenticacao == null) != (conversas == null)) {
             throw new IllegalArgumentException(
@@ -776,6 +794,11 @@ public final class ClienteHandler
         enviarLinha(ProtocoloJson.eventoHistorico(null, Conversa.ID_GERAL,
                 historicoGeral.stream().map(ProtocoloJson.MensagemJson::de).toList()));
 
+        // Aparência da conta (também na reconexão); falha no banco vira o padrão.
+        if (preferencias != null) {
+            enviarLinha(ProtocoloJson.eventoAparencia(null, preferencias.aparencia(usuario)));
+        }
+
         liberarMensagensPendentes();
 
         // Reconexão durante uma geração: o cliente volta a ver "digitando…"
@@ -870,7 +893,8 @@ public final class ClienteHandler
 
         BaldeTokens balde = switch (r.tipo()) {
             case ENVIAR -> baldeMensagens;
-            case ABRIR_PRIVADA, CRIAR_GRUPO, CRIAR_PERSONAGEM, DEFINIR_AVATAR, MEMORIA_APAGAR -> baldeCriacoes;
+            case ABRIR_PRIVADA, CRIAR_GRUPO, CRIAR_PERSONAGEM, DEFINIR_AVATAR, MEMORIA_APAGAR,
+                 DEFINIR_APARENCIA -> baldeCriacoes;
             case LISTAR_CONVERSAS, LISTAR_USUARIOS, HISTORICO, MEMORIA_VER -> baldeConsultas;
             case MARCAR_LIDA -> baldeLeituras;
             case PONG -> null;
@@ -971,6 +995,21 @@ public final class ClienteHandler
                 enviarLinha(ProtocoloJson.eventoMemoria(req, conversaId, memoria.resumo(),
                         memoria.vazio() && memoria.atualizadaEm().equals(java.time.LocalDateTime.MIN)
                                 ? null : memoria.atualizadaEm().toString()));
+            }
+
+            // Sempre a conta desta sessão: não há campo de usuário na requisição.
+            case DEFINIR_APARENCIA -> {
+                if (preferencias == null) {
+                    throw new ConversaException(ConversaException.Codigo.INDISPONIVEL,
+                            "Este servidor não guarda preferências de aparência.");
+                }
+                Aparencia aparencia;
+                try {
+                    aparencia = Aparencia.exigir(r.texto("paleta"), r.texto("modo"), r.texto("fundo"));
+                } catch (IllegalArgumentException e) {
+                    throw new ConversaException(ConversaException.Codigo.DADOS_INVALIDOS, e.getMessage());
+                }
+                enviarLinha(ProtocoloJson.eventoAparencia(req, preferencias.definir(usuario, aparencia)));
             }
         }
     }

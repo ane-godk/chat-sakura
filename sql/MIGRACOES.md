@@ -14,6 +14,7 @@ O esquema atual está em [criar_tabelas.sql](criar_tabelas.sql). Um teste automa
 | 3 | Coluna `conversa_participante.ultima_lida_id` (padrão 0). Guarda a última mensagem lida por participante, para que o contador de não lidas sobreviva à reconexão e ao reinício. É um `ADD COLUMN` simples, que não altera nenhum dado existente. |
 | 4 | Coluna `usuario.apelido_chave` com índice único. É a chave normalizada do apelido (NFKC + minúsculas com `Locale.ROOT`, calculada em Java por `NormalizacaoNome`). O apelido exibido não muda. |
 | 5 | Tabela `memoria_personagem`: memória resumida de cada conversa com um personagem de IA. A chave é a conversa (uma memória por conversa, nunca global), com o dono e o personagem gravados para conferência. Apagar a conversa, o personagem ou a conta apaga a memória (`ON DELETE CASCADE`), e como os ids são `AUTOINCREMENT` um personagem recriado nunca herda memória antiga. É só um `CREATE TABLE`: nenhum dado existente muda. |
+| 6 | Tabela `preferencia_aparencia`: paleta, modo e fundo escolhidos por cada conta (uma linha por conta, apagada com a conta). Contas sem linha usam o padrão (Sakura, claro, floral); valores desconhecidos são lidos como o padrão daquele campo. Só um `CREATE TABLE`: nenhum dado existente muda. |
 
 ### Colisões na migração para a versão 4
 

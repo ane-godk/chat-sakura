@@ -385,7 +385,8 @@ class ClienteHandlerAutenticacaoTest {
         Cliente ana = cadastrarAna();
 
         ana.enviar("x".repeat(ProtocoloSakura.TAMANHO_MAXIMO_LINHA + 1));
-        assertTrue(ana.ler().contains("\"LINHA_LONGA\""));
+        // Linhas da entrada (como a APARENCIA) podem chegar antes da resposta.
+        ana.esperar(l -> l.contains("\"LINHA_LONGA\""));
 
         ana.enviar(enviarJson(1, "Continua funcionando"));
         ana.esperar(l -> l.contains("\"texto\":\"Continua funcionando\""));

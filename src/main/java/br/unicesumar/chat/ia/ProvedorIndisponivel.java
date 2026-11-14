@@ -24,6 +24,11 @@ public final class ProvedorIndisponivel implements ProvedorIA {
         return "Qwen (não configurado)";
     }
 
+    /** O que falta configurar (sem valores das variáveis, nunca a chave). */
+    public String motivo() {
+        return motivo;
+    }
+
     /**
      * Escolhe o provedor do servidor: {@code CHAT_SAKURA_IA=simulado} usa o
      * SIMULADO; caso contrário, o Qwen das variáveis de ambiente, ou este

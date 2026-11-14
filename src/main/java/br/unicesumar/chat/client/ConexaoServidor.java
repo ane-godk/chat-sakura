@@ -5,7 +5,9 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.ConnectException;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Objects;
@@ -317,9 +319,29 @@ final class ConexaoServidor {
             // há nova tentativa sem TLS.
             ouvinte.falhaConexaoSegura(e.getMessage());
 
+        } catch (ConnectException | UnknownHostException e) {
+
+            // A conexão nem chegou ao servidor: nada foi enviado.
+            ouvinte.linhaRecebida("SISTEMA: " + explicarFalhaDeConexao(e, endereco, porta));
+
         } catch (IOException e) {
 
             ouvinte.linhaRecebida("SISTEMA: " + e.getMessage());
+
+        } catch (RuntimeException | Error e) {
+
+            // Falha do próprio cliente (não do servidor): a sessão termina,
+            // mas nunca em silêncio. Só o tipo e a mensagem da exceção são
+            // mostrados; a senha já foi apagada e não está nelas.
+            System.err.println("Chat Sakura: falha inesperada na conexão; a sessão foi encerrada.");
+            e.printStackTrace();
+            ouvinte.linhaRecebida("SISTEMA: Falha inesperada no cliente (" + e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage())
+                    + "). A conexão foi encerrada. Feche e abra o cliente de novo;"
+                    + " se continuar, envie o log do terminal do cliente.");
+            if (e instanceof Error erro) {
+                throw erro;
+            }
 
         } finally {
 
@@ -355,6 +377,16 @@ final class ConexaoServidor {
 
             ouvinte.estadoAlterado();
         }
+    }
+
+    /** Servidor fora do ar, porta errada ou endereço desconhecido (sem o texto em inglês do Java). */
+    static String explicarFalhaDeConexao(IOException e, String endereco, int porta) {
+        if (e instanceof UnknownHostException) {
+            return "Endereço do servidor desconhecido: \"" + endereco + "\". Confira o endereço digitado.";
+        }
+        return "Não foi possível conectar ao servidor " + endereco + ":" + porta
+                + ". Confira se o servidor está em execução e se o endereço e a porta estão corretos."
+                + " No modo de desenvolvimento (sem TLS), o servidor só aceita conexões do próprio computador.";
     }
 
     /**

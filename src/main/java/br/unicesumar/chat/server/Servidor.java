@@ -191,10 +191,7 @@ public final class Servidor {
             System.out.println("Servidor iniciado na porta " + servidorSocket.getLocalPort());
             System.out.println("Transporte: " + transporte.descricao());
             if (servicos != null) {
-                br.unicesumar.chat.ia.ParametrosIA p = servicos.ia().parametros();
-                System.out.println("Sakura IA: " + servicos.ia().provedor().descricao() + " (contexto "
-                        + p.janelaTokens() + " tokens, resposta " + p.tokensResposta() + ", "
-                        + p.geracoesSimultaneas() + " geração(ões) por vez, fila " + p.filaMaxima() + ")");
+                System.out.println(descricaoIA(servicos.ia().provedor(), servicos.ia().parametros()));
                 // Opcional (QWEN_AQUECER): carrega o modelo sem atrasar a inicialização.
                 servicos.ia().aquecerEmSegundoPlano();
             }
@@ -212,6 +209,20 @@ public final class Servidor {
                     "Erro no servidor: " + e.getMessage()
             );
         }
+    }
+
+    /**
+     * Linha da IA no log de inicialização. Sem Qwen configurado, diz o que
+     * falta em vez de listar limites que não serão usados.
+     */
+    static String descricaoIA(ProvedorIA provedor, br.unicesumar.chat.ia.ParametrosIA p) {
+        if (provedor instanceof ProvedorIndisponivel indisponivel) {
+            return "Sakura IA: " + provedor.descricao() + ". " + indisponivel.motivo()
+                    + " O chat funciona normalmente; só os personagens de IA ficam indisponíveis.";
+        }
+        return "Sakura IA: " + provedor.descricao() + " (contexto "
+                + p.janelaTokens() + " tokens, resposta " + p.tokensResposta() + ", "
+                + p.geracoesSimultaneas() + " geração(ões) por vez, fila " + p.filaMaxima() + ")";
     }
 
     /**

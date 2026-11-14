@@ -1,13 +1,349 @@
 # Chat Sakura
 
-O Chat Sakura é um aplicativo de mensagens desenvolvido em Java 17, com:
-- servidor TCP multithread;
-- cliente Swing com os temas Sakura Claro e Noturno;
-- histórico persistente em SQLite.
+O **Chat Sakura** é um aplicativo de mensagens para Windows feito em Java. Com ele você:
 
-Ele oferece **Chat Geral**, **conversas privadas**, **grupos**, contas com senha, **avatares** e a **Sakura IA**: conversas com personagens personalizados, interpretados por um modelo **Qwen**.
+- cria uma **conta com senha** e conversa no **Chat Geral**;
+- abre **conversas privadas** e **grupos** com outras contas;
+- escolhe **avatar**, **tema** (quatro paletas florais, claro ou escuro) e fundo da conversa;
+- pesquisa mensagens antigas e **fixa** as importantes;
+- conversa com **personagens de IA** (opcional), interpretados pelo modelo Qwen.
 
-## Funcionalidades
+Neste guia, o Chat Sakura funciona **somente no seu computador**: o servidor (que guarda as contas e as mensagens) e as janelas de chat rodam na mesma máquina. Para conversar entre duas pessoas, abra duas janelas de chat, uma para cada conta.
+
+Os **personagens de IA são opcionais**. Todo o resto funciona sem eles.
+
+---
+
+## Como executar no Windows (passo a passo)
+
+> Resumo: baixe o ZIP, extraia, dê dois cliques em **`INICIAR-CHAT-SAKURA.bat`** e crie sua conta.
+> O computador precisa do **Java 17 ou superior**. Se não tiver e não puder instalar, use o [pacote portátil](#computador-sem-java-pacote-portátil).
+
+### Antes de começar: o Java está instalado?
+
+1. Aperte as teclas **Windows + R**, digite `cmd` e aperte **Enter**. Abre uma janela preta (o Prompt de Comando).
+2. Digite o comando abaixo e aperte **Enter**:
+   ```
+   java -version
+   ```
+3. Veja a primeira linha da resposta:
+   - `openjdk version "17..."`, `"21..."` ou outro número **17 ou maior**: está tudo certo. Feche a janela e siga para o passo 1.
+   - `java version "1.8..."` (Java 8) ou `'java' não é reconhecido...`: o Java adequado não está instalado. Instale o **JDK 17** em <https://adoptium.net/temurin/releases/?version=17> (escolha Windows, x64, **JDK**, arquivo `.msi`; durante a instalação, deixe marcadas as opções **Set JAVA_HOME** e **Add to PATH**). Se você não tiver permissão para instalar programas, use o [pacote portátil](#computador-sem-java-pacote-portátil).
+
+Você **não precisa** instalar o Maven, criar certificados nem configurar nada: o inicializador cuida disso.
+
+### Passo 1: baixar o projeto
+
+1. Abra <https://github.com/ane-godk/chat-sakura> no navegador.
+2. Clique no botão verde **`<> Code`** (acima da lista de arquivos).
+3. Clique em **Download ZIP**. O arquivo `chat-sakura-main.zip` vai para a pasta **Downloads**.
+
+### Passo 2: extrair o ZIP
+
+1. Abra a pasta **Downloads** e clique com o botão direito em `chat-sakura-main.zip`.
+2. Escolha **Extrair tudo...** e clique em **Extrair**.
+3. Abra a pasta extraída **`chat-sakura-main`**. Dentro dela estão a pasta `src`, o arquivo `pom.xml` e o arquivo **`INICIAR-CHAT-SAKURA.bat`**.
+
+> **Importante:** não execute o arquivo de dentro do ZIP sem extrair (o Windows abre o ZIP como se fosse uma pasta, mas não deixa gravar nela).
+> Se aparecer uma pasta `chat-sakura-main` dentro de outra `chat-sakura-main`, use a de dentro: a que contém o `INICIAR-CHAT-SAKURA.bat`.
+
+### Passo 3: executar o inicializador
+
+1. Dê **dois cliques** em **`INICIAR-CHAT-SAKURA.bat`**. Se o Windows esconder as extensões, ele aparece como **`INICIAR-CHAT-SAKURA`**, com o tipo "Arquivo em Lotes do Windows".
+2. Se aparecer **"O Windows protegeu o computador"**, clique em **Mais informações** e depois em **Executar assim mesmo**. O aviso aparece porque o arquivo veio da internet.
+
+Abre uma janela preta chamada **"Chat Sakura - inicializador"**, que mostra cada etapa:
+
+```text
+ [1/4] Java 17.0.x encontrado.
+ [2/4] Preparando o programa. Na primeira vez, as bibliotecas sao baixadas
+       da internet e isso pode levar alguns minutos. Aguarde...
+       Pronto.
+ [3/4] Abrindo o servidor na janela "Chat Sakura - Servidor"...
+Servidor pronto.
+ [4/4] Abrindo a janela do Chat Sakura...
+```
+
+- **Na primeira vez**, a etapa 2 baixa da internet o Maven e as bibliotecas do projeto, e por isso pode levar alguns minutos (depende da internet). Nas vezes seguintes, leva poucos segundos.
+- **Não feche** a janela do inicializador enquanto usa o chat: ela mostra as mensagens do programa.
+
+### Passo 4: confirmar que o servidor iniciou
+
+Abre uma segunda janela preta, **"Chat Sakura - Servidor"**. O servidor está pronto quando ela mostra:
+
+```text
+Servidor iniciado na porta 12345
+Transporte: TCP SEM TLS (somente desenvolvimento) em 127.0.0.1
+Sakura IA: ...
+Aguardando conexões...
+```
+
+Deixe essa janela aberta: ela é o servidor. (A linha "Sakura IA" diz se os personagens de IA estão disponíveis; veja [Personagens de IA](#personagens-de-ia-com-ollama-opcional).)
+
+### Passo 5: confirmar que o chat abriu
+
+Abre a janela **"Chat Sakura — modo local (neste computador)"**, já com a tela **Conectar ao Chat Sakura** na frente. Nela, o endereço `127.0.0.1` e a porta `12345` já vêm preenchidos e não precisam ser alterados, com o aviso:
+
+> Conexão local: servidor neste computador (127.0.0.1:12345), modo de desenvolvimento sem TLS. Nada sai deste computador.
+
+### Passo 6: criar sua conta
+
+1. Na tela de entrada, clique em **Criar conta**.
+2. Preencha:
+   - **Login:** de 3 a 30 caracteres, só letras sem acento, números, ponto, hífen ou sublinhado. Exemplo: `ana.souza`.
+   - **Apelido:** o nome que os outros veem no chat. Exemplo: `Ana`.
+   - **Senha** e **Confirmar senha:** de 8 a 128 caracteres.
+3. Clique em **Conectar**.
+
+Pronto: **você já entra conectado**. A faixa no topo da conversa mostra "Conta criada! Você já está conectado como Ana" e o selo no canto superior direito mostra **"Conectado como Ana"** com uma bolinha verde.
+
+Se algo estiver errado (login inválido, senhas diferentes, apelido em uso), uma mensagem explica o problema e a tela de entrada continua aberta para correção.
+
+### Passo 7: entrar de novo numa conta existente
+
+Nas próximas vezes, na tela de entrada, deixe selecionado **Entrar**, digite o **login** e a **senha** e clique em **Conectar**. Se a tela de entrada não estiver aberta, clique no botão **Conectar** do cabeçalho.
+
+As contas e as mensagens ficam guardadas: continuam lá depois de fechar e abrir o Chat Sakura.
+
+### Passo 8: começar a conversar
+
+- **Chat Geral:** já vem aberto. Digite na caixa de baixo e aperte **Enter** (ou clique em **Enviar**).
+- **Uma segunda pessoa no mesmo computador:** com o servidor aberto, dê dois cliques em `INICIAR-CHAT-SAKURA.bat` **de novo**. O inicializador percebe que o servidor já está rodando e abre só mais uma janela de chat. Nela, crie a segunda conta.
+- **Conversa privada:** clique em **Privada** (barra da esquerda) e escolha a outra conta.
+- **Grupo:** clique em **Grupo**, dê um nome e marque os participantes.
+- **Personagem de IA:** clique em **IA** (precisa do [Ollama](#personagens-de-ia-com-ollama-opcional)).
+
+### Passo 9: encerrar
+
+1. Feche a janela do Chat Sakura (botão **X**).
+2. A janela do inicializador pergunta: **"Deseja encerrar o servidor tambem? Digite S (sim) ou N (nao)"**.
+   - **S**: encerra o servidor (a janela "Chat Sakura - Servidor" fecha sozinha).
+   - **N**: deixa o servidor aberto, por exemplo se outra janela de chat ainda estiver em uso. Para encerrá-lo depois, feche a janela "Chat Sakura - Servidor".
+3. Aperte qualquer tecla para fechar a janela do inicializador.
+
+### Onde ficam os dados
+
+Tudo fica na pasta **`dados`**, criada ao lado do `INICIAR-CHAT-SAKURA.bat`:
+
+| Arquivo | Conteúdo |
+|---|---|
+| `dados\chat-sakura.db` | Contas, conversas e mensagens (banco SQLite) |
+| `dados\logs\servidor.log` | Mensagens do servidor |
+| `dados\logs\cliente.log` | Mensagens das janelas de chat |
+| `dados\logs\compilacao.log` | Detalhes da etapa "Preparando o programa" |
+
+Para começar do zero, feche tudo e apague a pasta `dados`. As preferências visuais de quem não entrou numa conta ficam em `%USERPROFILE%\.chat-sakura\`.
+
+---
+
+## Computador sem Java (pacote portátil)
+
+O **pacote portátil** já traz um Java próprio (reduzido, só com o necessário). No computador onde ele vai rodar, **não é preciso instalar nada** (nem Java, nem Maven) e **não é preciso ser administrador**. É a opção recomendada para computadores de laboratório.
+
+### Gerar o pacote (no seu computador, uma vez)
+
+Precisa de um computador com o **JDK 17 ou superior** (o mesmo do [passo a passo](#antes-de-começar-o-java-está-instalado)) e internet na primeira vez.
+
+1. Na pasta do projeto, dê dois cliques em **`GERAR-PACOTE-PORTATIL.bat`**.
+2. Aguarde: ele compila, roda todos os testes e monta o pacote. Leva alguns minutos.
+3. Ao final, a janela mostra onde ficou o pacote:
+   - pasta `dist\ChatSakura-Portatil\`;
+   - arquivo **`dist\ChatSakura-Portatil.zip`** (cerca de 45 MB).
+
+O pacote contém só `runtime\` (o Java reduzido), `chat-sakura.jar`, `INICIAR-CHAT-SAKURA.bat` e `LEIA-ME.txt`. Nenhum banco, senha, certificado ou configuração pessoal entra nele.
+
+### Usar o pacote em outro computador
+
+1. Copie `ChatSakura-Portatil.zip` para um pendrive (ou envie para você mesmo por e-mail ou nuvem).
+2. No outro computador, extraia o ZIP (**botão direito → Extrair tudo...**) para uma pasta onde se possa gravar, como a **Área de Trabalho** ou **Documentos**. Não use o pendrive se ele for somente leitura.
+3. Abra a pasta **`ChatSakura-Portatil`** e dê dois cliques em **`INICIAR-CHAT-SAKURA.bat`**.
+4. Siga a partir do [passo 4](#passo-4-confirmar-que-o-servidor-iniciou): é tudo igual, mas sem a etapa "Preparando o programa" e sem precisar de internet.
+
+O pacote foi gerado e testado no Windows 11 (64 bits). Ele funciona em Windows 10 ou 11 de 64 bits; não funciona em Linux, macOS nem em Windows de 32 bits.
+
+---
+
+## Requisitos
+
+| Item | Pelo código-fonte (ZIP do GitHub) | Pelo pacote portátil |
+|---|---|---|
+| Sistema | Windows 10 ou 11 | Windows 10 ou 11 (64 bits) |
+| Java | **JDK 17 ou superior** (o JRE, sem compilador, não basta) | Não precisa (vem no pacote) |
+| Maven | Não precisa (o inicializador usa o Maven Wrapper, que baixa o Maven sozinho) | Não precisa |
+| Internet | Na **primeira** execução, para baixar o Maven e as bibliotecas | Não precisa |
+| Administrador | Não precisa | Não precisa |
+| Espaço em disco | Recomendado: 500 MB livres (bibliotecas do Maven, guardadas em `%USERPROFILE%\.m2`) | Cerca de 60 MB para a pasta extraída |
+| IA (opcional) | Ollama com `qwen2.5:3b` (cerca de 2 GB; 8 GB de RAM ou mais recomendados) | Igual |
+
+Para conferir a versão do Java, use `java -version` (veja [Antes de começar](#antes-de-começar-o-java-está-instalado)). Se o Maven estiver instalado, o inicializador o usa; senão, usa o `mvnw.cmd` (Maven Wrapper) que vem no projeto.
+
+---
+
+## Personagens de IA com Ollama (opcional)
+
+Os personagens de IA usam o modelo **Qwen 2.5 3B** pelo **Ollama**, um programa gratuito que roda modelos de IA no próprio computador, sem enviar suas conversas para a internet.
+
+**Sem o Ollama, o Chat Sakura funciona normalmente** (contas, Chat Geral, privadas e grupos). Só o botão **IA** responde com uma mensagem explicando que a IA não está disponível.
+
+### Ativar a IA
+
+1. Instale o Ollama: baixe em <https://ollama.com/download> e execute o instalador.
+2. Abra o Prompt de Comando (**Windows + R**, `cmd`, **Enter**) e baixe o modelo (cerca de 2 GB, só na primeira vez):
+   ```
+   ollama pull qwen2.5:3b
+   ```
+3. Confira se o modelo está disponível:
+   ```
+   ollama list
+   ```
+   A lista deve mostrar `qwen2.5:3b`.
+4. Execute (ou execute de novo) o `INICIAR-CHAT-SAKURA.bat`. Se o servidor já estava aberto, encerre-o antes: ele procura o Ollama só ao iniciar.
+
+Não é preciso configurar nada: ao iniciar, o servidor procura o Ollama neste computador (`http://127.0.0.1:11434`) e, se encontrar o `qwen2.5:3b`, passa a usá-lo. Ele apenas consulta a lista de modelos: não baixa modelos e não muda nenhuma configuração do Ollama.
+
+### Confirmar que o Qwen foi reconhecido
+
+Na janela **"Chat Sakura - Servidor"**, procure a linha:
+
+| Mensagem | Significado |
+|---|---|
+| `Sakura IA: Qwen qwen2.5:3b (contexto 4096 tokens, ...)` | IA ativa. |
+| `Sakura IA: Qwen (não configurado). Ollama não encontrado em http://127.0.0.1:11434...` | O Ollama não está instalado ou não está aberto. Abra o Ollama e reinicie o servidor. |
+| `Sakura IA: Qwen (não configurado). O Ollama está em execução, mas o modelo qwen2.5:3b não está instalado...` | Rode `ollama pull qwen2.5:3b` e reinicie o servidor. |
+
+### Testar um personagem
+
+1. Entre numa conta e clique em **IA** (barra da esquerda).
+2. Preencha **Nome** (sem espaços, ex.: `Sakurinha`), **Personalidade** e **Contexto** e confirme.
+3. Envie uma mensagem. O título mostra "digitando…" e, em alguns segundos, chega a resposta. A primeira resposta demora mais, porque o Ollama carrega o modelo na memória.
+
+Quem já usa variáveis `QWEN_*` (por exemplo, a API remota do Qwen) continua com elas: a detecção automática só acontece quando nenhuma dessas variáveis está definida. Veja [Sakura IA (Qwen)](#sakura-ia-qwen).
+
+---
+
+## Solução de problemas
+
+Quando algo dá errado, as janelas pretas **não fecham sozinhas**: leia a mensagem e aperte uma tecla para fechar.
+
+| O que aparece | O que fazer |
+|---|---|
+| `ERRO: o Java nao foi encontrado neste computador.` | Instale o JDK 17 (veja [Antes de começar](#antes-de-começar-o-java-está-instalado)) ou use o [pacote portátil](#computador-sem-java-pacote-portátil). Depois de instalar, feche e abra de novo o inicializador. |
+| `ERRO: o Chat Sakura precisa do Java 17 ou superior.` com `Versao encontrada: 1.8...` | O computador tem um Java antigo. Instale o JDK 17 ou use o pacote portátil. Se o Java novo já estiver instalado, a variável `JAVA_HOME` pode apontar para o antigo (a mensagem mostra qual Java foi usado). |
+| `ERRO: nao foi possivel preparar o programa.` | Na primeira vez é preciso internet; redes de laboratório às vezes bloqueiam downloads. Confira também se o Java instalado é o **JDK** (o JRE não compila). O detalhe fica em `dados\logs\compilacao.log`. Alternativa: pacote portátil. |
+| "Maven não encontrado" / `'mvn' não é reconhecido` | Não é preciso instalar o Maven: o inicializador usa o `mvnw.cmd` do projeto. Se a mensagem aparecer, confira se o `mvnw.cmd` e a pasta `.mvn` estão na mesma pasta do `.bat` (extraia o ZIP inteiro). |
+| `ERRO: a porta 12345 esta sendo usada por outro programa.` | Outro programa (ou um servidor do Chat Sakura aberto pelo terminal no modo TLS) usa a porta. A mensagem mostra o PID: feche esse programa (Gerenciador de Tarefas → aba **Detalhes** → procure o PID) e execute de novo. O inicializador nunca encerra programas desconhecidos. |
+| `ERRO: o servidor nao ficou pronto.` | Leia a janela "Chat Sakura - Servidor" (ou `dados\logs\servidor.log`). Feche-a e execute o inicializador de novo. |
+| `Não foi possível abrir o banco de dados ...` (janela do servidor) | A pasta não permite gravação, ou o arquivo `dados\chat-sakura.db` está aberto em outro programa. Extraia o projeto para a Área de Trabalho ou Documentos e feche outros programas que usem o banco. |
+| `ERRO: nao foi possivel criar a pasta "dados"` | O arquivo foi aberto de dentro do ZIP ou de uma pasta somente leitura. Extraia o ZIP (botão direito → **Extrair tudo...**). |
+| Selo **"Desconectado"** e janela "Não foi possível conectar ao servidor 127.0.0.1:12345..." | O servidor não está aberto. Execute o `INICIAR-CHAT-SAKURA.bat` (ele abre o servidor) e clique em **Conectar**. |
+| "Login ou senha incorretos." | Confira o login (não o apelido) e a senha. Uma conta criada em outro computador não existe neste: cada pasta `dados` tem as próprias contas. Depois de muitas tentativas erradas, o login fica bloqueado por alguns minutos. |
+| A tela de entrada fecha, mas a conexão não acontece | Veja a linha `SISTEMA:` no Chat Geral e a janela do inicializador: elas dizem o motivo. "Falha inesperada no cliente" indica um erro do próprio programa: envie o `dados\logs\cliente.log`. |
+| "Conexão segura recusada" ou "O servidor não respondeu com TLS" | Essas mensagens são do modo TLS, usado só quando o cliente é aberto pelo terminal. Pelo `INICIAR-CHAT-SAKURA.bat` a conexão é sempre local, sem TLS. Veja [Conexão segura (TLS)](#conexão-segura-tls). |
+| Personagem responde "A Sakura IA (Qwen) não está configurada" | O Ollama ou o modelo não foram encontrados quando o servidor iniciou. Veja [Personagens de IA](#personagens-de-ia-com-ollama-opcional) e reinicie o servidor. |
+| `'ollama' não é reconhecido` | O Ollama não está instalado (ou o Prompt de Comando foi aberto antes da instalação; abra outro). |
+| A janela preta abre e fecha na hora | Isso não deve acontecer: o inicializador sempre espera uma tecla. Se acontecer, abra o Prompt de Comando, arraste o `INICIAR-CHAT-SAKURA.bat` para dentro dele e aperte **Enter**: a mensagem fica visível. |
+| Caminhos com espaços ou acentos (ex.: `Área de Trabalho\Minha pasta`) | Funcionam (testado). Evite apenas pastas sincronizadas que ainda não terminaram de baixar os arquivos. |
+
+### Como obter os logs
+
+- **Servidor:** janela "Chat Sakura - Servidor" e o arquivo `dados\logs\servidor.log`.
+- **Janelas de chat:** janela do inicializador e o arquivo `dados\logs\cliente.log`.
+- **Preparação (Maven):** `dados\logs\compilacao.log`.
+
+Os logs **não mostram senhas**. Para relatar um problema, envie esses arquivos e a saída de `java -version`.
+
+---
+
+## Executar manualmente pelo terminal (avançado)
+
+Esta seção é para quem quer controlar cada parte (por exemplo, usar TLS ou outra pasta de dados). Para usar o chat, o `INICIAR-CHAT-SAKURA.bat` basta.
+
+Os comandos abaixo são para o **PowerShell**, abertos na pasta do projeto (a que contém o `pom.xml`). Onde aparece `mvn`, quem não tem o Maven instalado pode usar `.\mvnw.cmd` no lugar.
+
+### 1. Compilar e testar
+
+```powershell
+mvn clean test
+```
+
+### 2. Iniciar o servidor (TLS, o padrão)
+
+Fora do inicializador, o servidor usa **TLS por padrão** e exige um certificado: crie-o uma vez, conforme [Conexão segura (TLS)](#conexão-segura-tls). Depois:
+
+```powershell
+$env:CHAT_SAKURA_TLS_KEYSTORE = "$env:USERPROFILE\chat-sakura-certificados\servidor.p12"
+$env:CHAT_SAKURA_TLS_KEYSTORE_SENHA = Read-Host "Senha do keystore"   # não fica no histórico do terminal
+mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
+```
+
+O `compile` no mesmo comando garante que as classes existam, mesmo depois de um `mvn clean`. Se tudo der certo, o terminal mostra:
+
+```text
+Servidor iniciado na porta 12345
+Transporte: TLS (TLSv1.3, TLSv1.2) em todas as interfaces
+Aguardando conexões...
+```
+
+Sem o certificado configurado, o servidor **não inicia** e explica o que falta; ele nunca passa sozinho para TCP sem criptografia. Para encerrar, use `Ctrl + C`.
+
+### 3. Iniciar os clientes
+
+Em **outro terminal**, aponte o cliente para o certificado público do servidor (o truststore):
+
+```powershell
+$env:CHAT_SAKURA_TRUSTSTORE = "$env:USERPROFILE\chat-sakura-certificados\confianca.p12"
+$env:CHAT_SAKURA_TRUSTSTORE_SENHA = Read-Host "Senha do truststore"
+mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.client.ClienteChat"
+```
+
+Na janela, clique em **Conectar** e escolha **Entrar**, **Criar conta** ou **Visitante** (apenas um nome, sem conta, só no Chat Geral). O endereço padrão é `localhost` e a porta, `12345`. A conexão usa TLS; a caixa **Sem TLS (somente desenvolvimento local)** só deve ser marcada com um servidor no modo de desenvolvimento.
+
+### Modo local pelo terminal (sem TLS, como o inicializador)
+
+O inicializador apenas compila o `target\chat-sakura.jar` e executa a classe `br.unicesumar.chat.local.InicioLocal`:
+
+```powershell
+mvn -q -DskipTests package
+java -cp target\chat-sakura.jar br.unicesumar.chat.local.InicioLocal servidor   # terminal 1
+java -cp target\chat-sakura.jar br.unicesumar.chat.local.InicioLocal cliente    # terminal 2
+```
+
+- `servidor`: TCP sem TLS **somente em 127.0.0.1:12345**, com o banco em `dados\chat-sakura.db`. Esse modo é definido no código; ele não lê `CHAT_SAKURA_MODO` nem `CHAT_SAKURA_ENDERECO`, então nunca escuta em outra interface.
+- `cliente`: janela no modo local (endereço fixo, sem a caixa "Sem TLS").
+- Outros comandos usados pelo `.bat`: `verificar` (porta livre, ocupada ou com o Chat Sakura), `aguardar <segundos>` e `parar` (encerra só o servidor aberto pelo inicializador, conferindo o PID e o horário de início).
+
+O `ClienteChat` comum (sem o modo local) continua com TLS por padrão, sem rebaixamento automático.
+
+### Reconexão automática
+
+Se a conexão cair sem você clicar em **Sair**, o selo mostra "Reconectando..." e uma faixa acima da conversa informa as tentativas:
+- O cliente tenta alcançar o servidor com intervalos crescentes: 1 s, 2 s, 4 s... até 30 s.
+- Quando o servidor volta, a janela de login reabre com o servidor, a porta e o login preenchidos. A senha não fica guardada em lugar nenhum, então é pedida de novo.
+- Depois do login, a lista de conversas é recarregada e a conversa que estava aberta volta, com o histórico.
+- **Cancelar** (na faixa) ou **Sair** interrompem a espera.
+- Mensagens que estavam saindo no momento da queda não são reenviadas automaticamente, para não duplicar; a faixa avisa quantas podem não ter chegado.
+- Não há reconexão automática quando outro login da mesma conta assumiu a sessão, nem para visitantes.
+
+**Avisos.** Erros recuperáveis (limite de envio, conversa não encontrada, histórico indisponível) aparecem numa faixa discreta acima da conversa, que some sozinha e nunca se empilha. Diálogos ficam só para o que exige ação, como login recusado ou servidor inacessível.
+
+### Usar um banco separado (opcional)
+
+O servidor comum (`Servidor`) cria o banco `chat-sakura.db` **na pasta de onde é iniciado**. Para não misturar com outro histórico, inicie-o a partir de outra pasta:
+
+```powershell
+# a partir da pasta que contém o projeto chat-sakura
+mkdir chat-sakura-demo
+cd chat-sakura-demo
+mvn -q -f ..\chat-sakura\pom.xml compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
+```
+
+O inicializador local usa sempre a pasta `dados` ao lado do `.bat`. Para usar um banco existente com ele, feche tudo e copie o arquivo `.db` para `dados\chat-sakura.db`.
+
+---
+
+## Informações técnicas
+
+### Funcionalidades
 
 - **Contas:** cadastro e login com senha (PBKDF2-HMAC-SHA256). Visitantes e clientes antigos continuam no Chat Geral.
 - **Conversas:**
@@ -23,31 +359,31 @@ Ele oferece **Chat Geral**, **conversas privadas**, **grupos**, contas com senha
 - **Interface:** sons, animações, preferências, menu "Copiar mensagem" e exportação TXT da conversa ativa.
 - **Aparência:** quatro paletas florais (Sakura, Myosotis, Fuji e Suzuran), cada uma em modo claro e escuro, e três fundos de conversa (floral, liso e neutro). Cada conta guarda a própria escolha no servidor.
 - **Pesquisa e mensagens fixadas:** pesquisa no histórico salvo da conversa, com filtros de remetente e período, e até 10 mensagens fixadas por conversa.
-- **Testes:** 506 testes automatizados.
+- **Execução local de um clique:** `INICIAR-CHAT-SAKURA.bat` e pacote portátil com Java embutido.
+- **Testes:** 535 testes automatizados.
 
-## Tecnologias
+### Tecnologias
 
 | Tecnologia | Versão / uso |
 |---|---|
 | Java | 17 (`maven.compiler.release`) |
-| Maven | Build e testes |
+| Maven | Build e testes (Maven Wrapper 3.9.9 incluído) |
 | Sockets TCP | `ServerSocket` / `Socket` |
 | Threads | Uma por conexão no servidor |
 | JDBC + SQLite | `org.xerial:sqlite-jdbc` 3.46.1.3 |
 | JSON (protocolo v2) | `com.google.code.gson:gson` 2.11.0 |
 | Java Swing | Interface do cliente |
 | JUnit 5 | `junit-jupiter` 5.11.4 |
+| Empacotamento | `maven-shade-plugin` (JAR único) e `jlink` (Java reduzido do pacote portátil) |
 
-### Requisitos
-
-- JDK 17 ou superior (`java -version`)
-- Apache Maven 3.x (`mvn -v`)
-- Acesso à internet na primeira execução, para o Maven baixar as dependências
-
-## Estrutura do projeto
+### Estrutura do projeto
 
 ```text
 chat-sakura/
+├── INICIAR-CHAT-SAKURA.bat     Inicializador local (dois cliques)
+├── GERAR-PACOTE-PORTATIL.bat   Gera o pacote portátil com Java embutido
+├── mvnw, mvnw.cmd, .mvn/       Maven Wrapper (dispensa instalar o Maven)
+├── pacote-portatil/LEIA-ME.txt Instruções que vão dentro do pacote
 ├── pom.xml
 ├── README.md
 ├── RELATORIO_TECNICO.md
@@ -63,9 +399,10 @@ chat-sakura/
     │   │   └── jdbc/          ConnectionFactory, Jdbc*Repository, MigradorBanco
     │   ├── service/           ChatService, ClientRegistry, ServicoAutenticacao, ServicoConversas, ServicoIA
     │   ├── protocolo/         ProtocoloSakura (handshake), ProtocoloJson (protocolo v2)
-    │   ├── ia/                ProvedorIA, ProvedorQwen, ConfiguracaoQwen, ProvedorIAFalso
+    │   ├── ia/                ProvedorIA, ProvedorQwen, ConfiguracaoQwen, DeteccaoOllama, ProvedorIAFalso
     │   ├── server/            Servidor, ClienteHandler, LeitorLinhas
-    │   └── client/            ClienteChat, ConexaoServidor, ControladorConversas, BarraConversas, AvatarSakura, diálogos
+    │   ├── client/            ClienteChat, ConexaoServidor, ControladorConversas, BarraConversas, AvatarSakura, diálogos
+    │   └── local/             InicioLocal (modo local do inicializador), SaidaDuplicada (logs)
     └── test/java/br/unicesumar/chat/   Testes JUnit 5
 ```
 
@@ -77,126 +414,15 @@ chat-sakura/
 | `service` | Regras do chat, broadcast, registro de clientes, sincronização e contas |
 | `protocolo` | Formato do handshake de autenticação, compartilhado por servidor e cliente |
 | `server` | Servidor TCP e protocolo com cada cliente |
-| `ia` | Provedores de IA: Qwen (API compatível com OpenAI) e SIMULADO |
+| `ia` | Provedores de IA: Qwen (API compatível com OpenAI ou nativa do Ollama), detecção do Ollama local e SIMULADO |
 | `client` | Interface gráfica Swing |
+| `local` | Modo local do inicializador: verifica a porta, abre o servidor no loopback e o cliente sem TLS |
 
-## Como executar (Windows / PowerShell)
+### Conexão segura (TLS)
 
-### 1. Compilar e testar
+O cliente e o servidor comuns conversam por **TLS 1.3** (ou 1.2, se a outra ponta não tiver o 1.3). Versões antigas (SSLv3, TLS 1.0 e 1.1) são recusadas. Tudo o que vai pela rede é criptografado: o login, a senha, as mensagens, os comandos e os históricos.
 
-Na **raiz do projeto**:
-
-```powershell
-mvn clean test
-```
-
-### 2. Iniciar o servidor (TLS)
-
-O servidor usa **TLS por padrão**. Na primeira vez, crie o certificado de desenvolvimento conforme [Conexão segura (TLS)](#conexão-segura-tls) (uma única vez). Depois, na **raiz do projeto**:
-
-```powershell
-$env:CHAT_SAKURA_TLS_KEYSTORE = "$env:USERPROFILE\chat-sakura-certificados\servidor.p12"
-$env:CHAT_SAKURA_TLS_KEYSTORE_SENHA = Read-Host "Senha do keystore"   # não fica no histórico do terminal
-mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
-```
-
-O `compile` no mesmo comando garante que as classes existam, mesmo depois de um `mvn clean`.
-
-Se tudo der certo, o terminal mostra:
-
-```text
-Servidor iniciado na porta 12345
-Transporte: TLS (TLSv1.3, TLSv1.2) em todas as interfaces
-Aguardando conexões...
-```
-
-Sem o certificado configurado, o servidor **não inicia** e explica o que falta; ele nunca passa sozinho para TCP sem criptografia. Para testes locais rápidos sem certificado, use o modo de desenvolvimento descrito em [Conexão segura (TLS)](#conexão-segura-tls).
-
-Para encerrar, use `Ctrl + C` (se o Windows perguntar se deseja finalizar o arquivo em lotes, responda `S`).
-
-### 3. Iniciar os clientes
-
-Em **outro terminal**, na **raiz do projeto**, aponte o cliente para o certificado público do servidor (o truststore) e inicie-o:
-
-```powershell
-$env:CHAT_SAKURA_TRUSTSTORE = "$env:USERPROFILE\chat-sakura-certificados\confianca.p12"
-$env:CHAT_SAKURA_TRUSTSTORE_SENHA = Read-Host "Senha do truststore"
-java -cp "target\classes;$env:USERPROFILE\.m2\repository\com\google\code\gson\gson\2.11.0\gson-2.11.0.jar" br.unicesumar.chat.client.ClienteChat
-```
-
-O cliente usa a biblioteca **Gson** (protocolo JSON v2), baixada pelo Maven no passo 1. Esse comando exige que o projeto já tenha sido compilado (passo 1 ou 2).
-
-Uma alternativa pelo Maven, que já inclui a Gson:
-
-```powershell
-mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.client.ClienteChat"
-```
-
-Na janela, clique em **Conectar** e escolha um modo:
-
-| Modo | Campos |
-|---|---|
-| **Entrar** | login e senha de uma conta existente |
-| **Criar conta** | login, apelido (nome exibido no chat), senha e confirmação |
-| **Visitante** | apenas um nome, sem conta (como nas versões anteriores) |
-
-Em todos os modos, o endereço do servidor é `localhost` e a porta é `12345`. A conexão usa TLS; a caixa **Sem TLS (somente desenvolvimento local)** só deve ser marcada com um servidor no modo de desenvolvimento. Veja [Contas e autenticação](#contas-e-autenticação).
-
-**Queda da conexão (com conta).** Se a conexão cair sem você clicar em **Sair**, o selo mostra "Reconectando..." e uma faixa acima da conversa informa as tentativas:
-- O cliente tenta alcançar o servidor com intervalos crescentes: 1 s, 2 s, 4 s... até 30 s.
-- Quando o servidor volta, a janela de login reabre com o servidor, a porta e o login preenchidos. A senha não fica guardada em lugar nenhum, então é pedida de novo.
-- Depois do login, a lista de conversas é recarregada e a conversa que estava aberta volta, com o histórico.
-- **Cancelar** (na faixa) ou **Sair** interrompem a espera.
-- Mensagens que estavam saindo no momento da queda não são reenviadas automaticamente, para não duplicar; a faixa avisa quantas podem não ter chegado.
-- Não há reconexão automática quando outro login da mesma conta assumiu a sessão, nem para visitantes.
-
-**Avisos.** Erros recuperáveis (limite de envio, conversa não encontrada, histórico indisponível) aparecem numa faixa discreta acima da conversa, que some sozinha e nunca se empilha. Diálogos ficam só para o que exige ação, como login recusado.
-
-### 4. Demonstrar três clientes simultâneos
-
-1. Inicie o servidor (passo 2).
-2. Abra **três terminais** na raiz do projeto e execute o comando do cliente em cada um.
-3. Em cada janela, clique em **Conectar** → **Criar conta** (por exemplo `ana.souza`/`Ana`, `bia.lima`/`Bia` e `caio.reis`/`Caio`). Nas próximas vezes, use **Entrar**.
-4. Envie mensagens: todas aparecem nas três janelas, na mesma ordem.
-
-As janelas abrem sobrepostas no centro da tela. Use `Win + ←` / `Win + →` para organizá-las lado a lado.
-
-O passo a passo completo da demonstração está em [ROTEIRO_VIDEO.md](ROTEIRO_VIDEO.md).
-
-### Usar um banco separado (opcional)
-
-O servidor cria o banco `chat-sakura.db` **na pasta de onde é iniciado**. Para fazer uma demonstração sem misturar com o histórico do projeto, inicie o servidor a partir de uma **pasta separada**, criada ao lado do projeto:
-
-```powershell
-# a partir da pasta que contém o projeto chat-sakura
-mkdir chat-sakura-demo
-cd chat-sakura-demo
-mvn -q -f ..\chat-sakura\pom.xml compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
-```
-
-Nesse caso, o banco é criado em `chat-sakura-demo\chat-sakura.db`, e o banco do projeto não é alterado. Os clientes continuam sendo iniciados na raiz do projeto.
-
-### Executar a partir do ZIP do GitHub (outro computador)
-
-O ZIP traz só o código: **nenhum banco, certificado ou variável de ambiente** vem junto. Por isso, no outro computador:
-
-1. Extraia o ZIP e abra o PowerShell na pasta extraída (a que contém o `pom.xml`). Confira `java -version` (17 ou superior) e `mvn -v`.
-2. Rode `mvn clean test` uma vez, **antes** de abrir o servidor e os clientes (o `clean` apaga a pasta `target`, que eles usam).
-3. O banco `chat-sakura.db` é criado vazio na pasta de onde o servidor é iniciado: as contas de outro computador não existem ali. Crie a conta de novo em **Criar conta**.
-4. Sem certificado, use o modo de desenvolvimento (servidor e clientes **no mesmo computador**):
-   ```powershell
-   $env:CHAT_SAKURA_MODO = "tcp-desenvolvimento"
-   mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
-   ```
-   Em outro terminal, inicie o cliente (passo 3). Em **cada** abertura do diálogo de conexão, inclusive depois de **Sair**, marque **Sem TLS (somente desenvolvimento local)**: a caixa sempre volta desmarcada.
-5. Depois de **Criar conta**, você já está conectado; não é preciso entrar de novo. **Sair** encerra a sessão (o servidor registra `zesk saiu`, às vezes precedido de `Conexão encerrada: Socket closed`, o que é normal).
-6. A Sakura IA é opcional. Sem as variáveis do Qwen, o servidor informa `Sakura IA: Qwen (não configurado)` e o que falta; o restante do chat funciona normalmente. Veja [Sakura IA (Qwen)](#sakura-ia-qwen).
-
-Se a conexão cair, a conversa **Chat Geral** mostra o motivo numa linha `SISTEMA:`. Por exemplo, "Não foi possível conectar ao servidor..." indica servidor parado, endereço ou porta incorretos, ou um servidor de desenvolvimento em outro computador. "Falha inesperada no cliente" indica um erro do próprio cliente: o terminal do cliente mostra os detalhes. Para relatar um problema, envie o log completo dos **dois** terminais (servidor e cliente) e a saída de `java -version`. Nenhum deles mostra senhas.
-
-## Conexão segura (TLS)
-
-O cliente e o servidor conversam por **TLS 1.3** (ou 1.2, se a outra ponta não tiver o 1.3). Versões antigas (SSLv3, TLS 1.0 e 1.1) são recusadas. Tudo o que vai pela rede é criptografado: o login, a senha, as mensagens, os comandos e os históricos.
+O inicializador local **não usa TLS** porque o servidor e o cliente ficam no mesmo computador (`127.0.0.1`) e nada passa pela rede. Isso vale só para ele: o `Servidor` e o `ClienteChat` comuns continuam exigindo TLS por padrão.
 
 **Antes de enviar qualquer dado, o cliente:**
 - confere se o certificado foi emitido por quem ele confia (o truststore);
@@ -205,7 +431,7 @@ O cliente e o servidor conversam por **TLS 1.3** (ou 1.2, se a outra ponta não 
 
 Se algo falhar, a conexão é encerrada **sem enviar nada**, e uma mensagem explica o motivo. O cliente nunca tenta de novo sem TLS por conta própria, inclusive na reconexão automática, que refaz toda a validação.
 
-### Criar o certificado de desenvolvimento (uma vez, PowerShell)
+#### Criar o certificado de desenvolvimento (uma vez, PowerShell)
 
 Os arquivos ficam **fora do projeto**. O `.gitignore` também recusa `*.p12`, `*.jks`, `*.pfx` e a pasta `certificados/`. O `keytool` vem com o JDK.
 
@@ -230,22 +456,22 @@ keytool -importcert -noprompt -alias chat-sakura -file chat-sakura.crt `
 
 `servidor.p12` contém a **chave privada**: fica só no computador do servidor e nunca vai para o Git nem para os clientes. `confianca.p12` (ou o `chat-sakura.crt`) é público.
 
-### Variáveis de ambiente
+#### Variáveis de ambiente
 
 | Variável | Onde | Descrição |
 |---|---|---|
 | `CHAT_SAKURA_TLS_KEYSTORE` | servidor | Caminho do keystore (PKCS12 ou JKS) com o certificado e a chave privada. Obrigatória no modo TLS. |
 | `CHAT_SAKURA_TLS_KEYSTORE_SENHA` | servidor | Senha do keystore. Lida do ambiente, nunca do código; não aparece nos logs. |
-| `CHAT_SAKURA_MODO` | servidor | `tls` (padrão) ou `tcp-desenvolvimento`. |
-| `CHAT_SAKURA_ENDERECO` | servidor | Interface de escuta. Padrão: todas no TLS; somente `127.0.0.1` no modo de desenvolvimento. |
+| `CHAT_SAKURA_MODO` | servidor | `tls` (padrão) ou `tcp-desenvolvimento`. Ignorada pelo inicializador local. |
+| `CHAT_SAKURA_ENDERECO` | servidor | Interface de escuta. Padrão: todas no TLS; somente `127.0.0.1` no modo de desenvolvimento. Ignorada pelo inicializador local. |
 | `CHAT_SAKURA_TRUSTSTORE` | cliente | Truststore com o certificado do servidor. Sem ela, vale o truststore do Java, que não conhece certificados autoassinados. |
 | `CHAT_SAKURA_TRUSTSTORE_SENHA` | cliente | Senha do truststore. |
 
 Para não deixar senhas no histórico do terminal, use `Read-Host`, como nos exemplos. A negociação TLS tem prazo de 10 s nos dois lados. Uma conexão que não negocia é fechada e libera a vaga, preservando os limites de conexões, as tentativas de login e a proteção contra clientes lentos.
 
-### Computadores diferentes na rede local
+#### Computadores diferentes na rede local
 
-O certificado precisa conter o endereço que os clientes vão digitar. Inclua o IP (ou o nome) do servidor no SAN ao criar o par de chaves, por exemplo para o IP `192.168.0.10`:
+O inicializador e o pacote portátil funcionam só no próprio computador. Para clientes em outros computadores, use o servidor comum com TLS. O certificado precisa conter o endereço que os clientes vão digitar. Inclua o IP (ou o nome) do servidor no SAN ao criar o par de chaves, por exemplo para o IP `192.168.0.10`:
 
 ```powershell
 keytool -genkeypair -alias chat-sakura -keyalg EC -groupname secp256r1 -dname "CN=chat-sakura" `
@@ -255,7 +481,7 @@ keytool -genkeypair -alias chat-sakura -keyalg EC -groupname secp256r1 -dname "C
 
 Depois repita os passos 2 e 3, copie o `confianca.p12` (ou o `chat-sakura.crt`) para cada cliente e, no diálogo do cliente, informe `192.168.0.10` como endereço. Libere a porta 12345 (TCP) no firewall do Windows do servidor.
 
-### Renovar ou substituir o certificado
+#### Renovar ou substituir o certificado
 
 Os comandos acima **não sobrescrevem** arquivos existentes: o `keytool` recusa um alias repetido. Para renovar:
 1. Mova (ou renomeie) o `servidor.p12` e o `confianca.p12` antigos.
@@ -265,7 +491,7 @@ Os comandos acima **não sobrescrevem** arquivos existentes: o `keytool` recusa 
 
 Um cliente com o certificado antigo recebe "certificado não confiável" até atualizar o truststore.
 
-### Problemas de certificado
+#### Problemas de certificado
 
 | Mensagem no cliente | Causa e solução |
 |---|---|
@@ -275,7 +501,7 @@ Um cliente com o certificado antigo recebe "certificado não confiável" até at
 | "O servidor não respondeu com TLS" | O servidor está no modo de desenvolvimento sem TLS. Inicie-o com o certificado. |
 | "O servidor encerrou a conexão" | Cliente marcado como "Sem TLS" falando com um servidor TLS. Desmarque a opção. |
 
-### Modo de desenvolvimento (sem TLS)
+#### Modo de desenvolvimento (sem TLS) pelo servidor comum
 
 Somente para testes no próprio computador:
 
@@ -290,12 +516,14 @@ mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
 - Clientes legados em texto puro só funcionam nesse modo.
 - Na reconexão de uma sessão que usava TLS, a opção "Sem TLS" fica bloqueada.
 
-## Porta e banco de dados
+O inicializador local faz o equivalente sem variáveis de ambiente e sem a caixa "Sem TLS".
+
+### Porta e banco de dados
 
 - **Porta:** `12345`, fixa no código (`Servidor.PORTA_PADRAO`).
-- **Banco:** `chat-sakura.db`, um arquivo SQLite criado automaticamente no diretório de execução do servidor. Na inicialização, o `MigradorBanco` cria o esquema ou migra um banco antigo para a versão atual (`PRAGMA user_version`), com backup automático e transação única. Versões, estratégia e restauração de backup estão em [sql/MIGRACOES.md](sql/MIGRACOES.md). Os arquivos `.db` (inclusive os backups) são ignorados pelo Git.
+- **Banco:** `chat-sakura.db`, um arquivo SQLite criado automaticamente (pelo inicializador, em `dados\`; pelo servidor comum, no diretório de execução). Na inicialização, o `MigradorBanco` cria o esquema ou migra um banco antigo para a versão atual (`PRAGMA user_version`), com backup automático e transação única. Versões, estratégia e restauração de backup estão em [sql/MIGRACOES.md](sql/MIGRACOES.md). Os arquivos `.db` (inclusive os backups) e a pasta `dados/` são ignorados pelo Git.
 
-## Persistência e histórico
+### Persistência e histórico
 
 Cada mensagem é validada, **gravada no SQLite antes de ser distribuída** e só então enviada a todos os clientes conectados. A gravação usa `PreparedStatement` com parâmetros vinculados, e o identificador (`id`) é gerado pelo banco.
 
@@ -305,7 +533,7 @@ Como o histórico fica no banco, ele é preservado quando o servidor é reinicia
 
 O esquema da tabela também está documentado em [sql/criar_tabelas.sql](sql/criar_tabelas.sql).
 
-## Contas e autenticação
+### Contas e autenticação
 
 Cada conta tem um ID persistente, um **login** (de 3 a 30 caracteres: letras sem acento, números, `.`, `-` e `_`; único, sem diferenciar maiúsculas), um **apelido** exibido no chat (único) e um avatar padrão. A senha deve ter de 8 a 128 caracteres.
 
@@ -321,7 +549,7 @@ Cada conta tem um ID persistente, um **login** (de 3 a 30 caracteres: letras sem
   - Toda linha recebida pelo servidor tem limite de 4096 caracteres.
   - A especificação completa está em `ProtocoloSakura`.
 
-> **Segurança:** o PBKDF2 protege as senhas **armazenadas no banco**, e o **TLS** protege o tráfego: o cliente valida o certificado e o nome do servidor antes de enviar o login, as mensagens ou qualquer comando. O Base64 do handshake é só uma codificação; por isso, sem TLS (modo de desenvolvimento), a senha trafega legível na rede. Veja [Conexão segura (TLS)](#conexão-segura-tls).
+> **Segurança:** o PBKDF2 protege as senhas **armazenadas no banco**, e o **TLS** protege o tráfego: o cliente valida o certificado e o nome do servidor antes de enviar o login, as mensagens ou qualquer comando. O Base64 do handshake é só uma codificação; por isso, sem TLS (modo de desenvolvimento e inicializador local), a senha trafega legível, mas apenas dentro do próprio computador (`127.0.0.1`). Veja [Conexão segura (TLS)](#conexão-segura-tls).
 
 - **Proteção contra força bruta** (`ProtecaoAutenticacao`). Todos os bloqueios são temporários, e a resposta é a mesma para logins existentes e inexistentes (`MUITAS_TENTATIVAS`):
   - 10 falhas de um IP em 5 minutos bloqueiam esse IP por 5 minutos.
@@ -335,7 +563,7 @@ Cada conta tem um ID persistente, um **login** (de 3 a 30 caracteres: letras sem
   - **Limite:** a normalização não resolve todos os homóglifos. Um nome inteiro em cirílico parecido com um latino ("АНА") é aceito e não colide com "ANA".
 - **Uma sessão por conta:** um novo login válido substitui a sessão anterior da mesma conta. A sessão antiga recebe `SESSAO_SUBSTITUIDA` e é fechada; não há aviso de saída nem de nova entrada. Visitantes continuam com a regra do nome único.
 
-## Limites e robustez do servidor
+### Limites e robustez do servidor
 
 O servidor protege-se de clientes lentos, conexões abandonadas e excesso de pedidos (`LimitesServidor`):
 
@@ -350,18 +578,20 @@ O servidor protege-se de clientes lentos, conexões abandonadas e excesso de ped
 | Criações (privada, grupo, personagem, avatar) | rajada de 5, 10 por minuto | — |
 | Consultas (listas e históricos) | rajada de 20, 120 por minuto | — |
 
+O inicializador local usa os valores padrão (as variáveis acima valem para o servidor comum).
+
 - **Cliente lento:** cada sessão tem uma fila de saída limitada e um único escritor, e os broadcasts apenas enfileiram, sem I/O sob bloqueio. Uma sessão que não lê enche a própria fila e é desconectada, sem atrasar as demais.
 - **Heartbeat:** só sessões v2 recebem `PING` e respondem `PONG`, o que o cliente atual faz sozinho. Clientes legados não precisam de heartbeat e podem ficar parados; conexões mortas são detectadas pelo keepalive TCP. Um cliente v2 anterior a esta versão, sem `PONG`, cai depois de cerca de 60 s sem enviar nada.
 - **Excesso de pedidos:** é recusado na hora, sem espera, com `ERRO` código `LIMITE` (ou um aviso `SISTEMA:` no legado), no máximo um aviso por segundo.
 
-## Conversas privadas e grupos
+### Conversas privadas e grupos
 
 Com uma conta, a janela mostra uma **barra lateral** com:
 - o Chat Geral;
 - as conversas privadas e os grupos de que a pessoa participa;
 - para cada uma, um avatar padrão, a prévia da última mensagem e o contador de não lidas.
 
-O botão **Conversa** inicia uma conversa privada com outra conta cadastrada. Se o par já conversou antes, a mesma conversa é reaberta. O botão **Grupo** cria um grupo com nome e participantes: quem cria é `ADMIN` e os convidados são `MEMBRO`.
+O botão **Privada** inicia uma conversa privada com outra conta cadastrada. Se o par já conversou antes, a mesma conversa é reaberta. O botão **Grupo** cria um grupo com nome e participantes: quem cria é `ADMIN` e os convidados são `MEMBRO`.
 
 - **Área principal:** mostra só a conversa selecionada, e o campo de envio vai para ela. O histórico de cada conversa é carregado sob demanda, sem travar a interface. Mensagens de conversas inativas atualizam a prévia e o contador em tempo real.
 - **Persistência:** conversas, participantes, mensagens e o ponto de leitura de cada um ficam no SQLite. Quem estava offline encontra as mensagens e as não lidas ao entrar de novo, inclusive depois de reiniciar o servidor.
@@ -374,7 +604,7 @@ O botão **Conversa** inicia uma conversa privada com outra conta cadastrada. Se
 - **Visitantes e clientes antigos:** continuam apenas no Chat Geral e nunca recebem mensagens privadas ou de grupos.
 - **Exportação TXT:** grava a conversa ativa, com o nome dela no arquivo sugerido.
 
-### Protocolo v2 (JSON)
+#### Protocolo v2 (JSON)
 
 Depois do `AUTH OK`, cada linha é um objeto JSON com o campo `tipo`. As linhas são processadas pela Gson em modo estrito e têm limite de 4096 caracteres. A especificação completa está em `ProtocoloJson`.
 
@@ -389,11 +619,11 @@ Exemplo:
 {"tipo":"ENVIAR","req":7,"conversaId":3,"texto":"Oi, turma!"}
 ```
 
-## Pesquisa e mensagens fixadas
+### Pesquisa e mensagens fixadas
 
 Com uma conta conectada, o cabeçalho da conversa tem dois ícones: a **lupa** (pesquisar) e o **alfinete** (mensagens fixadas, com a quantidade ao lado). Eles abrem um painel à direita da conversa, sem janela modal; o mesmo ícone fecha o painel.
 
-### Pesquisa
+#### Pesquisa
 
 - **Onde:** no histórico salvo no servidor da conversa aberta, não só nas mensagens carregadas na tela.
 - **Termo:** palavra ou trecho, de 2 a 100 caracteres. Acentos e maiúsculas não importam ("reuniao" encontra "REUNIÃO"), e `%` e `_` são texto comum, nunca curingas.
@@ -404,7 +634,7 @@ Com uma conta conectada, o cabeçalho da conversa tem dois ícones: a **lupa** (
 - **Abrir:** clicar num resultado abre a mensagem original, rola até ela e a destaca por alguns segundos. Se ela for mais antiga que o histórico carregado, o cliente busca as páginas anteriores (até 500 mensagens para trás), sem lacunas.
 - **Avisos e entradas e saídas do Geral** não aparecem nos resultados. Quando nada é encontrado, o painel informa "Nenhuma mensagem encontrada."
 
-### Mensagens fixadas
+#### Mensagens fixadas
 
 - **Fixar:** pelo menu de contexto da mensagem (**Fixar mensagem** ou **Desafixar mensagem**). Uma mensagem fixada mostra um pequeno alfinete ao lado do horário.
 - **Lista:** o painel do alfinete mostra as fixadas da conversa; clicar localiza e destaca a mensagem; **Desafixar** remove a fixação da selecionada (a mensagem continua na conversa).
@@ -416,18 +646,18 @@ Com uma conta conectada, o cabeçalho da conversa tem dois ícones: a **lupa** (
 - **Limite:** 10 fixadas por conversa, verificado no servidor, inclusive com pedidos simultâneos.
 - **Exclusões:** apagar uma mensagem ou uma conversa apaga as fixações dela; se a conta de quem fixou for apagada, a fixação continua, sem o autor.
 
-### Segurança
+#### Segurança
 
 - O servidor verifica a conta e a participação em cada pedido; o cliente não decide nada sozinho.
 - Uma conversa de que você não participa responde exatamente como uma conversa inexistente, sem revelar mensagens nem que ela existe.
 - A pesquisa usa SQL com parâmetros (o texto digitado nunca entra no comando) e limita cada página a 50 resultados.
 - O texto das mensagens nunca é alterado: a migração v7 grava, numa coluna à parte (`texto_busca`), a forma usada na pesquisa.
 
-## Exportação TXT
+### Exportação TXT
 
 Na janela do cliente, clique em **Exportar TXT**, escolha o destino e salve. O arquivo, em UTF-8, contém as mensagens exibidas na janela naquele momento.
 
-## Avatares
+### Avatares
 
 Com uma conta conectada, clique no **avatar ao lado do botão de tema**, no cabeçalho, para abrir a galeria e escolher um dos 6 avatares:
 
@@ -442,7 +672,7 @@ Os avatares são desenhados em Java2D a partir de um identificador do catálogo 
 
 A escolha é gravada em `usuario.avatar_id`, volta após reconexão ou reinício do servidor e é anunciada aos demais clientes. Ela aparece no cabeçalho e no item das conversas privadas.
 
-## Aparência
+### Aparência
 
 O botão **Aparência**, no cabeçalho, abre uma tela com três escolhas e uma prévia ao vivo:
 
@@ -462,14 +692,14 @@ O botão **Aparência**, no cabeçalho, abre uma tela com três escolhas e uma p
 
 Banner, ícones, botões, balões, barra lateral, campos, menus, avisos, indicador de conexão e os diálogos (entrada, memória, novas conversas) usam a paleta ativa. Todos os textos pequenos têm contraste de pelo menos 4,5:1 nas oito combinações (verificado em teste). As pétalas caindo só aparecem no fundo floral.
 
-### Onde a aparência fica guardada
+#### Onde a aparência fica guardada
 
 - **Com conta:** no servidor, na tabela `preferencia_aparencia` do SQLite (migração v6), uma linha por conta, apagada junto com a conta. O servidor a envia logo após o login e após cada reconexão, por isso ela vale em qualquer computador. Uma conta nunca recebe nem altera a aparência de outra.
 - **Sem conta (tela de entrada e visitantes):** no arquivo local `~/.chat-sakura/preferencias.properties`, nas chaves `tema` (modo), `paleta` e `fundo`. Ao sair de uma conta, a janela volta a essa aparência local. A escolha feita com a conta conectada não é gravada nesse arquivo.
 - **Valores antigos ou inválidos:** um arquivo antigo, só com `tema`, abre em Sakura com fundo floral. Valores desconhecidos, no arquivo ou no banco, viram o padrão só daquele campo. O servidor recusa pedidos com valores inválidos (`DADOS_INVALIDOS`).
 - **Durante uma reconexão:** a aparência da conta continua; uma escolha feita sem conexão é enviada quando a sessão volta.
 
-## Sakura IA (Qwen)
+### Sakura IA (Qwen)
 
 Com uma conta, o botão **IA** da barra lateral cria um **personagem**, que tem:
 - **nome**, sem espaços (ex.: `Naruto`);
@@ -482,16 +712,22 @@ Cada personagem tem uma conversa própria, visível **somente** para quem o crio
 - **Indicador:** enquanto a resposta é gerada, o título mostra "digitando…", e a interface continua respondendo.
 - **Onde roda:** as chamadas ao modelo são feitas **somente pelo servidor**, em segundo plano. O cliente nunca acessa a API nem recebe a chave.
 
-### Modelo e forma de execução
+#### Modelo e forma de execução
 
-O servidor usa um modelo da família **Qwen** pela API compatível com OpenAI (`/chat/completions`). A mesma implementação (`ProvedorQwen`) funciona de duas formas:
+O servidor usa um modelo da família **Qwen**. A mesma implementação (`ProvedorQwen`) funciona de duas formas:
 
 | Forma | Quando usar | Configuração |
 |---|---|---|
-| **API do Qwen no Alibaba Cloud Model Studio** (padrão) | Com uma chave da API (contas novas costumam receber uma cota gratuita) | `QWEN_API_KEY`; modelo padrão `qwen-plus` |
-| **Ollama local** | Sem chave e sem internet, se o computador comportar o modelo | `QWEN_BASE_URL=http://localhost:11434/v1` e `QWEN_MODEL=qwen2.5:3b` |
+| **Ollama local** (recomendado) | Sem chave e sem internet, se o computador comportar o modelo | Nenhuma: detectado automaticamente com o `qwen2.5:3b` instalado. Ou, explicitamente, `QWEN_BASE_URL=http://localhost:11434/v1` e `QWEN_MODEL=qwen2.5:3b` |
+| **API do Qwen no Alibaba Cloud Model Studio** | Com uma chave da API (contas novas costumam receber uma cota gratuita) | `QWEN_API_KEY`; modelo padrão `qwen-plus` |
 
-### Variáveis de ambiente (lidas pelo servidor)
+**Ordem de escolha do provedor, ao iniciar o servidor:**
+1. `CHAT_SAKURA_IA=simulado`: provedor **SIMULADO**, para demonstração sem IA real (respostas marcadas com `[SIMULADO]`).
+2. Qualquer uma de `QWEN_API_KEY`, `QWEN_BASE_URL` ou `QWEN_MODEL` definida: vale essa configuração, e o Ollama não é consultado.
+3. Nenhuma delas: o servidor consulta `http://127.0.0.1:11434/api/tags` (prazo de 2 s). Com o `qwen2.5:3b` instalado, usa o Ollama local com os ajustes locais (contexto 4096, uma geração por vez). As variáveis opcionais de ajuste (`QWEN_KEEP_ALIVE`, `QWEN_TEMPERATURA` etc.) continuam valendo.
+4. Sem Ollama ou sem o modelo: o servidor inicia normalmente, sem IA, e o log explica o que falta. O personagem responde com uma mensagem clara de que o Qwen não está configurado; nenhuma resposta simulada é apresentada como sendo do Qwen.
+
+#### Variáveis de ambiente (lidas pelo servidor)
 
 | Variável | Obrigatória | Padrão | Descrição |
 |---|---|---|---|
@@ -499,11 +735,9 @@ O servidor usa um modelo da família **Qwen** pela API compatível com OpenAI (`
 | `QWEN_BASE_URL` | não | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | Base da API compatível com OpenAI. Confirme no console do Model Studio o endereço da sua região. |
 | `QWEN_MODEL` | não | `qwen-plus` | Modelo da família Qwen. Outros modelos são recusados. |
 | `QWEN_TIMEOUT_SEGUNDOS` | não | `45` | Tempo limite da resposta, entre 5 e 120 s. |
-| `CHAT_SAKURA_IA` | não | — | `simulado` ativa o provedor **SIMULADO**, para demonstração sem IA real. As respostas vêm marcadas com `[SIMULADO]`. |
+| `CHAT_SAKURA_IA` | não | — | `simulado` ativa o provedor **SIMULADO**. |
 
-Sem nenhuma variável, o servidor inicia normalmente. Nesse caso, o personagem responde com uma mensagem clara de que o Qwen não está configurado; nenhuma resposta simulada é apresentada como sendo do Qwen.
-
-**Opção A — API (PowerShell, com valor fictício):**
+**API remota (PowerShell, com valor fictício):**
 
 ```powershell
 $env:QWEN_API_KEY = "sk-sua-chave-aqui"
@@ -511,22 +745,11 @@ $env:QWEN_MODEL = "qwen-plus"        # opcional
 mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
 ```
 
-**Opção B — Ollama local:**
+Ao iniciar, o servidor mostra o provedor ativo, por exemplo `Sakura IA: Qwen qwen2.5:3b (contexto 4096 tokens, ...)`, `Sakura IA: Qwen qwen-plus (...)`, `Sakura IA: SIMULADO (...)` ou `Sakura IA: Qwen (não configurado). <o que falta>`.
 
-```powershell
-# Instale o Ollama (https://ollama.com) e, em outro terminal:
-ollama pull qwen2.5:3b       # cerca de 2 GB; recomenda-se 8 GB de RAM ou mais
-ollama serve                 # se o serviço ainda não estiver rodando
-$env:QWEN_BASE_URL = "http://localhost:11434/v1"
-$env:QWEN_MODEL = "qwen2.5:3b"
-mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
-```
+#### Como testar a IA
 
-Ao iniciar, o servidor mostra o provedor ativo, por exemplo `Sakura IA: Qwen qwen-plus`, `Sakura IA: SIMULADO` ou `Sakura IA: Qwen (não configurado)`.
-
-### Como testar a IA
-
-1. Configure o Qwen (opção A ou B) e inicie o servidor.
+1. Ative o Qwen (Ollama ou API) e inicie o servidor.
 2. Abra um cliente, clique em **Conectar** e entre com uma conta (ou crie uma).
 3. Clique em **IA** e crie o personagem do exemplo:
    - **Nome:** `Naruto`
@@ -545,7 +768,7 @@ Ao iniciar, o servidor mostra o provedor ativo, por exemplo `Sakura IA: Qwen qwe
 
 Cada caso aparece como mensagem na conversa, sem novas tentativas automáticas.
 
-### Memória dos personagens
+#### Memória dos personagens
 
 Cada conversa com um personagem tem uma **memória própria**: notas curtas sobre o que você contou, para que o personagem se lembre de conversas antigas sem que o histórico inteiro seja enviado ao modelo.
 
@@ -562,7 +785,7 @@ Cada conversa com um personagem tem uma **memória própria**: notas curtas sobr
   - **não apaga** o histórico, que continua visível.
 - **Durante a atualização** (alguns segundos), um novo envio para aquele personagem recebe o aviso "O personagem está organizando a memória da conversa".
 
-### Contexto, tokens e desempenho
+#### Contexto, tokens e desempenho
 
 - **Prompt em blocos:** identidade, personalidade, contexto, estilo de fala, memória, regras e histórico recente.
   - Personalidade e contexto vão entre aspas triplas, como dados do personagem, não como ordens.
@@ -591,7 +814,7 @@ Cada conversa com um personagem tem uma **memória própria**: notas curtas sobr
 
 **Outros limites:** 8 mensagens por minuto por conta para a IA; uma resposta por vez em cada conversa.
 
-## Testes
+### Testes
 
 Na raiz do projeto:
 
@@ -599,7 +822,7 @@ Na raiz do projeto:
 mvn clean test
 ```
 
-A suíte tem **506 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
+A suíte tem **535 testes JUnit 5**. Todos usam bancos SQLite temporários, e nenhum acessa a internet ou o banco principal. Eles cobrem:
 
 - robustez do servidor: cliente lento, fila de saída, ordem, vagas global e por IP, prazo de entrada, heartbeat v2, substituição de sessão, limites de taxa e de tentativas de login;
 - usuários, mensagens e repositórios;
@@ -609,7 +832,9 @@ A suíte tem **506 testes JUnit 5**. Todos usam bancos SQLite temporários, e ne
 - handshake, identidade e personificação, incluindo nomes Unicode equivalentes, invisíveis e alfabetos misturados;
 - migração v4 (colisões, rollback e backup), WAL e gravações concorrentes;
 - cliente: ordem de envio, nova tentativa de histórico, avisos não modais e reconexão com restauração das conversas;
-- IA: prompt em blocos e orçamento de contexto, memória (criação, isolamento, persistência, exclusão e filtro), fila limitada, tempo esgotado, resposta truncada, Ollama parado, API nativa e remota, e reconexão durante a geração (todos com provedores simulados);
+- sessão de ponta a ponta com banco novo (cadastro, saída, login, eventos iniciais, conversa privada e envio) em TCP de desenvolvimento, em TLS e na janela real; falhas locais e servidor inacessível com mensagens compreensíveis;
+- modo local do inicializador: servidor sem certificados somente no loopback, destino fixo 127.0.0.1:12345 sem TLS, TLS preservado fora dele (sem rebaixamento, inclusive na reconexão), duas contas conversando, saída e novo login, porta livre, ocupada ou com o Chat Sakura, porta ocupada com mensagem clara, pasta de dados com espaços e acentos, logs com acentos e encerramento do servidor somente pelo PID registrado;
+- IA: prompt em blocos e orçamento de contexto, memória (criação, isolamento, persistência, exclusão e filtro), fila limitada, tempo esgotado, resposta truncada, Ollama parado, API nativa e remota, reconexão durante a geração e detecção opcional do Ollama (com e sem o modelo, sem substituir configurações explícitas), todos com provedores e servidores simulados;
 - codec JSON;
 - conversas privadas, grupos, isolamento, mensagens offline e reinício;
 - avatares;
@@ -619,8 +844,11 @@ A suíte tem **506 testes JUnit 5**. Todos usam bancos SQLite temporários, e ne
 - aparência: as oito paletas (contraste, matiz, cache), alternância de modo, três fundos (centro livre, decoração só nas bordas), tela com prévia, preferência local e compatibilidade com arquivos antigos, gravação por conta (isolamento, reinício, valores inválidos, migração v6), entrega após login e reconexão, e atualização da interface somente na EDT;
 - pesquisa e fixadas: normalização Unicode e trechos, resultados e ausência deles, paginação sem repetições, filtros, termo literal, acesso negado sem revelar a conversa, fixar e desafixar em privadas e grupos (papel ADMIN), limite de 10 com pedidos concorrentes em dois servidores sobre o mesmo banco, persistência após reinício, exclusão de mensagens e conversas, migração v7, protocolo sobre TLS, abertura de mensagem antiga com destaque e interface nas oito paletas.
 
-## Observações e limitações
+Os arquivos `.bat` não são cobertos pelo JUnit. Eles foram verificados executando-os no Windows 11, numa cópia limpa do projeto em uma pasta com espaços e acentos: com e sem Maven instalado, sem Java (mensagem de orientação), com Java 8 (mensagem de versão antiga), com a porta 12345 ocupada, com o servidor já aberto (segunda janela de chat) e pelo pacote portátil sem nenhum Java no sistema.
 
+### Observações e limitações
+
+- **Uso local:** o inicializador e o pacote portátil funcionam somente no próprio computador (`127.0.0.1`), sem TLS. Para outros computadores, use o servidor comum com TLS.
 - **Não execute `mvn clean` com o servidor ou os clientes abertos.** O comando apaga a pasta `target`, que eles estão usando.
 - Execute apenas um servidor por vez: a porta `12345` não pode estar em uso.
 - **TLS com certificado autoassinado:** cada cliente precisa receber o certificado público do servidor (truststore). Clientes legados em texto puro, como versões antigas ou `telnet`, não falam TLS: só funcionam com um servidor no modo de desenvolvimento.
@@ -630,7 +858,7 @@ A suíte tem **506 testes JUnit 5**. Todos usam bancos SQLite temporários, e ne
 
 Outras limitações e melhorias futuras estão descritas no relatório técnico.
 
-## Documentação
+### Documentação
 
 | Documento | Conteúdo |
 |---|---|
@@ -640,6 +868,6 @@ Outras limitações e melhorias futuras estão descritas no relatório técnico.
 | [sql/MIGRACOES.md](sql/MIGRACOES.md) | Versões do banco, backup e restauração |
 | [AGENTS.md](AGENTS.md) | Requisitos e regras de implementação do projeto |
 
-## Repositório
+### Repositório
 
 https://github.com/ane-godk/chat-sakura

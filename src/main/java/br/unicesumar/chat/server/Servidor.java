@@ -147,7 +147,7 @@ public final class Servidor {
      * @throws IllegalStateException se o TLS não estiver configurado
      */
     public static Servidor comBanco(int porta, ConnectionFactory fabrica, HashSenha hashSenha) {
-        return comBanco(porta, fabrica, hashSenha, ProvedorIndisponivel.doAmbiente(System.getenv()));
+        return comBanco(porta, fabrica, hashSenha, ProvedorIndisponivel.doAmbienteComOllama(System.getenv()));
     }
 
     /** Servidor completo com o provedor de IA indicado e o transporte do ambiente. */
@@ -206,9 +206,19 @@ public final class Servidor {
         } catch (IOException e) {
 
             System.err.println(
-                    "Erro no servidor: " + e.getMessage()
+                    "Erro no servidor: " + explicarFalhaAoAbrir(e, porta)
             );
         }
+    }
+
+    /** Porta ocupada em linguagem simples; demais falhas com a mensagem original. */
+    static String explicarFalhaAoAbrir(IOException e, int porta) {
+        if (e instanceof java.net.BindException) {
+            return "a porta " + porta + " já está em uso por outro programa (talvez outro servidor do"
+                    + " Chat Sakura já aberto). Feche o outro servidor e tente de novo. ("
+                    + e.getMessage() + ")";
+        }
+        return e.getMessage();
     }
 
     /**

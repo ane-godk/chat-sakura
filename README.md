@@ -176,6 +176,24 @@ mvn -q -f ..\chat-sakura\pom.xml compile exec:java "-Dexec.mainClass=br.unicesum
 
 Nesse caso, o banco é criado em `chat-sakura-demo\chat-sakura.db`, e o banco do projeto não é alterado. Os clientes continuam sendo iniciados na raiz do projeto.
 
+### Executar a partir do ZIP do GitHub (outro computador)
+
+O ZIP traz só o código: **nenhum banco, certificado ou variável de ambiente** vem junto. Por isso, no outro computador:
+
+1. Extraia o ZIP e abra o PowerShell na pasta extraída (a que contém o `pom.xml`). Confira `java -version` (17 ou superior) e `mvn -v`.
+2. Rode `mvn clean test` uma vez, **antes** de abrir o servidor e os clientes (o `clean` apaga a pasta `target`, que eles usam).
+3. O banco `chat-sakura.db` é criado vazio na pasta de onde o servidor é iniciado: as contas de outro computador não existem ali. Crie a conta de novo em **Criar conta**.
+4. Sem certificado, use o modo de desenvolvimento (servidor e clientes **no mesmo computador**):
+   ```powershell
+   $env:CHAT_SAKURA_MODO = "tcp-desenvolvimento"
+   mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
+   ```
+   Em outro terminal, inicie o cliente (passo 3). Em **cada** abertura do diálogo de conexão, inclusive depois de **Sair**, marque **Sem TLS (somente desenvolvimento local)**: a caixa sempre volta desmarcada.
+5. Depois de **Criar conta**, você já está conectado; não é preciso entrar de novo. **Sair** encerra a sessão (o servidor registra `zesk saiu`, às vezes precedido de `Conexão encerrada: Socket closed`, o que é normal).
+6. A Sakura IA é opcional. Sem as variáveis do Qwen, o servidor informa `Sakura IA: Qwen (não configurado)` e o que falta; o restante do chat funciona normalmente. Veja [Sakura IA (Qwen)](#sakura-ia-qwen).
+
+Se a conexão cair, a conversa **Chat Geral** mostra o motivo numa linha `SISTEMA:`. Por exemplo, "Não foi possível conectar ao servidor..." indica servidor parado, endereço ou porta incorretos, ou um servidor de desenvolvimento em outro computador. "Falha inesperada no cliente" indica um erro do próprio cliente: o terminal do cliente mostra os detalhes. Para relatar um problema, envie o log completo dos **dois** terminais (servidor e cliente) e a saída de `java -version`. Nenhum deles mostra senhas.
+
 ## Conexão segura (TLS)
 
 O cliente e o servidor conversam por **TLS 1.3** (ou 1.2, se a outra ponta não tiver o 1.3). Versões antigas (SSLv3, TLS 1.0 e 1.1) são recusadas. Tudo o que vai pela rede é criptografado: o login, a senha, as mensagens, os comandos e os históricos.

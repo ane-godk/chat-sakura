@@ -36,3 +36,7 @@ secrets.properties
 *.keystore
 *.truststore
 certificados/
+
+# Inicializador local e pacote portatil (gerados na execucao)
+dados/
+dist/

@@ -79,9 +79,30 @@ final class DialogoEntrada {
     private Modo modo = Modo.ENTRAR;
     private JDialog dialogo;
 
+    /** Servidor do modo local (inicializador): sempre este computador. */
+    static final String ENDERECO_LOCAL = "127.0.0.1";
+    static final int PORTA_PADRAO = 12345;
+
+    static final String AVISO_LOCAL = "<html>Conexão local: servidor neste computador (" + ENDERECO_LOCAL + ":"
+            + PORTA_PADRAO + "), modo de desenvolvimento sem TLS. Nada sai deste computador.</html>";
+
+    // Modo local explícito (aberto pelo inicializador): endereço fixo, sem TLS.
+    private final boolean local;
+    private final JLabel avisoLocal = new JLabel(AVISO_LOCAL);
+
+    private DialogoEntrada(boolean local) {
+        this.local = local;
+    }
+
     /** Exibe o diálogo (modal, na EDT). */
     static Optional<Escolha> exibir(Component pai) {
-        return new DialogoEntrada().mostrar(pai, "localhost", 12345, null, false);
+        return exibir(pai, false);
+    }
+
+    /** @param local modo local do inicializador: 127.0.0.1:12345 sem TLS, sem campos de servidor */
+    static Optional<Escolha> exibir(Component pai, boolean local) {
+        return new DialogoEntrada(local).mostrar(pai, local ? ENDERECO_LOCAL : "localhost", PORTA_PADRAO,
+                null, false);
     }
 
     /**
@@ -91,7 +112,19 @@ final class DialogoEntrada {
      */
     static Optional<Escolha> exibirReconexao(Component pai, String endereco, int porta, String login,
                                             boolean exigirTls) {
-        return new DialogoEntrada().mostrar(pai, endereco, porta, login, exigirTls);
+        return exibirReconexao(pai, endereco, porta, login, exigirTls, false);
+    }
+
+    static Optional<Escolha> exibirReconexao(Component pai, String endereco, int porta, String login,
+                                            boolean exigirTls, boolean local) {
+        boolean localPermitido = localNaReconexao(local, exigirTls);
+        return new DialogoEntrada(localPermitido).mostrar(pai, localPermitido ? ENDERECO_LOCAL : endereco,
+                localPermitido ? PORTA_PADRAO : porta, login, exigirTls);
+    }
+
+    /** O modo local nunca vale para reconectar uma sessão que usava TLS (sem rebaixamento). */
+    static boolean localNaReconexao(boolean local, boolean exigirTls) {
+        return local && !exigirTls;
     }
 
     private Optional<Escolha> mostrar(Component pai, String endereco, int porta, String login, boolean exigirTls) {
@@ -105,6 +138,12 @@ final class DialogoEntrada {
         campoSemTls.setEnabled(!exigirTls);
         if (exigirTls) {
             campoSemTls.setToolTipText("A sessão anterior usava TLS: a reconexão também precisa usar.");
+        }
+        if (local) {
+            // Endereço fixo e sem a caixa "Sem TLS": não há o que configurar.
+            campoServidor.setEditable(false);
+            campoPorta.setEditable(false);
+            campoSemTls.setVisible(false);
         }
 
         AtomicReference<Escolha> escolha = new AtomicReference<>();
@@ -203,10 +242,14 @@ final class DialogoEntrada {
             }
         });
 
+        avisoLocal.setFont(TemaSakura.FONTE_PEQUENA);
+        avisoLocal.setForeground(TemaSakura.cores().textoSuave());
+        avisoLocal.setVisible(local);
+
         for (JComponent componente : new JComponent[] {
                 topo, modos, linhaLogin, linhaApelido, linhaSenha, linhaConfirmacao, linhaNome,
                 linha("Endereço do servidor:", campoServidor), linha("Porta:", campoPorta),
-                campoSemTls, avisoSemTls}) {
+                campoSemTls, avisoSemTls, avisoLocal}) {
             formulario.add(componente, posicao);
             posicao.gridy++;
         }
@@ -263,26 +306,45 @@ final class DialogoEntrada {
      * @throws IllegalArgumentException com mensagem para o usuário
      */
     private Escolha montarEscolha() {
+        // Valida servidor e porta antes de ler (e apagar) a senha dos campos.
+        Escolha destino = destino(campoServidor.getText(), campoPorta.getText(), campoSemTls.isSelected(), local,
+                null);
+        return destino(destino.endereco(), String.valueOf(destino.porta()), !destino.seguro(), local, montarPedido());
+    }
 
-        String endereco = campoServidor.getText().trim();
+    /**
+     * Destino da conexão. No modo local, sempre 127.0.0.1:12345 sem TLS, seja
+     * qual for o texto dos campos; fora dele, TLS salvo se "Sem TLS" estiver
+     * marcado (nunca há rebaixamento automático).
+     *
+     * @throws IllegalArgumentException com mensagem para o usuário
+     */
+    static Escolha destino(String endereco, String porta, boolean semTls, boolean local,
+                           ConexaoServidor.PedidoEntrada pedido) {
 
-        if (endereco.isBlank()) {
+        if (local) {
+            return new Escolha(ENDERECO_LOCAL, PORTA_PADRAO, pedido, false);
+        }
+
+        String servidor = endereco == null ? "" : endereco.trim();
+
+        if (servidor.isBlank()) {
             throw new IllegalArgumentException("Informe o endereço do servidor.");
         }
 
-        int porta;
+        int numero;
 
         try {
-            porta = Integer.parseInt(campoPorta.getText().trim());
+            numero = Integer.parseInt(porta == null ? "" : porta.trim());
         } catch (NumberFormatException e) {
-            porta = -1;
+            numero = -1;
         }
 
-        if (porta < 1 || porta > 65535) {
+        if (numero < 1 || numero > 65535) {
             throw new IllegalArgumentException("Informe uma porta válida.");
         }
 
-        return new Escolha(endereco, porta, montarPedido(), !campoSemTls.isSelected());
+        return new Escolha(servidor, numero, pedido, !semTls);
     }
 
     private ConexaoServidor.PedidoEntrada montarPedido() {

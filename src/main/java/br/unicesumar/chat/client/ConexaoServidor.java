@@ -75,6 +75,11 @@ final class ConexaoServidor {
         default void enviosDescartados(int quantidade) {
         }
 
+        /** A conexão nem chegou ao servidor (fora do ar, porta ou endereço errados). */
+        default void falhaConexao(String mensagem) {
+            linhaRecebida("SISTEMA: " + mensagem);
+        }
+
         /** A conexão segura (TLS) foi recusada; mensagem própria para o usuário. */
         default void falhaConexaoSegura(String mensagem) {
             linhaRecebida("SISTEMA: " + mensagem);
@@ -322,7 +327,7 @@ final class ConexaoServidor {
         } catch (ConnectException | UnknownHostException e) {
 
             // A conexão nem chegou ao servidor: nada foi enviado.
-            ouvinte.linhaRecebida("SISTEMA: " + explicarFalhaDeConexao(e, endereco, porta));
+            ouvinte.falhaConexao(explicarFalhaDeConexao(e, endereco, porta));
 
         } catch (IOException e) {
 

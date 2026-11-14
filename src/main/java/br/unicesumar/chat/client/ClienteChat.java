@@ -105,6 +105,16 @@ public final class ClienteChat extends JFrame {
 
     /** @param preferencias arquivo de preferências (substituível nos testes) */
     ClienteChat(PreferenciasSakura preferencias) {
+        this(preferencias, false);
+    }
+
+    /**
+     * @param conexaoLocal modo local explícito (inicializador): o servidor é
+     *                     sempre 127.0.0.1:12345, sem TLS e sem campos de
+     *                     servidor; fora dele, vale o TLS padrão
+     */
+    ClienteChat(PreferenciasSakura preferencias, boolean conexaoLocal) {
+        this.conexaoLocal = conexaoLocal;
         this.preferencias = preferencias;
         this.aoMudarAnimacoes = () -> preferencias.salvarAnimacoes(ConfiguracaoAnimacoes.modo());
 
@@ -123,6 +133,13 @@ public final class ClienteChat extends JFrame {
     }
 
     private final transient PreferenciasSakura preferencias;
+    private final boolean conexaoLocal;
+    // Pedido em andamento é um cadastro: ao confirmar, avisa que já está conectado.
+    private boolean cadastroEmAndamento;
+
+    boolean conexaoLocal() {
+        return conexaoLocal;
+    }
     private final transient Runnable aoMudarTema = this::aplicarTema;
     private final transient Runnable aoMudarAnimacoes;
 
@@ -234,7 +251,7 @@ public final class ClienteChat extends JFrame {
     }
 
     private void configurarJanela() {
-        setTitle("Chat Sakura");
+        setTitle(conexaoLocal ? "Chat Sakura — modo local (neste computador)" : "Chat Sakura");
         setSize(1020, 620);
         setMinimumSize(new Dimension(820, 460));
         setLocationRelativeTo(null);
@@ -720,7 +737,7 @@ public final class ClienteChat extends JFrame {
     }
 
     /** Entrar com conta, criar conta ou entrar como visitante. */
-    private void abrirDialogoConexao() {
+    void abrirDialogoConexao() {
 
         if (controlador.estado() != ControladorConversas.EstadoConexao.DESCONECTADO) {
             return;
@@ -728,9 +745,19 @@ public final class ClienteChat extends JFrame {
 
         // Retorna imediatamente: a conexão e a autenticação ocorrem em
         // segundo plano.
-        // TLS por padrão; TCP sem TLS só se marcado no diálogo.
-        DialogoEntrada.exibir(this).ifPresent(escolha -> controlador.conectar(
-                escolha.endereco(), escolha.porta(), escolha.pedido(), TransporteCliente.de(escolha.seguro())));
+        // TLS por padrão; TCP sem TLS só se marcado no diálogo ou no modo local.
+        DialogoEntrada.exibir(this, conexaoLocal).ifPresent(this::conectar);
+    }
+
+    /** Faixa de avisos (testes). */
+    AvisoDiscreto aviso() {
+        return aviso;
+    }
+
+    void conectar(DialogoEntrada.Escolha escolha) {
+        cadastroEmAndamento = escolha.pedido() instanceof ConexaoServidor.Cadastrar;
+        controlador.conectar(escolha.endereco(), escolha.porta(), escolha.pedido(),
+                TransporteCliente.de(escolha.seguro()));
     }
 
     private void enviarMensagem() {
@@ -907,11 +934,8 @@ public final class ClienteChat extends JFrame {
             // Depois de repintar o aviso; a senha nunca foi guardada.
             // Nova conexão completa: com TLS, o certificado é validado de novo.
             SwingUtilities.invokeLater(() -> DialogoEntrada.exibirReconexao(ClienteChat.this, endereco, porta, login,
-                            controlador.ultimaConexaoSegura())
-                    .ifPresentOrElse(
-                            escolha -> controlador.conectar(escolha.endereco(), escolha.porta(), escolha.pedido(),
-                                    TransporteCliente.de(escolha.seguro())),
-                            controlador::cancelarReconexao));
+                            controlador.ultimaConexaoSegura(), conexaoLocal)
+                    .ifPresentOrElse(ClienteChat.this::conectar, controlador::cancelarReconexao));
         }
 
         @Override
@@ -926,6 +950,12 @@ public final class ClienteChat extends JFrame {
             // Na reconexão a aparência da conta continua; ao sair, volta a local.
             if (estado == ControladorConversas.EstadoConexao.DESCONECTADO) {
                 encerrarAparenciaDaConta();
+                cadastroEmAndamento = false;
+            } else if (estado == ControladorConversas.EstadoConexao.CONECTADO && cadastroEmAndamento
+                    && controlador.modoContas()) {
+                cadastroEmAndamento = false;
+                aviso.mostrar("Conta criada! Você já está conectado como " + controlador.nomeUsuario()
+                        + ". Nas próximas vezes, use \"Entrar\".", AvisoDiscreto.Tipo.INFORMACAO);
             }
             atualizarEstado();
             atualizarBotaoMemoria();
@@ -941,7 +971,11 @@ public final class ClienteChat extends JFrame {
         @Override
         public void usuarioIdentificado(String apelido) {
             areaMensagens.definirUsuarioAtual(apelido);
-            if (aguardandoNovoLogin) {
+            if (cadastroEmAndamento) {
+                // O aviso de conta criada só aparece quando a sessão estiver
+                // confirmada (estadoAlterado CONECTADO), nunca antes.
+                aguardandoNovoLogin = false;
+            } else if (aguardandoNovoLogin) {
                 aguardandoNovoLogin = false;
                 aviso.mostrar("Reconectado. Suas conversas foram restauradas.", AvisoDiscreto.Tipo.INFORMACAO);
             } else if (aviso.isVisible() && aviso.tipo() == AvisoDiscreto.Tipo.INFORMACAO) {
@@ -951,6 +985,7 @@ public final class ClienteChat extends JFrame {
 
         @Override
         public void autenticacaoRecusada(String mensagem) {
+            cadastroEmAndamento = false;
             mostrarErro(mensagem);
         }
 
@@ -1108,11 +1143,22 @@ public final class ClienteChat extends JFrame {
     }
 
     public static void main(String[] args) {
+        abrir(args.length > 0 && "--local".equals(args[0]));
+    }
+
+    /**
+     * Abre a janela (na EDT). No modo local, a tela de entrada já aparece
+     * aberta, apontando para o servidor deste computador.
+     */
+    public static void abrir(boolean conexaoLocal) {
 
         SwingUtilities.invokeLater(() -> {
 
-            ClienteChat janela = new ClienteChat();
+            ClienteChat janela = new ClienteChat(PreferenciasSakura.padrao(), conexaoLocal);
             janela.setVisible(true);
+            if (conexaoLocal) {
+                SwingUtilities.invokeLater(janela::abrirDialogoConexao);
+            }
         });
     }
 }

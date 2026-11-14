@@ -1,0 +1,44 @@
+CHAT SAKURA - PACOTE PORTÁTIL (Windows 10 ou 11, 64 bits)
+==========================================================
+
+Este pacote já traz o Java. Não é preciso instalar Java, Maven, certificados
+nem permissões de administrador.
+
+COMO USAR
+1. Extraia o ZIP inteiro (botão direito no arquivo > "Extrair tudo...") para
+   uma pasta onde você possa gravar, como a Área de Trabalho ou Documentos.
+   Não execute de dentro do ZIP sem extrair.
+2. Abra a pasta extraída "ChatSakura-Portatil".
+3. Dê dois cliques em INICIAR-CHAT-SAKURA.bat.
+   Se o Windows mostrar "O Windows protegeu o computador", clique em
+   "Mais informações" e depois em "Executar assim mesmo".
+4. Duas janelas pretas aparecem:
+   - "Chat Sakura - Servidor": o servidor. Deixe aberta.
+   - "Chat Sakura - inicializador": mostra as mensagens do chat. Deixe aberta.
+   Em seguida abre a janela do Chat Sakura, já com a tela de entrada.
+5. Na tela de entrada, clique em "Criar conta", preencha login, apelido,
+   senha e confirmação, e clique em "Conectar". Você já entra conectado.
+   Nas próximas vezes, use "Entrar" com o mesmo login e senha.
+
+SEGUNDA CONTA (conversar entre duas pessoas no mesmo computador)
+Com o servidor aberto, dê dois cliques em INICIAR-CHAT-SAKURA.bat de novo:
+abre mais uma janela de chat, conectada ao mesmo servidor.
+
+ENCERRAR
+Feche a janela do Chat Sakura. A janela preta pergunta se deseja encerrar o
+servidor também: digite S. (Ou feche a janela "Chat Sakura - Servidor".)
+
+ONDE FICAM OS DADOS
+Na pasta "dados", ao lado deste arquivo:
+  dados\chat-sakura.db         contas e mensagens (banco SQLite)
+  dados\logs\servidor.log      mensagens do servidor
+  dados\logs\cliente.log       mensagens das janelas de chat
+Para começar do zero, feche tudo e apague a pasta "dados".
+
+PERSONAGENS DE IA (opcional)
+O chat funciona sem IA. Para os personagens, instale o Ollama
+(https://ollama.com), rode no terminal "ollama pull qwen2.5:3b" e abra o
+Chat Sakura de novo: o servidor encontra o modelo sozinho.
+
+O pacote funciona somente neste computador (127.0.0.1), sem TLS. Não use para
+conversar com outros computadores.

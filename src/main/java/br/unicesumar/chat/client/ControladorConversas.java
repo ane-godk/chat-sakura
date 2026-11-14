@@ -1297,6 +1297,13 @@ final class ControladorConversas {
         }
 
         @Override
+        public void falhaConexao(String mensagem) {
+            // Fica no Chat Geral e também num diálogo: a entrada não aconteceu.
+            linhaRecebida("SISTEMA: " + mensagem);
+            edt.execute(() -> visao.autenticacaoRecusada(mensagem));
+        }
+
+        @Override
         public void falhaConexaoSegura(String mensagem) {
             // Exige ação (certificado, endereço ou modo do servidor): diálogo.
             edt.execute(() -> visao.autenticacaoRecusada("Conexão segura recusada. " + mensagem));

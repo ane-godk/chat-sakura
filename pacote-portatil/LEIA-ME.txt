@@ -36,7 +36,7 @@ Na pasta "dados", ao lado deste arquivo:
 Para começar do zero, feche tudo e apague a pasta "dados".
 
 PERSONAGENS DE IA (opcional)
-O chat funciona sem IA. Há três formas de ter os personagens:
+O chat funciona sem IA. Há duas formas de ter os personagens:
 
 a) Pela internet, sem instalar nada e sem cartão de crédito (Groq,
    recomendado no computador da faculdade):
@@ -49,29 +49,14 @@ a) Pela internet, sem instalar nada e sem cartão de crédito (Groq,
       janelas, ela some.
    O modelo usado é o Qwen 3.8 27B (qwen/qwen3.8-27b). A janela
    "Chat Sakura - Servidor" deve mostrar "Qwen qwen/qwen3.8-27b (Groq)".
-   Mesmo que exista uma chave do OpenRouter no Windows, esse arquivo usa
-   somente a Groq.
+   Esse arquivo usa somente a Groq, mesmo que exista outra configuração
+   de IA no Windows.
 
-b) Pela internet, pelo OpenRouter:
-   1. Crie uma chave em https://openrouter.ai/keys (começa com sk-or-).
-   2. Feche qualquer servidor do Chat Sakura aberto.
-   3. Dê dois cliques em INICIAR-COM-OPENROUTER.bat (em vez do
-      INICIAR-CHAT-SAKURA.bat).
-   4. Cole a chave (botão direito na janela preta) e tecle Enter. A chave
-      não aparece na tela e não é gravada em nenhum arquivo: ao fechar as
-      janelas, ela some.
-   5. Em "Modelo", tecle Enter para o servidor procurar sozinho um Qwen
-      gratuito (qwen/...:free), ou digite o identificador exato de um
-      modelo Qwen copiado de https://openrouter.ai/models?q=qwen
-      (modelos sem :free consomem créditos da conta).
-   A janela "Chat Sakura - Servidor" mostra o modelo em uso, ou explica o
-   problema (por exemplo, se não houver Qwen gratuito no momento).
-
-c) No próprio computador (Ollama): instale o Ollama (https://ollama.com),
+b) No próprio computador, sem chave e sem internet (Ollama): instale o Ollama (https://ollama.com),
    rode no terminal "ollama pull qwen2.5:3b" e abra o Chat Sakura de novo
    pelo INICIAR-CHAT-SAKURA.bat: o servidor encontra o modelo sozinho.
 
-Nunca deixe a chave da Groq ou do OpenRouter escrita em arquivos desta pasta.
+Nunca deixe a chave da Groq escrita em arquivos desta pasta.
 
 O pacote funciona somente neste computador (127.0.0.1), sem TLS. Não use para
 conversar com outros computadores.

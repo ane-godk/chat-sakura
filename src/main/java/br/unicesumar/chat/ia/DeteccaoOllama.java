@@ -19,7 +19,7 @@ import java.util.Optional;
 
 /**
  * Detecção opcional do Qwen no Ollama local, usada somente quando nenhuma
- * variável {@code GROQ_API_KEY}, {@code OPENROUTER_API_KEY}, {@code QWEN_API_KEY},
+ * variável {@code GROQ_API_KEY}, {@code QWEN_API_KEY},
  * {@code QWEN_BASE_URL} ou {@code QWEN_MODEL} foi definida (configurações
  * explícitas sempre prevalecem).
  *

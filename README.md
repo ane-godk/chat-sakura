@@ -111,7 +111,7 @@ As contas e as mensagens ficam guardadas: continuam lá depois de fechar e abrir
 - **Uma segunda pessoa no mesmo computador:** com o servidor aberto, dê dois cliques em `INICIAR-CHAT-SAKURA.bat` **de novo**. O inicializador percebe que o servidor já está rodando e abre só mais uma janela de chat. Nela, crie a segunda conta.
 - **Conversa privada:** clique em **Privada** (barra da esquerda) e escolha a outra conta.
 - **Grupo:** clique em **Grupo**, dê um nome e marque os participantes.
-- **Personagem de IA:** clique em **IA** (precisa do [Ollama](#personagens-de-ia-com-ollama-opcional) ou de uma chave da [Groq](#personagens-de-ia-pela-groq-sem-ollama) ou do [OpenRouter](#personagens-de-ia-pelo-openrouter-sem-ollama)).
+- **Personagem de IA:** clique em **IA** (precisa do [Ollama](#personagens-de-ia-com-ollama-opcional) ou de uma chave da [Groq](#personagens-de-ia-pela-groq-sem-ollama)).
 
 ### Passo 9: encerrar
 
@@ -150,7 +150,7 @@ Precisa de um computador com o **JDK 17 ou superior** (o mesmo do [passo a passo
    - pasta `dist\ChatSakura-Portatil\`;
    - arquivo **`dist\ChatSakura-Portatil.zip`** (cerca de 45 MB).
 
-O pacote contém só `runtime\` (o Java reduzido), `chat-sakura.jar`, `INICIAR-CHAT-SAKURA.bat`, `INICIAR-COM-GROQ.bat`, `INICIAR-COM-OPENROUTER.bat` e `LEIA-ME.txt`. Nenhum banco, senha, chave de API, certificado ou configuração pessoal entra nele.
+O pacote contém só `runtime\` (o Java reduzido), `chat-sakura.jar`, `INICIAR-CHAT-SAKURA.bat`, `INICIAR-COM-GROQ.bat` e `LEIA-ME.txt`. Nenhum banco, senha, chave de API, certificado ou configuração pessoal entra nele.
 
 > O `GERAR-PACOTE-PORTATIL.bat` apaga a pasta `dist\ChatSakura-Portatil\` anterior (inclusive uma pasta `dados` criada dentro dela) e substitui o ZIP. Se o pacote atual funciona e você quer guardá-lo, copie-o para outro lugar antes.
 
@@ -161,7 +161,7 @@ O pacote contém só `runtime\` (o Java reduzido), `chat-sakura.jar`, `INICIAR-C
 3. Abra a pasta **`ChatSakura-Portatil`** e dê dois cliques em **`INICIAR-CHAT-SAKURA.bat`**.
 4. Siga a partir do [passo 4](#passo-4-confirmar-que-o-servidor-iniciou): é tudo igual, mas sem a etapa "Preparando o programa" e sem precisar de internet.
 
-Para ter os personagens de IA num computador sem Ollama (como o da faculdade), use **`INICIAR-COM-GROQ.bat`** no lugar do passo 3: veja [Personagens de IA pela Groq](#personagens-de-ia-pela-groq-sem-ollama). (O `INICIAR-COM-OPENROUTER.bat` continua disponível: veja [OpenRouter](#personagens-de-ia-pelo-openrouter-sem-ollama).) Nesse caso é preciso internet.
+Para ter os personagens de IA num computador sem Ollama (como o da faculdade), use **`INICIAR-COM-GROQ.bat`** no lugar do passo 3: veja [Personagens de IA pela Groq](#personagens-de-ia-pela-groq-sem-ollama). Nesse caso é preciso internet.
 
 O pacote foi gerado e testado no Windows 11 (64 bits). Ele funciona em Windows 10 ou 11 de 64 bits; não funciona em Linux, macOS nem em Windows de 32 bits.
 
@@ -177,7 +177,7 @@ O pacote foi gerado e testado no Windows 11 (64 bits). Ele funciona em Windows 1
 | Internet | Na **primeira** execução, para baixar o Maven e as bibliotecas | Não precisa |
 | Administrador | Não precisa | Não precisa |
 | Espaço em disco | Recomendado: 500 MB livres (bibliotecas do Maven, guardadas em `%USERPROFILE%\.m2`) | Cerca de 60 MB para a pasta extraída |
-| IA (opcional) | Ollama com `qwen2.5:3b` (cerca de 2 GB; 8 GB de RAM ou mais recomendados) **ou** uma chave da Groq (ou do OpenRouter) e internet | Igual |
+| IA (opcional) | Ollama com `qwen2.5:3b` (cerca de 2 GB; 8 GB de RAM ou mais recomendados) **ou** uma chave da Groq e internet | Igual |
 
 Para conferir a versão do Java, use `java -version` (veja [Antes de começar](#antes-de-começar-o-java-está-instalado)). Se o Maven estiver instalado, o inicializador o usa; senão, usa o `mvnw.cmd` (Maven Wrapper) que vem no projeto.
 
@@ -221,7 +221,7 @@ Na janela **"Chat Sakura - Servidor"**, procure a linha:
 2. Preencha **Nome** (sem espaços, ex.: `Sakurinha`), **Personalidade** e **Contexto** e confirme.
 3. Envie uma mensagem. O título mostra "digitando…" e, em alguns segundos, chega a resposta. A primeira resposta demora mais, porque o Ollama carrega o modelo na memória.
 
-Quem já usa variáveis `QWEN_*` (por exemplo, a API remota do Qwen) continua com elas: a detecção automática só acontece quando nenhuma dessas variáveis (nem `GROQ_API_KEY` ou `OPENROUTER_API_KEY`) está definida. Veja [Sakura IA (Qwen)](#sakura-ia-qwen).
+Quem já usa variáveis `QWEN_*` (por exemplo, a API remota do Qwen) continua com elas: a detecção automática só acontece quando nenhuma dessas variáveis (nem `GROQ_API_KEY`) está definida. Veja [Sakura IA (Qwen)](#sakura-ia-qwen).
 
 ---
 
@@ -243,7 +243,7 @@ Num computador sem Ollama (por exemplo, o da faculdade), o servidor pode usar o 
 3. Cole a chave (botão direito do mouse dentro da janela preta) e tecle **Enter**. A chave **não aparece na tela**.
 4. O resto é igual ao [passo a passo](#passo-4-confirmar-que-o-servidor-iniciou).
 
-A chave fica só na memória dessa janela e das janelas abertas por ela; nada é gravado e, ao fechar, ela some. O launcher também define `CHAT_SAKURA_IA=groq` (só para essa execução): assim, uma chave antiga do OpenRouter salva no Windows **não** tem prioridade sobre a Groq.
+A chave fica só na memória dessa janela e das janelas abertas por ela; nada é gravado e, ao fechar, ela some. O launcher também define `CHAT_SAKURA_IA=groq` (só para essa execução): assim, outra configuração de IA salva no Windows (como variáveis `QWEN_*`) **não** tem prioridade sobre a Groq.
 
 Para usar outro Qwen da Groq, defina `GROQ_MODEL` antes (ex.: `set GROQ_MODEL=qwen/outro-modelo` no Prompt de Comando e, na mesma janela, `INICIAR-COM-GROQ.bat`).
 
@@ -258,79 +258,6 @@ Na janela **"Chat Sakura - Servidor"**, procure a linha `Sakura IA: Qwen qwen/qw
 | "O modelo ... não foi encontrado na Groq" / "A Groq recusou o pedido para o modelo ..." | Confira o identificador em `GROQ_MODEL` (ou apague a variável para usar o padrão). |
 | "A Groq recusou o pedido (chave sem permissão ...)" / "... falta de saldo ou de plano ..." | Confira a conta em <https://console.groq.com>. Algumas redes também bloqueiam o acesso. |
 | "Não foi possível conectar à Groq" / "A Groq demorou demais" / "temporariamente indisponível" | Sem internet, rede bloqueando `api.groq.com` ou instabilidade da Groq. O chat entre contas continua funcionando. |
-
----
-
-## Personagens de IA pelo OpenRouter (sem Ollama)
-
-Num computador sem Ollama (por exemplo, o da faculdade), o servidor pode usar o Qwen **pela internet**, através do [OpenRouter](https://openrouter.ai). Só o servidor fala com o OpenRouter; as janelas de chat continuam iguais.
-
-**Prioridade:** com a chave do OpenRouter definida (e sem `GROQ_API_KEY`), o servidor usa o OpenRouter e nem procura o Ollama. O `INICIAR-COM-OPENROUTER.bat` não escolhe o provedor explicitamente; para forçar o OpenRouter mesmo com uma chave da Groq definida, use `CHAT_SAKURA_IA=openrouter`. Sem ela, tudo funciona como antes (Ollama detectado sozinho). Sem nenhum dos dois, o chat funciona normalmente e só os personagens de IA respondem com uma mensagem explicando o que falta.
-
-### O que você precisa
-
-1. Uma conta no OpenRouter e uma **chave de API** (em <https://openrouter.ai/keys>, botão **Create Key**). A chave começa com `sk-or-`.
-2. **Internet** no computador onde o servidor roda.
-
-> **Guarde a chave só com você.** O Chat Sakura lê a chave **somente** da variável de ambiente `OPENROUTER_API_KEY`: ela nunca vai para o código, o banco, os logs, o ZIP ou o GitHub. Não cole a chave em arquivos do projeto. Se ela vazar, apague-a em <https://openrouter.ai/keys> e crie outra.
-
-### Qual modelo é usado
-
-Modelos gratuitos do OpenRouter têm o sufixo **`:free`** (ex.: `qwen/<nome-do-modelo>:free`). A lista muda com o tempo, então o Chat Sakura **não fixa um nome no código**:
-
-- **Sem `OPENROUTER_MODEL`:** ao iniciar, o servidor consulta a lista pública de modelos (`https://openrouter.ai/api/v1/models`, sem enviar a chave) e escolhe sozinho um Qwen gratuito (`qwen/...:free`). Se não houver nenhum naquele momento, a IA fica desligada e o log diz o que fazer. **Ele nunca passa para um modelo pago por conta própria.**
-- **Com `OPENROUTER_MODEL`:** usa exatamente o modelo indicado. Se ele não aparecer na lista ou não for gratuito, o log mostra um aviso.
-
-Para ver os modelos Qwen disponíveis agora, abra <https://openrouter.ai/models?q=qwen> e, para os gratuitos, procure os que terminam em `:free`. Copie o identificador exato (o texto no formato `qwen/...`).
-
-> Em 16/11/2026, a lista do OpenRouter **não tinha nenhum Qwen gratuito** (`:free`); só Qwen pagos, como `qwen/qwen3.7-flash`. Modelos pagos funcionam se a conta tiver créditos (eles são cobrados por uso). Confira a lista no dia da apresentação.
-
-Modelos gratuitos têm limite de pedidos por minuto e por dia. Ao passar do limite, o personagem responde "Limite de uso do modelo gratuito atingido no OpenRouter. Aguarde um pouco e tente novamente."
-
-### Opção 1 (recomendada, inclusive no pacote portátil): `INICIAR-COM-OPENROUTER.bat`
-
-1. Feche qualquer servidor do Chat Sakura que esteja aberto.
-2. Dê dois cliques em **`INICIAR-COM-OPENROUTER.bat`** (fica ao lado do `INICIAR-CHAT-SAKURA.bat`, também no pacote portátil).
-3. Cole a chave (botão direito do mouse dentro da janela preta) e tecle **Enter**. A chave **não aparece na tela**, o que é útil num projetor.
-4. Em **Modelo**, tecle **Enter** para o servidor procurar um Qwen gratuito sozinho, ou digite o identificador do modelo (ex.: `qwen/qwen3.7-flash`, que é pago).
-5. O resto é igual ao [passo a passo](#passo-4-confirmar-que-o-servidor-iniciou).
-
-A chave fica só na memória dessa janela e das janelas abertas por ela. Nada é gravado: ao fechar, ela some. É o jeito certo num computador compartilhado.
-
-### Opção 2: definir a chave no Prompt de Comando
-
-Abra o Prompt de Comando (**Windows + R**, `cmd`, **Enter**), vá até a pasta do Chat Sakura e rode (troque os valores; nada fica gravado depois que a janela fecha):
-
-```bat
-cd "%USERPROFILE%\Desktop\ChatSakura-Portatil"
-set OPENROUTER_API_KEY=sk-or-sua-chave-aqui
-set OPENROUTER_MODEL=qwen/identificador-do-modelo
-INICIAR-CHAT-SAKURA.bat
-```
-
-A linha `OPENROUTER_MODEL` é opcional. Atenção: o comando `set` mostra a chave na tela.
-
-### Opção 3: deixar a chave salva no seu computador pessoal
-
-Só no **seu** computador (nunca num computador compartilhado):
-
-```bat
-setx OPENROUTER_API_KEY "sk-or-sua-chave-aqui"
-```
-
-Feche e abra de novo o Prompt de Comando (ou saia e entre no Windows) para valer. Para remover depois: `reg delete HKCU\Environment /v OPENROUTER_API_KEY /f`.
-
-### Confirmar que o OpenRouter foi reconhecido
-
-Na janela **"Chat Sakura - Servidor"**, procure a linha:
-
-| Mensagem | Significado |
-|---|---|
-| `Sakura IA: Qwen qwen/... (OpenRouter) (contexto 16384 tokens, ...)` | IA ativa pelo OpenRouter. |
-| `Sakura IA: OPENROUTER_MODEL não definido; usando o Qwen gratuito qwen/...:free.` | O servidor escolheu sozinho um Qwen gratuito. |
-| `... Nenhum modelo Qwen gratuito (com sufixo :free) está disponível no OpenRouter agora ...` | Não há Qwen gratuito hoje. Escolha um modelo em `OPENROUTER_MODEL` (os pagos precisam de créditos). |
-| `... Não foi possível consultar a lista de modelos do OpenRouter (sem internet?) ...` | Sem internet, ou a rede bloqueia o site. Confira a conexão, ou defina `OPENROUTER_MODEL`. |
-| `Sakura IA: aviso: o modelo ... não é gratuito e consome créditos ...` | O modelo escolhido é pago. |
 
 ---
 
@@ -352,13 +279,8 @@ Quando algo dá errado, as janelas pretas **não fecham sozinhas**: leia a mensa
 | "Login ou senha incorretos." | Confira o login (não o apelido) e a senha. Uma conta criada em outro computador não existe neste: cada pasta `dados` tem as próprias contas. Depois de muitas tentativas erradas, o login fica bloqueado por alguns minutos. |
 | A tela de entrada fecha, mas a conexão não acontece | Veja a linha `SISTEMA:` no Chat Geral e a janela do inicializador: elas dizem o motivo. "Falha inesperada no cliente" indica um erro do próprio programa: envie o `dados\logs\cliente.log`. |
 | "Conexão segura recusada" ou "O servidor não respondeu com TLS" | Essas mensagens são do modo TLS, usado só quando o cliente é aberto pelo terminal. Pelo `INICIAR-CHAT-SAKURA.bat` a conexão é sempre local, sem TLS. Veja [Conexão segura (TLS)](#conexão-segura-tls). |
-| Personagem responde "A Sakura IA (Qwen) não está configurada" | O Ollama ou o modelo não foram encontrados quando o servidor iniciou. Veja [Personagens de IA](#personagens-de-ia-com-ollama-opcional) ou use a [Groq](#personagens-de-ia-pela-groq-sem-ollama) ou o [OpenRouter](#personagens-de-ia-pelo-openrouter-sem-ollama), e reinicie o servidor. |
+| Personagem responde "A Sakura IA (Qwen) não está configurada" | O Ollama ou o modelo não foram encontrados quando o servidor iniciou. Veja [Personagens de IA](#personagens-de-ia-com-ollama-opcional) ou use a [Groq](#personagens-de-ia-pela-groq-sem-ollama), e reinicie o servidor. |
 | Respostas citando a Groq ("Chave da Groq inválida", "Limite de uso gratuito da Groq" etc.) | Veja a tabela em [Personagens de IA pela Groq](#confirmar-que-a-groq-foi-reconhecida). |
-| "Chave do OpenRouter inválida, expirada ou desativada" | A chave foi digitada errada ou apagada no site. Crie outra em <https://openrouter.ai/keys> e abra de novo pelo `INICIAR-COM-OPENROUTER.bat`. |
-| "Sem créditos no OpenRouter para o modelo ..." | O modelo é pago e a conta está sem créditos. Use um modelo `:free` ou adicione créditos. |
-| "Limite de uso do modelo gratuito atingido no OpenRouter" | Modelos gratuitos aceitam poucos pedidos por minuto e por dia. Espere um pouco e envie de novo. |
-| "O modelo ... não está disponível no OpenRouter" / "... temporariamente indisponível ..." | O identificador em `OPENROUTER_MODEL` está errado, o modelo saiu da lista ou está fora do ar. Confira em <https://openrouter.ai/models?q=qwen>. |
-| "Não foi possível conectar ao OpenRouter" | Sem internet, ou a rede bloqueia o `openrouter.ai`. O chat entre contas continua funcionando. |
 | `'ollama' não é reconhecido` | O Ollama não está instalado (ou o Prompt de Comando foi aberto antes da instalação; abra outro). |
 | A janela preta abre e fecha na hora | Isso não deve acontecer: o inicializador sempre espera uma tecla. Se acontecer, abra o Prompt de Comando, arraste o `INICIAR-CHAT-SAKURA.bat` para dentro dele e aperte **Enter**: a mensagem fica visível. |
 | Caminhos com espaços ou acentos (ex.: `Área de Trabalho\Minha pasta`) | Funcionam (testado). Evite apenas pastas sincronizadas que ainda não terminaram de baixar os arquivos. |
@@ -518,7 +440,7 @@ chat-sakura/
     │   │   └── jdbc/          ConnectionFactory, Jdbc*Repository, MigradorBanco
     │   ├── service/           ChatService, ClientRegistry, ServicoAutenticacao, ServicoConversas, ServicoIA
     │   ├── protocolo/         ProtocoloSakura (handshake), ProtocoloJson (protocolo v2)
-    │   ├── ia/                ProvedorIA, ProvedorQwen, ConfiguracaoQwen, ConfiguracaoGroq, ConfiguracaoOpenRouter, DeteccaoOllama, ProvedorIAFalso
+    │   ├── ia/                ProvedorIA, ProvedorQwen, ConfiguracaoQwen, ConfiguracaoGroq, DeteccaoOllama, ProvedorIAFalso
     │   ├── server/            Servidor, ClienteHandler, LeitorLinhas
     │   ├── client/            ClienteChat, ConexaoServidor, ControladorConversas, BarraConversas, AvatarSakura, diálogos
     │   └── local/             InicioLocal (modo local do inicializador), SaidaDuplicada (logs)
@@ -533,7 +455,7 @@ chat-sakura/
 | `service` | Regras do chat, broadcast, registro de clientes, sincronização e contas |
 | `protocolo` | Formato do handshake de autenticação, compartilhado por servidor e cliente |
 | `server` | Servidor TCP e protocolo com cada cliente |
-| `ia` | Provedores de IA: Qwen (API compatível com OpenAI, Groq, OpenRouter ou nativa do Ollama), detecção do Ollama local e SIMULADO |
+| `ia` | Provedores de IA: Qwen (API compatível com OpenAI, Groq ou nativa do Ollama), detecção do Ollama local e SIMULADO |
 | `client` | Interface gráfica Swing |
 | `local` | Modo local do inicializador: verifica a porta, abre o servidor no loopback e o cliente sem TLS |
 
@@ -840,17 +762,14 @@ O servidor usa um modelo da família **Qwen**. A mesma implementação (`Provedo
 | **Ollama local** (recomendado) | Sem chave e sem internet, se o computador comportar o modelo | Nenhuma: detectado automaticamente com o `qwen2.5:3b` instalado. Ou, explicitamente, `QWEN_BASE_URL=http://localhost:11434/v1` e `QWEN_MODEL=qwen2.5:3b` |
 | **API do Qwen no Alibaba Cloud Model Studio** | Com uma chave da API (contas novas costumam receber uma cota gratuita) | `QWEN_API_KEY`; modelo padrão `qwen-plus` |
 | **Groq** | Sem Ollama, com internet e uma chave da Groq (plano gratuito, sem cartão) | `GROQ_API_KEY`; modelo em `GROQ_MODEL` (padrão `qwen/qwen3.8-27b`). Veja [Personagens de IA pela Groq](#personagens-de-ia-pela-groq-sem-ollama) |
-| **OpenRouter** | Sem Ollama, com internet e uma chave do OpenRouter | `OPENROUTER_API_KEY`; modelo em `OPENROUTER_MODEL` ou um `qwen/...:free` escolhido da lista pública. Veja [Personagens de IA pelo OpenRouter](#personagens-de-ia-pelo-openrouter-sem-ollama) |
-
-**Escolha explícita (`CHAT_SAKURA_IA`):** `groq`, `openrouter`, `qwen` (variáveis `QWEN_*` ou Ollama), `simulado` ou `auto` (padrão). Com uma escolha explícita, o servidor usa só aquele provedor e nunca passa para outro: se faltar algo, a IA fica indisponível com a explicação. Um valor desconhecido também deixa a IA indisponível, com a lista de valores válidos. O `INICIAR-COM-GROQ.bat` define `CHAT_SAKURA_IA=groq`.
+**Escolha explícita (`CHAT_SAKURA_IA`):** `groq`, `qwen` (variáveis `QWEN_*` ou Ollama), `simulado` ou `auto` (padrão). Com uma escolha explícita, o servidor usa só aquele provedor e nunca passa para outro: se faltar algo, a IA fica indisponível com a explicação. Um valor desconhecido também deixa a IA indisponível, com a lista de valores válidos. O `INICIAR-COM-GROQ.bat` define `CHAT_SAKURA_IA=groq`.
 
 **Ordem de escolha automática (`auto`), ao iniciar o servidor:**
 1. `CHAT_SAKURA_IA=simulado`: provedor **SIMULADO**, para demonstração sem IA real (respostas marcadas com `[SIMULADO]`).
-2. `GROQ_API_KEY` definida: Groq (API compatível com OpenAI em `https://api.groq.com/openai/v1/chat/completions`, `Authorization: Bearer`), com o perfil remoto. Se `OPENROUTER_API_KEY` também estiver definida, o log avisa que a Groq foi escolhida.
-3. `OPENROUTER_API_KEY` definida: OpenRouter (API compatível com OpenAI, `Authorization: Bearer`), com o perfil remoto (contexto 16384, duas gerações por vez). As variáveis `QWEN_*` e o Ollama são ignorados. Se o modelo não puder ser definido, a IA fica indisponível com a explicação (o servidor não passa para outro provedor).
-4. Qualquer uma de `QWEN_API_KEY`, `QWEN_BASE_URL` ou `QWEN_MODEL` definida: vale essa configuração, e o Ollama não é consultado.
-5. Nenhuma delas: o servidor consulta `http://127.0.0.1:11434/api/tags` (prazo de 2 s). Com o `qwen2.5:3b` instalado, usa o Ollama local com os ajustes locais (contexto 4096, uma geração por vez). As variáveis opcionais de ajuste (`QWEN_KEEP_ALIVE`, `QWEN_TEMPERATURA` etc.) continuam valendo.
-6. Sem Ollama ou sem o modelo: o servidor inicia normalmente, sem IA, e o log explica o que falta. O personagem responde com uma mensagem clara de que o Qwen não está configurado; nenhuma resposta simulada é apresentada como sendo do Qwen.
+2. `GROQ_API_KEY` definida: Groq (API compatível com OpenAI em `https://api.groq.com/openai/v1/chat/completions`, `Authorization: Bearer`), com o perfil remoto (contexto 16384, duas gerações por vez). As variáveis `QWEN_*` e o Ollama são ignorados.
+3. Qualquer uma de `QWEN_API_KEY`, `QWEN_BASE_URL` ou `QWEN_MODEL` definida: vale essa configuração, e o Ollama não é consultado.
+4. Nenhuma delas: o servidor consulta `http://127.0.0.1:11434/api/tags` (prazo de 2 s). Com o `qwen2.5:3b` instalado, usa o Ollama local com os ajustes locais (contexto 4096, uma geração por vez). As variáveis opcionais de ajuste (`QWEN_KEEP_ALIVE`, `QWEN_TEMPERATURA` etc.) continuam valendo.
+5. Sem Ollama ou sem o modelo: o servidor inicia normalmente, sem IA, e o log explica o que falta. O personagem responde com uma mensagem clara de que o Qwen não está configurado; nenhuma resposta simulada é apresentada como sendo do Qwen.
 
 #### Variáveis de ambiente (lidas pelo servidor)
 
@@ -860,15 +779,11 @@ O servidor usa um modelo da família **Qwen**. A mesma implementação (`Provedo
 | `QWEN_BASE_URL` | não | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | Base da API compatível com OpenAI. Confirme no console do Model Studio o endereço da sua região. |
 | `QWEN_MODEL` | não | `qwen-plus` | Modelo da família Qwen. Outros modelos são recusados. |
 | `QWEN_TIMEOUT_SEGUNDOS` | não | `45` | Tempo limite da resposta, entre 5 e 120 s. |
-| `OPENROUTER_API_KEY` | para OpenRouter | — | Chave do OpenRouter (`sk-or-...`). Ativa o OpenRouter, com prioridade sobre `QWEN_*` e o Ollama. Lida só do ambiente; nunca vai para o código, o banco, os logs ou os clientes. |
-| `OPENROUTER_MODEL` | não | um `qwen/...:free` da lista pública | Identificador exato do modelo no OpenRouter. Precisa ser da família Qwen. |
-| `OPENROUTER_BASE_URL` | não | `https://openrouter.ai/api/v1` | Base da API. Precisa ser `https` (exceto `localhost`, usado nos testes). |
-| `OPENROUTER_TIMEOUT_SEGUNDOS` | não | `60` | Tempo limite da resposta, entre 5 e 180 s. |
 | `GROQ_API_KEY` | para Groq | — | Chave da Groq (`gsk_...`). Lida só do ambiente; nunca vai para o código, o banco, os logs ou os clientes. |
 | `GROQ_MODEL` | não | `qwen/qwen3.8-27b` | Identificador do modelo na Groq. Precisa ser da família Qwen. |
 | `GROQ_BASE_URL` | não | `https://api.groq.com/openai/v1` | Base da API. Precisa ser `https` (exceto `localhost`, usado nos testes). |
 | `GROQ_TIMEOUT_SEGUNDOS` | não | `60` | Tempo limite da resposta, entre 5 e 180 s. |
-| `CHAT_SAKURA_IA` | não | `auto` | Escolha do provedor: `groq`, `openrouter`, `qwen`, `simulado` ou `auto`. |
+| `CHAT_SAKURA_IA` | não | `auto` | Escolha do provedor: `groq`, `qwen`, `simulado` ou `auto`. |
 
 **API remota (PowerShell, com valor fictício):**
 
@@ -878,19 +793,17 @@ $env:QWEN_MODEL = "qwen-plus"        # opcional
 mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
 ```
 
-**OpenRouter pelo terminal (PowerShell, com valores fictícios):**
+**Groq pelo terminal (PowerShell, com valor fictício; prefira o `INICIAR-COM-GROQ.bat`, que não mostra a chave):**
 
 ```powershell
-$env:OPENROUTER_API_KEY = "sk-or-sua-chave-aqui"
-$env:OPENROUTER_MODEL = "qwen/identificador-do-modelo"   # opcional
+$env:CHAT_SAKURA_IA = "groq"
+$env:GROQ_API_KEY = "gsk_sua-chave-aqui"
 mvn -q compile exec:java "-Dexec.mainClass=br.unicesumar.chat.server.Servidor"
 ```
 
-Erros do OpenRouter viram mensagens claras para o personagem, sem travar a interface (a geração roda no servidor, fora da interface Swing): 401 (chave inválida), 402 (sem créditos), 403 (moderação), 400/404 (modelo inexistente), 408 e tempo limite, 429 (limite do modelo gratuito), 502/503 (modelo fora do ar), erro dentro de uma resposta 200 e falhas de rede. Os testes (`ProvedorOpenRouterTest`) usam um servidor HTTP simulado em `127.0.0.1`: não usam chave real nem consomem créditos.
+**Groq — formato do pedido:** `model`, `messages` (instruções do personagem como `system`, depois o histórico com `user`/`assistant`), `max_completion_tokens`, `temperature`, `top_p`, `stream: false` e `reasoning_effort: "none"` (o Qwen 3.8 responde direto, sem gastar tokens com raciocínio interno). Não são enviados `max_tokens` (obsoleto na Groq), `presence_penalty` (não aceito pelos modelos da Groq) nem as opções exclusivas do Ollama (`num_ctx`, `keep_alive`, `repeat_penalty`). Erros 400/422 (modelo ou opções), 401 (chave), 402/403 (plano ou permissão), 404 (modelo), 413 (conversa grande demais), 429 (limite gratuito), 498/5xx (indisponível), tempo limite e falhas de rede viram mensagens claras, sem a chave e sem travar a interface (a geração roda no servidor, fora da interface Swing). Os testes (`ProvedorGroqTest`) usam um servidor HTTP simulado em `127.0.0.1`, sem chave real.
 
-**Groq — formato do pedido:** `model`, `messages` (instruções do personagem como `system`, depois o histórico com `user`/`assistant`), `max_completion_tokens`, `temperature`, `top_p`, `stream: false` e `reasoning_effort: "none"` (o Qwen 3.8 responde direto, sem gastar tokens com raciocínio interno). Não são enviados `max_tokens` (obsoleto na Groq), `presence_penalty` (não aceito pelos modelos da Groq), o `reasoning` do OpenRouter nem as opções exclusivas do Ollama (`num_ctx`, `keep_alive`, `repeat_penalty`). Erros 400/422 (modelo ou opções), 401 (chave), 402/403 (plano ou permissão), 404 (modelo), 413 (conversa grande demais), 429 (limite gratuito), 498/5xx (indisponível), tempo limite e falhas de rede viram mensagens claras, sem a chave. Os testes (`ProvedorGroqTest`) usam um servidor HTTP simulado em `127.0.0.1`, sem chave real.
-
-Ao iniciar, o servidor mostra o provedor ativo, por exemplo `Sakura IA: Qwen qwen2.5:3b (contexto 4096 tokens, ...)`, `Sakura IA: Qwen qwen-plus (...)`, `Sakura IA: Qwen qwen/qwen3.8-27b (Groq) (...)`, `Sakura IA: Qwen qwen/... (OpenRouter) (...)`, `Sakura IA: SIMULADO (...)` ou `Sakura IA: Qwen (não configurado). <o que falta>`.
+Ao iniciar, o servidor mostra o provedor ativo, por exemplo `Sakura IA: Qwen qwen2.5:3b (contexto 4096 tokens, ...)`, `Sakura IA: Qwen qwen-plus (...)`, `Sakura IA: Qwen qwen/qwen3.8-27b (Groq) (...)`, `Sakura IA: SIMULADO (...)` ou `Sakura IA: Qwen (não configurado). <o que falta>`.
 
 #### Como testar a IA
 

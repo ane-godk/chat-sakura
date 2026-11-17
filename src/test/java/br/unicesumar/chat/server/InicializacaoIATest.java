@@ -31,14 +31,14 @@ class InicializacaoIATest {
     }
 
     @Test
-    void comOpenRouterOLogMostraOModeloEOServicoSemAChave() {
-        var provedor = ProvedorIndisponivel.doAmbiente(Map.of("OPENROUTER_API_KEY", "sk-or-v1-segredo-456",
-                "OPENROUTER_MODEL", "qwen/qwen-teste:free"));
+    void comGroqOLogMostraOModeloEOServicoSemAChave() {
+        var provedor = ProvedorIndisponivel.doAmbiente(Map.of("CHAT_SAKURA_IA", "groq",
+                "GROQ_API_KEY", "gsk_segredo_456"));
 
         String linha = Servidor.descricaoIA(provedor, provedor.parametros());
 
-        assertTrue(linha.startsWith("Sakura IA: Qwen qwen/qwen-teste:free (OpenRouter) (contexto 16384"), linha);
-        assertFalse(linha.contains("sk-or-v1-segredo-456"), "A chave nunca aparece no log");
+        assertTrue(linha.startsWith("Sakura IA: Qwen qwen/qwen3.8-27b (Groq) (contexto 16384"), linha);
+        assertFalse(linha.contains("gsk_segredo_456"), "A chave nunca aparece no log");
     }
 
     @Test

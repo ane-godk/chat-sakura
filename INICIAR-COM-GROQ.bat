@@ -11,7 +11,7 @@ rem  ao fechar as janelas, a chave some. Em seguida chama o
 rem  INICIAR-CHAT-SAKURA.bat de sempre.
 rem
 rem  CHAT_SAKURA_IA=groq (somente nesta janela) faz o servidor usar a Groq
-rem  mesmo que exista uma chave antiga do OpenRouter no Windows.
+rem  mesmo que exista outra configuracao de IA no Windows.
 rem  Se GROQ_API_KEY (ou GROQ_MODEL) ja estiver definida no Windows, ela e
 rem  usada e a pergunta correspondente e pulada.
 rem ==================================================================
@@ -25,8 +25,6 @@ echo    CHAT SAKURA - Sakura IA pela Groq
 echo  =====================================================
 echo.
 set "CHAT_SAKURA_IA=groq"
-set "OPENROUTER_API_KEY="
-set "OPENROUTER_MODEL="
 if defined GROQ_API_KEY goto :jaTemChave
 
 echo  Cole a chave da Groq (comeca com gsk_) e tecle Enter.

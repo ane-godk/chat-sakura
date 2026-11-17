@@ -18,10 +18,9 @@ import java.util.Optional;
  *   <li>ajustes de geração e de contexto: ver {@link Ajustes#doAmbiente}.</li>
  * </ul>
  *
- * O mesmo formato serve ao OpenRouter ({@link Servico#OPENROUTER}, montado
- * por {@link ConfiguracaoOpenRouter}) e à Groq ({@link Servico#GROQ}, montado
- * por {@link ConfiguracaoGroq}): muda só a origem das variáveis, a exigência
- * de chave e https, as opções de geração e o texto das mensagens de erro.
+ * O mesmo formato serve à Groq ({@link Servico#GROQ}, montado por
+ * {@link ConfiguracaoGroq}): muda só a origem das variáveis, a exigência de
+ * chave e https, as opções de geração e o texto das mensagens de erro.
  *
  * {@link #toString()} nunca mostra a chave.
  */
@@ -32,8 +31,6 @@ public record ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duratio
     public enum Servico {
         /** API do Qwen (Model Studio ou outro host) ou Ollama local, pelas variáveis {@code QWEN_*}. */
         QWEN("Qwen", "QWEN_API_KEY", "QWEN_MODEL", "QWEN_BASE_URL"),
-        /** OpenRouter ({@code https://openrouter.ai/api/v1}), pelas variáveis {@code OPENROUTER_*}. */
-        OPENROUTER("OpenRouter", "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_BASE_URL"),
         /** Groq ({@code https://api.groq.com/openai/v1}), pelas variáveis {@code GROQ_*}. */
         GROQ("Groq", "GROQ_API_KEY", "GROQ_MODEL", "GROQ_BASE_URL");
 
@@ -118,7 +115,7 @@ public record ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duratio
             return doAmbiente(ambiente, apiDe(ambiente.get("QWEN_API"), base), local(base));
         }
 
-        /** Com a forma de chamada e o perfil (local ou remoto) já decididos (OpenRouter: OpenAI e remoto). */
+        /** Com a forma de chamada e o perfil (local ou remoto) já decididos (Groq: OpenAI e remoto). */
         static Ajustes doAmbiente(Map<String, String> ambiente, Api api, boolean local) {
 
             Ajustes padrao = padrao(api, local);
@@ -193,11 +190,6 @@ public record ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duratio
     /** Ajustes padrão conforme o endereço (Ollama local detectado pela porta 11434). */
     public ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duration tempoLimite) {
         this(baseUrl, modelo, chave, tempoLimite, null, Servico.QWEN);
-    }
-
-    /** {@code true} quando os pedidos vão ao OpenRouter. */
-    public boolean openRouter() {
-        return servico == Servico.OPENROUTER;
     }
 
     /** {@code true} quando os pedidos vão à Groq. */

@@ -112,12 +112,6 @@ public final class ProvedorQwen implements ProvedorIA {
         corpo.addProperty("presence_penalty",
                 Math.min(2.0, Math.max(0.0, (ajustes.penalidadeRepeticao() - 1.0) * 3)));
         corpo.addProperty("stream", false);
-        if (configuracao.openRouter()) {
-            // Raciocínio interno de modelos Qwen3 nunca entra no texto da resposta.
-            JsonObject raciocinio = new JsonObject();
-            raciocinio.addProperty("exclude", true);
-            corpo.add("reasoning", raciocinio);
-        }
         return GSON.toJson(corpo);
     }
 
@@ -157,32 +151,7 @@ public final class ProvedorQwen implements ProvedorIA {
         if (nativo()) {
             return interpretarOllama(enviar(configuracao.endpointOllama(), corpoOllama(pedido)));
         }
-        String corpo = enviar(configuracao.endpoint(), corpo(pedido));
-        if (configuracao.openRouter()) {
-            verificarErroNoCorpo(corpo);
-        }
-        return interpretarResposta(corpo);
-    }
-
-    /**
-     * O OpenRouter pode responder 200 com {@code {"error": {"code": 429, ...}}}
-     * quando o provedor do modelo falha depois de aceito o pedido.
-     */
-    private void verificarErroNoCorpo(String corpo) throws FalhaIA {
-        int codigo;
-        try {
-            JsonElement raiz = JsonParser.parseString(corpo);
-            if (!raiz.isJsonObject() || !raiz.getAsJsonObject().has("error")
-                    || !raiz.getAsJsonObject().get("error").isJsonObject()) {
-                return;
-            }
-            JsonElement valor = raiz.getAsJsonObject().getAsJsonObject("error").get("code");
-            codigo = valor != null && valor.isJsonPrimitive() && valor.getAsJsonPrimitive().isNumber()
-                    ? valor.getAsInt() : 502;
-        } catch (RuntimeException e) {
-            return; // Formato inesperado: interpretarResposta explica.
-        }
-        throw falhaOpenRouter(codigo < 400 ? 502 : codigo);
+        return interpretarResposta(enviar(configuracao.endpoint(), corpo(pedido)));
     }
 
     /**
@@ -228,22 +197,16 @@ public final class ProvedorQwen implements ProvedorIA {
         } catch (HttpTimeoutException e) {
             throw new FalhaIA(FalhaIA.Codigo.TEMPO_ESGOTADO, configuracao.groq()
                     ? "A Groq demorou demais para responder. Tente novamente."
-                    : configuracao.openRouter()
-                    ? "O OpenRouter demorou demais para responder. Tente novamente."
                     : "O Qwen demorou demais para responder. Tente novamente.");
         } catch (ConnectException e) {
             throw new FalhaIA(FalhaIA.Codigo.INDISPONIVEL, configuracao.groq()
                     ? "Não foi possível conectar à Groq. Confira a internet deste computador."
-                    : configuracao.openRouter()
-                    ? "Não foi possível conectar ao OpenRouter. Confira a internet deste computador."
                     : ConfiguracaoQwen.local(configuracao.baseUrl())
                     ? "O serviço local do Qwen (Ollama) não está em execução."
                     : "Não foi possível conectar ao serviço do Qwen.");
         } catch (IOException e) {
             throw new FalhaIA(FalhaIA.Codigo.INDISPONIVEL, configuracao.groq()
                     ? "Falha de rede ao acessar a Groq. Confira a internet e tente novamente."
-                    : configuracao.openRouter()
-                    ? "Falha de rede ao acessar o OpenRouter. Confira a internet e tente novamente."
                     : "Falha de rede ao acessar o Qwen.");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -255,13 +218,6 @@ public final class ProvedorQwen implements ProvedorIA {
         if (configuracao.groq()) {
             if (status < 200 || status >= 300) {
                 throw falhaGroq(status);
-            }
-            return resposta.body();
-        }
-
-        if (configuracao.openRouter()) {
-            if (status < 200 || status >= 300) {
-                throw falhaOpenRouter(status);
             }
             return resposta.body();
         }
@@ -283,33 +239,6 @@ public final class ProvedorQwen implements ProvedorIA {
         }
 
         return resposta.body();
-    }
-
-    /**
-     * Erros documentados do OpenRouter, em mensagens públicas (sem a chave
-     * e sem repetir o corpo da resposta).
-     */
-    private FalhaIA falhaOpenRouter(int status) {
-        String modelo = configuracao.modelo();
-        return switch (status) {
-            case 401 -> new FalhaIA(FalhaIA.Codigo.AUTENTICACAO,
-                    "Chave do OpenRouter inválida, expirada ou desativada (OPENROUTER_API_KEY).");
-            case 402 -> new FalhaIA(FalhaIA.Codigo.CREDITOS,
-                    "Sem créditos no OpenRouter para o modelo " + modelo
-                            + ". Use um modelo gratuito (:free) em OPENROUTER_MODEL ou adicione créditos.");
-            case 403 -> new FalhaIA(FalhaIA.Codigo.AUTENTICACAO,
-                    "O OpenRouter recusou o pedido (moderação do modelo ou chave sem permissão).");
-            case 400, 404 -> new FalhaIA(FalhaIA.Codigo.NAO_CONFIGURADO,
-                    "O modelo " + modelo + " não está disponível no OpenRouter. Confira OPENROUTER_MODEL.");
-            case 408 -> new FalhaIA(FalhaIA.Codigo.TEMPO_ESGOTADO,
-                    "O OpenRouter demorou demais para responder. Tente novamente.");
-            case 429 -> new FalhaIA(FalhaIA.Codigo.LIMITE,
-                    "Limite de uso do modelo gratuito atingido no OpenRouter. Aguarde um pouco e tente novamente.");
-            case 502, 503 -> new FalhaIA(FalhaIA.Codigo.INDISPONIVEL,
-                    "O modelo " + modelo + " está temporariamente indisponível no OpenRouter. Tente em instantes.");
-            default -> new FalhaIA(FalhaIA.Codigo.INDISPONIVEL,
-                    "O OpenRouter respondeu com erro (" + status + ").");
-        };
     }
 
     /**

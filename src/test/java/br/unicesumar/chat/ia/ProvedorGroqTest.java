@@ -12,10 +12,8 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.PrintStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -39,7 +37,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class ProvedorGroqTest {
 
     private static final String CHAVE = "gsk_teste_NAO_REAL_0000";
-    private static final String CHAVE_OPENROUTER = "sk-or-v1-antiga-NAO-REAL";
 
     private HttpServer servidor;
     private final AtomicReference<String> corpoRecebido = new AtomicReference<>();
@@ -99,7 +96,7 @@ class ProvedorGroqTest {
     }
 
     private static ProvedorQwen provedor(URI base, String... extras) {
-        ProvedorIA provedor = ProvedorIndisponivel.doAmbiente(ambiente(base, extras), null, null);
+        ProvedorIA provedor = ProvedorIndisponivel.doAmbiente(ambiente(base, extras), null);
         return assertInstanceOf(ProvedorQwen.class, provedor);
     }
 
@@ -238,21 +235,15 @@ class ProvedorGroqTest {
     }
 
     @Test
-    void escolhaExplicitaDaGroqVenceUmaChaveAntigaDoOpenRouterEOOllama() {
+    void comAChaveDaGroqOOllamaNaoEConsultado() {
         AtomicInteger consultasOllama = new AtomicInteger();
         DeteccaoOllama.Consulta ollama = () -> {
             consultasOllama.incrementAndGet();
             return "{\"models\":[{\"name\":\"qwen2.5:3b\"}]}";
         };
-        AtomicInteger consultasCatalogo = new AtomicInteger();
-        ConfiguracaoOpenRouter.Catalogo catalogo = base -> {
-            consultasCatalogo.incrementAndGet();
-            return "{\"data\":[]}";
-        };
 
         ProvedorIA escolhido = ProvedorIndisponivel.doAmbiente(Map.of("CHAT_SAKURA_IA", "groq",
-                "GROQ_API_KEY", CHAVE, "OPENROUTER_API_KEY", CHAVE_OPENROUTER,
-                "OPENROUTER_MODEL", "qwen/qwen-teste:free", "QWEN_API_KEY", "outra"), ollama, catalogo);
+                "GROQ_API_KEY", CHAVE, "QWEN_API_KEY", "outra"), ollama);
 
         ProvedorQwen qwen = assertInstanceOf(ProvedorQwen.class, escolhido);
         assertTrue(qwen.configuracao().groq());
@@ -260,39 +251,38 @@ class ProvedorGroqTest {
         assertEquals(URI.create("https://api.groq.com/openai/v1/chat/completions"), qwen.configuracao().endpoint());
         assertEquals(ConfiguracaoGroq.MODELO_PADRAO, qwen.configuracao().modelo());
         assertEquals(0, consultasOllama.get());
-        assertEquals(0, consultasCatalogo.get(), "OpenRouter nem é consultado");
 
         ProvedorIA semEscolha = ProvedorIndisponivel.doAmbiente(Map.of("GROQ_API_KEY", CHAVE,
-                "OPENROUTER_API_KEY", CHAVE_OPENROUTER, "OPENROUTER_MODEL", "qwen/qwen-teste:free"), ollama, null);
+                "QWEN_API_KEY", "outra"), ollama);
         assertTrue(assertInstanceOf(ProvedorQwen.class, semEscolha).configuracao().groq(),
-                "Sem CHAT_SAKURA_IA, a Groq também vem antes do OpenRouter");
+                "Sem CHAT_SAKURA_IA (auto), a Groq vem antes de QWEN_* e do Ollama");
+        assertEquals(0, consultasOllama.get());
     }
 
     @Test
     void outrasEscolhasExplicitasContinuamFuncionando() {
         DeteccaoOllama.Consulta ollama = () -> "{\"models\":[{\"name\":\"qwen2.5:3b\"}]}";
-        Map<String, String> ambos = new HashMap<>(Map.of("GROQ_API_KEY", CHAVE,
-                "OPENROUTER_API_KEY", CHAVE_OPENROUTER, "OPENROUTER_MODEL", "qwen/qwen-teste:free"));
+        Map<String, String> ambiente = new HashMap<>(Map.of("GROQ_API_KEY", CHAVE));
 
-        ambos.put("CHAT_SAKURA_IA", "OpenRouter");
-        assertTrue(assertInstanceOf(ProvedorQwen.class,
-                ProvedorIndisponivel.doAmbiente(ambos, ollama, null)).configuracao().openRouter());
-
-        ambos.put("CHAT_SAKURA_IA", "qwen");
-        ProvedorQwen local = assertInstanceOf(ProvedorQwen.class, ProvedorIndisponivel.doAmbiente(ambos, ollama, null));
+        ambiente.put("CHAT_SAKURA_IA", "qwen");
+        ProvedorQwen local = assertInstanceOf(ProvedorQwen.class, ProvedorIndisponivel.doAmbiente(ambiente, ollama));
         assertEquals(ConfiguracaoQwen.Servico.QWEN, local.configuracao().servico());
         assertEquals(DeteccaoOllama.MODELO, local.configuracao().modelo());
 
-        ambos.put("CHAT_SAKURA_IA", "simulado");
-        assertTrue(ProvedorIndisponivel.doAmbiente(ambos, ollama, null).simulado());
+        ambiente.put("CHAT_SAKURA_IA", "simulado");
+        assertTrue(ProvedorIndisponivel.doAmbiente(ambiente, ollama).simulado());
 
-        ambos.put("CHAT_SAKURA_IA", "grok");
+        ambiente.put("CHAT_SAKURA_IA", "auto");
+        assertTrue(assertInstanceOf(ProvedorQwen.class,
+                ProvedorIndisponivel.doAmbiente(ambiente, ollama)).configuracao().groq());
+
+        ambiente.put("CHAT_SAKURA_IA", "grok");
         assertEquals(ProvedorIndisponivel.ESCOLHA_INVALIDA, assertInstanceOf(ProvedorIndisponivel.class,
-                ProvedorIndisponivel.doAmbiente(ambos, ollama, null)).motivo(), "Erro de digitação não troca de provedor");
+                ProvedorIndisponivel.doAmbiente(ambiente, ollama)).motivo(), "Erro de digitação não troca de provedor");
 
-        assertEquals(ProvedorIndisponivel.SEM_CHAVE_OPENROUTER, assertInstanceOf(ProvedorIndisponivel.class,
-                ProvedorIndisponivel.doAmbiente(Map.of("CHAT_SAKURA_IA", "openrouter", "GROQ_API_KEY", CHAVE),
-                        ollama, null)).motivo());
+        ProvedorQwen semGroq = assertInstanceOf(ProvedorQwen.class,
+                ProvedorIndisponivel.doAmbiente(Map.of(), ollama));
+        assertEquals(DeteccaoOllama.MODELO, semGroq.configuracao().modelo(), "Auto sem chave: Ollama detectado");
     }
 
     @Test
@@ -304,14 +294,14 @@ class ProvedorGroqTest {
         };
 
         ProvedorIA semChave = ProvedorIndisponivel.doAmbiente(Map.of("CHAT_SAKURA_IA", "groq",
-                "GROQ_API_KEY", "   ", "OPENROUTER_API_KEY", CHAVE_OPENROUTER), ollama, null);
+                "GROQ_API_KEY", "   ", "QWEN_API_KEY", "outra"), ollama);
 
         ProvedorIndisponivel indisponivel = assertInstanceOf(ProvedorIndisponivel.class, semChave);
         assertEquals(ConfiguracaoGroq.SEM_CHAVE, indisponivel.motivo());
         assertEquals(0, consultasOllama.get());
         FalhaIA falha = assertThrows(FalhaIA.class, () -> semChave.gerar(pedido()));
         assertEquals(FalhaIA.Codigo.NAO_CONFIGURADO, falha.getCodigo());
-        assertFalse(falha.getMessage().contains(CHAVE_OPENROUTER));
+        assertFalse(falha.getMessage().contains("outra"));
     }
 
     @Test
@@ -336,24 +326,5 @@ class ProvedorGroqTest {
         motivo = assertInstanceOf(ProvedorIndisponivel.class, ProvedorIndisponivel.doAmbiente(Map.of(
                 "CHAT_SAKURA_IA", "groq", "GROQ_API_KEY", CHAVE, "GROQ_TIMEOUT_SEGUNDOS", "abc"))).motivo();
         assertTrue(motivo.contains("GROQ_TIMEOUT_SEGUNDOS"), motivo);
-    }
-
-    @Test
-    void logDeInicializacaoComAsDuasChavesNaoMostraNenhumaDelas() {
-        PrintStream original = System.out;
-        ByteArrayOutputStream saida = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(saida, true, StandardCharsets.UTF_8));
-        ProvedorIA provedor;
-        try {
-            provedor = ProvedorIndisponivel.doAmbiente(Map.of("GROQ_API_KEY", CHAVE,
-                    "OPENROUTER_API_KEY", CHAVE_OPENROUTER), null, null);
-        } finally {
-            System.setOut(original);
-        }
-        String log = saida.toString(StandardCharsets.UTF_8);
-        assertTrue(log.contains("usando a Groq"), log);
-        assertFalse(log.contains(CHAVE) || log.contains(CHAVE_OPENROUTER), log);
-        assertFalse(provedor.descricao().contains(CHAVE));
-        assertFalse(provedor.toString().contains(CHAVE));
     }
 }

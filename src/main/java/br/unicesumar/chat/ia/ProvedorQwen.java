@@ -24,7 +24,8 @@ import java.util.Objects;
  *   <li>{@link ConfiguracaoQwen.Api#OPENAI}: {@code POST /chat/completions}
  *       (Alibaba Cloud Model Studio, outros hosts ou o {@code /v1} do Ollama),
  *       com {@code temperature}, {@code top_p}, {@code presence_penalty} e
- *       {@code max_tokens};</li>
+ *       {@code max_tokens} (na Groq: {@code max_completion_tokens} e
+ *       {@code reasoning_effort}, sem {@code presence_penalty});</li>
  *   <li>{@link ConfiguracaoQwen.Api#OLLAMA}: {@code POST /api/chat} nativo,
  *       que aceita também {@code num_ctx} (janela de contexto explícita, pois
  *       o padrão muda entre versões do Ollama), {@code keep_alive} (por
@@ -41,6 +42,9 @@ public final class ProvedorQwen implements ProvedorIA {
     /** Resumos de memória: baixa criatividade, para não inventar fatos. */
     static final double TEMPERATURA_RESUMO = 0.2;
 
+    /** {@code reasoning_effort} enviado à Groq: {@code none} desliga o raciocínio do Qwen3. */
+    static final String ESFORCO_RACIOCINIO_GROQ = "none";
+
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
     private final ConfiguracaoQwen configuracao;
@@ -55,7 +59,8 @@ public final class ProvedorQwen implements ProvedorIA {
 
     @Override
     public String descricao() {
-        return "Qwen " + configuracao.modelo();
+        return "Qwen " + configuracao.modelo()
+                + (configuracao.servico() == ConfiguracaoQwen.Servico.QWEN ? "" : " (" + configuracao.servico().nome() + ")");
     }
 
     @Override
@@ -90,6 +95,16 @@ public final class ProvedorQwen implements ProvedorIA {
         JsonObject corpo = new JsonObject();
         corpo.addProperty("model", configuracao.modelo());
         corpo.add("messages", mensagens(pedido));
+        if (configuracao.groq()) {
+            // Groq: max_tokens está obsoleto e presence_penalty não é aceito por nenhum modelo.
+            corpo.addProperty("max_completion_tokens", pedido.maximoTokens());
+            corpo.addProperty("temperature", temperatura(pedido));
+            corpo.addProperty("top_p", ajustes.topP());
+            corpo.addProperty("stream", false);
+            // Sem raciocínio interno: a resposta inteira cabe em max_completion_tokens e chega mais rápido.
+            corpo.addProperty("reasoning_effort", ESFORCO_RACIOCINIO_GROQ);
+            return GSON.toJson(corpo);
+        }
         corpo.addProperty("max_tokens", pedido.maximoTokens());
         corpo.addProperty("temperature", temperatura(pedido));
         corpo.addProperty("top_p", ajustes.topP());
@@ -97,6 +112,12 @@ public final class ProvedorQwen implements ProvedorIA {
         corpo.addProperty("presence_penalty",
                 Math.min(2.0, Math.max(0.0, (ajustes.penalidadeRepeticao() - 1.0) * 3)));
         corpo.addProperty("stream", false);
+        if (configuracao.openRouter()) {
+            // Raciocínio interno de modelos Qwen3 nunca entra no texto da resposta.
+            JsonObject raciocinio = new JsonObject();
+            raciocinio.addProperty("exclude", true);
+            corpo.add("reasoning", raciocinio);
+        }
         return GSON.toJson(corpo);
     }
 
@@ -136,7 +157,32 @@ public final class ProvedorQwen implements ProvedorIA {
         if (nativo()) {
             return interpretarOllama(enviar(configuracao.endpointOllama(), corpoOllama(pedido)));
         }
-        return interpretarResposta(enviar(configuracao.endpoint(), corpo(pedido)));
+        String corpo = enviar(configuracao.endpoint(), corpo(pedido));
+        if (configuracao.openRouter()) {
+            verificarErroNoCorpo(corpo);
+        }
+        return interpretarResposta(corpo);
+    }
+
+    /**
+     * O OpenRouter pode responder 200 com {@code {"error": {"code": 429, ...}}}
+     * quando o provedor do modelo falha depois de aceito o pedido.
+     */
+    private void verificarErroNoCorpo(String corpo) throws FalhaIA {
+        int codigo;
+        try {
+            JsonElement raiz = JsonParser.parseString(corpo);
+            if (!raiz.isJsonObject() || !raiz.getAsJsonObject().has("error")
+                    || !raiz.getAsJsonObject().get("error").isJsonObject()) {
+                return;
+            }
+            JsonElement valor = raiz.getAsJsonObject().getAsJsonObject("error").get("code");
+            codigo = valor != null && valor.isJsonPrimitive() && valor.getAsJsonPrimitive().isNumber()
+                    ? valor.getAsInt() : 502;
+        } catch (RuntimeException e) {
+            return; // Formato inesperado: interpretarResposta explica.
+        }
+        throw falhaOpenRouter(codigo < 400 ? 502 : codigo);
     }
 
     /**
@@ -180,20 +226,45 @@ public final class ProvedorQwen implements ProvedorIA {
         try {
             resposta = cliente.send(requisicao.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (HttpTimeoutException e) {
-            throw new FalhaIA(FalhaIA.Codigo.TEMPO_ESGOTADO,
-                    "O Qwen demorou demais para responder. Tente novamente.");
+            throw new FalhaIA(FalhaIA.Codigo.TEMPO_ESGOTADO, configuracao.groq()
+                    ? "A Groq demorou demais para responder. Tente novamente."
+                    : configuracao.openRouter()
+                    ? "O OpenRouter demorou demais para responder. Tente novamente."
+                    : "O Qwen demorou demais para responder. Tente novamente.");
         } catch (ConnectException e) {
-            throw new FalhaIA(FalhaIA.Codigo.INDISPONIVEL, ConfiguracaoQwen.local(configuracao.baseUrl())
+            throw new FalhaIA(FalhaIA.Codigo.INDISPONIVEL, configuracao.groq()
+                    ? "Não foi possível conectar à Groq. Confira a internet deste computador."
+                    : configuracao.openRouter()
+                    ? "Não foi possível conectar ao OpenRouter. Confira a internet deste computador."
+                    : ConfiguracaoQwen.local(configuracao.baseUrl())
                     ? "O serviço local do Qwen (Ollama) não está em execução."
                     : "Não foi possível conectar ao serviço do Qwen.");
         } catch (IOException e) {
-            throw new FalhaIA(FalhaIA.Codigo.INDISPONIVEL, "Falha de rede ao acessar o Qwen.");
+            throw new FalhaIA(FalhaIA.Codigo.INDISPONIVEL, configuracao.groq()
+                    ? "Falha de rede ao acessar a Groq. Confira a internet e tente novamente."
+                    : configuracao.openRouter()
+                    ? "Falha de rede ao acessar o OpenRouter. Confira a internet e tente novamente."
+                    : "Falha de rede ao acessar o Qwen.");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new FalhaIA(FalhaIA.Codigo.INDISPONIVEL, "Geração interrompida.");
         }
 
         int status = resposta.statusCode();
+
+        if (configuracao.groq()) {
+            if (status < 200 || status >= 300) {
+                throw falhaGroq(status);
+            }
+            return resposta.body();
+        }
+
+        if (configuracao.openRouter()) {
+            if (status < 200 || status >= 300) {
+                throw falhaOpenRouter(status);
+            }
+            return resposta.body();
+        }
 
         if (status == 401 || status == 403) {
             throw new FalhaIA(FalhaIA.Codigo.AUTENTICACAO, "Chave do Qwen inválida ou sem permissão (QWEN_API_KEY).");
@@ -212,6 +283,68 @@ public final class ProvedorQwen implements ProvedorIA {
         }
 
         return resposta.body();
+    }
+
+    /**
+     * Erros documentados do OpenRouter, em mensagens públicas (sem a chave
+     * e sem repetir o corpo da resposta).
+     */
+    private FalhaIA falhaOpenRouter(int status) {
+        String modelo = configuracao.modelo();
+        return switch (status) {
+            case 401 -> new FalhaIA(FalhaIA.Codigo.AUTENTICACAO,
+                    "Chave do OpenRouter inválida, expirada ou desativada (OPENROUTER_API_KEY).");
+            case 402 -> new FalhaIA(FalhaIA.Codigo.CREDITOS,
+                    "Sem créditos no OpenRouter para o modelo " + modelo
+                            + ". Use um modelo gratuito (:free) em OPENROUTER_MODEL ou adicione créditos.");
+            case 403 -> new FalhaIA(FalhaIA.Codigo.AUTENTICACAO,
+                    "O OpenRouter recusou o pedido (moderação do modelo ou chave sem permissão).");
+            case 400, 404 -> new FalhaIA(FalhaIA.Codigo.NAO_CONFIGURADO,
+                    "O modelo " + modelo + " não está disponível no OpenRouter. Confira OPENROUTER_MODEL.");
+            case 408 -> new FalhaIA(FalhaIA.Codigo.TEMPO_ESGOTADO,
+                    "O OpenRouter demorou demais para responder. Tente novamente.");
+            case 429 -> new FalhaIA(FalhaIA.Codigo.LIMITE,
+                    "Limite de uso do modelo gratuito atingido no OpenRouter. Aguarde um pouco e tente novamente.");
+            case 502, 503 -> new FalhaIA(FalhaIA.Codigo.INDISPONIVEL,
+                    "O modelo " + modelo + " está temporariamente indisponível no OpenRouter. Tente em instantes.");
+            default -> new FalhaIA(FalhaIA.Codigo.INDISPONIVEL,
+                    "O OpenRouter respondeu com erro (" + status + ").");
+        };
+    }
+
+    /**
+     * Erros documentados da Groq, em mensagens públicas (sem a chave e sem
+     * repetir o corpo da resposta).
+     */
+    private FalhaIA falhaGroq(int status) {
+        String modelo = configuracao.modelo();
+        return switch (status) {
+            case 401 -> new FalhaIA(FalhaIA.Codigo.AUTENTICACAO,
+                    "Chave da Groq inválida, expirada ou revogada (GROQ_API_KEY). Crie outra em "
+                            + ConfiguracaoGroq.PAGINA_CHAVES + ".");
+            case 402 -> new FalhaIA(FalhaIA.Codigo.CREDITOS,
+                    "A Groq recusou o pedido por falta de saldo ou de plano para o modelo " + modelo
+                            + ". Confira a conta em console.groq.com.");
+            case 403 -> new FalhaIA(FalhaIA.Codigo.AUTENTICACAO,
+                    "A Groq recusou o pedido (chave sem permissão para o modelo " + modelo
+                            + " ou acesso bloqueado nesta rede).");
+            case 404 -> new FalhaIA(FalhaIA.Codigo.NAO_CONFIGURADO,
+                    "O modelo " + modelo + " não foi encontrado na Groq. Confira GROQ_MODEL.");
+            case 400, 422 -> new FalhaIA(FalhaIA.Codigo.NAO_CONFIGURADO,
+                    "A Groq recusou o pedido para o modelo " + modelo
+                            + " (modelo indisponível ou opções incompatíveis). Confira GROQ_MODEL.");
+            case 408 -> new FalhaIA(FalhaIA.Codigo.TEMPO_ESGOTADO,
+                    "A Groq demorou demais para responder. Tente novamente.");
+            case 413 -> new FalhaIA(FalhaIA.Codigo.LIMITE,
+                    "A conversa ficou grande demais para o limite da Groq. Tente uma mensagem mais curta.");
+            case 429 -> new FalhaIA(FalhaIA.Codigo.LIMITE,
+                    "Limite de uso gratuito da Groq atingido (pedidos ou tokens por minuto)."
+                            + " Aguarde um pouco e tente novamente.");
+            case 498, 500, 502, 503, 504 -> new FalhaIA(FalhaIA.Codigo.INDISPONIVEL,
+                    "A Groq está temporariamente indisponível para o modelo " + modelo + ". Tente em instantes.");
+            default -> new FalhaIA(FalhaIA.Codigo.INDISPONIVEL,
+                    "A Groq respondeu com erro (" + status + ").");
+        };
     }
 
     /** Extrai {@code choices[0].message.content}, sem raciocínio interno ({@code <think>}). */

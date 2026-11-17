@@ -18,9 +18,53 @@ import java.util.Optional;
  *   <li>ajustes de geração e de contexto: ver {@link Ajustes#doAmbiente}.</li>
  * </ul>
  *
+ * O mesmo formato serve ao OpenRouter ({@link Servico#OPENROUTER}, montado
+ * por {@link ConfiguracaoOpenRouter}) e à Groq ({@link Servico#GROQ}, montado
+ * por {@link ConfiguracaoGroq}): muda só a origem das variáveis, a exigência
+ * de chave e https, as opções de geração e o texto das mensagens de erro.
+ *
  * {@link #toString()} nunca mostra a chave.
  */
-public record ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duration tempoLimite, Ajustes ajustes) {
+public record ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duration tempoLimite, Ajustes ajustes,
+                               Servico servico) {
+
+    /** Quem atende os pedidos (define as variáveis citadas nas mensagens). */
+    public enum Servico {
+        /** API do Qwen (Model Studio ou outro host) ou Ollama local, pelas variáveis {@code QWEN_*}. */
+        QWEN("Qwen", "QWEN_API_KEY", "QWEN_MODEL", "QWEN_BASE_URL"),
+        /** OpenRouter ({@code https://openrouter.ai/api/v1}), pelas variáveis {@code OPENROUTER_*}. */
+        OPENROUTER("OpenRouter", "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_BASE_URL"),
+        /** Groq ({@code https://api.groq.com/openai/v1}), pelas variáveis {@code GROQ_*}. */
+        GROQ("Groq", "GROQ_API_KEY", "GROQ_MODEL", "GROQ_BASE_URL");
+
+        private final String nome;
+        private final String variavelChave;
+        private final String variavelModelo;
+        private final String variavelUrl;
+
+        Servico(String nome, String variavelChave, String variavelModelo, String variavelUrl) {
+            this.nome = nome;
+            this.variavelChave = variavelChave;
+            this.variavelModelo = variavelModelo;
+            this.variavelUrl = variavelUrl;
+        }
+
+        public String nome() {
+            return nome;
+        }
+
+        public String variavelChave() {
+            return variavelChave;
+        }
+
+        public String variavelModelo() {
+            return variavelModelo;
+        }
+
+        public String variavelUrl() {
+            return variavelUrl;
+        }
+    }
 
     public static final String URL_PADRAO = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
     public static final String MODELO_PADRAO = "qwen-plus";
@@ -71,9 +115,12 @@ public record ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duratio
          * e {@code QWEN_AQUECER} (true/1 para ativar).
          */
         static Ajustes doAmbiente(Map<String, String> ambiente, URI base) {
+            return doAmbiente(ambiente, apiDe(ambiente.get("QWEN_API"), base), local(base));
+        }
 
-            Api api = apiDe(ambiente.get("QWEN_API"), base);
-            boolean local = local(base);
+        /** Com a forma de chamada e o perfil (local ou remoto) já decididos (OpenRouter: OpenAI e remoto). */
+        static Ajustes doAmbiente(Map<String, String> ambiente, Api api, boolean local) {
+
             Ajustes padrao = padrao(api, local);
             ParametrosIA p = padrao.parametros();
 
@@ -105,27 +152,57 @@ public record ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duratio
     }
 
     public ConfiguracaoQwen {
+        if (servico == null) {
+            servico = Servico.QWEN;
+        }
         if (modelo == null || !modelo.toLowerCase(Locale.ROOT).contains("qwen")) {
-            throw new IllegalArgumentException("QWEN_MODEL deve ser um modelo da família Qwen.");
+            throw new IllegalArgumentException(servico.variavelModelo() + " deve ser um modelo da família Qwen.");
         }
         if (baseUrl == null || baseUrl.getScheme() == null
                 || !(baseUrl.getScheme().equals("https") || baseUrl.getScheme().equals("http"))) {
-            throw new IllegalArgumentException("QWEN_BASE_URL deve ser uma URL http(s).");
+            throw new IllegalArgumentException(servico.variavelUrl() + " deve ser uma URL http(s).");
         }
         if (chave != null && chave.isBlank()) {
             chave = null;
+        }
+        if (servico != Servico.QWEN) {
+            // A chave só trafega cifrada; http apenas para servidores de teste no próprio computador.
+            if (!baseUrl.getScheme().equals("https") && !local(baseUrl)) {
+                throw new IllegalArgumentException(servico.variavelUrl() + " deve usar https.");
+            }
+            if (chave == null) {
+                throw new IllegalArgumentException("Defina " + servico.variavelChave() + " para usar o serviço "
+                        + servico.nome() + ".");
+            }
         }
         if (chave == null && !local(baseUrl)) {
             throw new IllegalArgumentException("Defina QWEN_API_KEY para usar a API do Qwen.");
         }
         if (ajustes == null) {
-            ajustes = Ajustes.padrao(apiDe(null, baseUrl), local(baseUrl));
+            ajustes = servico != Servico.QWEN
+                    ? Ajustes.padrao(Api.OPENAI, false)
+                    : Ajustes.padrao(apiDe(null, baseUrl), local(baseUrl));
         }
+    }
+
+    /** Configuração do serviço {@link Servico#QWEN} (API do Qwen ou Ollama). */
+    public ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duration tempoLimite, Ajustes ajustes) {
+        this(baseUrl, modelo, chave, tempoLimite, ajustes, Servico.QWEN);
     }
 
     /** Ajustes padrão conforme o endereço (Ollama local detectado pela porta 11434). */
     public ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duration tempoLimite) {
-        this(baseUrl, modelo, chave, tempoLimite, null);
+        this(baseUrl, modelo, chave, tempoLimite, null, Servico.QWEN);
+    }
+
+    /** {@code true} quando os pedidos vão ao OpenRouter. */
+    public boolean openRouter() {
+        return servico == Servico.OPENROUTER;
+    }
+
+    /** {@code true} quando os pedidos vão à Groq. */
+    public boolean groq() {
+        return servico == Servico.GROQ;
     }
 
     /** Endereço de chat completions (OpenAI compatível). */
@@ -226,7 +303,7 @@ public record ConfiguracaoQwen(URI baseUrl, String modelo, String chave, Duratio
 
     @Override
     public String toString() {
-        return "ConfiguracaoQwen[" + baseUrl + ", " + modelo + ", chave="
+        return "ConfiguracaoQwen[" + servico.nome() + ", " + baseUrl + ", " + modelo + ", chave="
                 + (chave == null ? "ausente" : "****") + ", " + tempoLimite.toSeconds() + "s, "
                 + ajustes.api() + "]";
     }

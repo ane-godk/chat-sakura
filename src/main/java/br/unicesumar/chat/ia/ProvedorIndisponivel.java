@@ -1,12 +1,21 @@
 package br.unicesumar.chat.ia;
 
+import java.util.Locale;
 import java.util.Map;
 
 /** Usado quando o Qwen não está configurado: responde com orientação clara, sem simular. */
 public final class ProvedorIndisponivel implements ProvedorIA {
 
     static final String ORIENTACAO = "A Sakura IA (Qwen) não está configurada no servidor."
-            + " Defina QWEN_API_KEY (ou QWEN_BASE_URL do Ollama) e reinicie o servidor.";
+            + " Defina GROQ_API_KEY (Qwen pela Groq), OPENROUTER_API_KEY (Qwen pelo OpenRouter), QWEN_API_KEY"
+            + " ou QWEN_BASE_URL do Ollama"
+            + " e reinicie o servidor.";
+
+    static final String SEM_CHAVE_OPENROUTER = "CHAT_SAKURA_IA=openrouter, mas OPENROUTER_API_KEY não foi"
+            + " definida. Defina a chave (ou use o INICIAR-COM-OPENROUTER.bat) e reinicie o servidor.";
+
+    static final String ESCOLHA_INVALIDA = "Valor de CHAT_SAKURA_IA não reconhecido. Use groq, openrouter,"
+            + " qwen, simulado ou auto e reinicie o servidor.";
 
     private final String motivo;
 
@@ -31,28 +40,92 @@ public final class ProvedorIndisponivel implements ProvedorIA {
 
     /**
      * Escolhe o provedor do servidor: {@code CHAT_SAKURA_IA=simulado} usa o
-     * SIMULADO; caso contrário, o Qwen das variáveis de ambiente, ou este
+     * SIMULADO; caso contrário, o OpenRouter (se {@code OPENROUTER_API_KEY}
+     * estiver definida) ou o Qwen das variáveis {@code QWEN_*}, ou este
      * provedor indisponível se nada estiver configurado.
      */
     public static ProvedorIA doAmbiente(Map<String, String> ambiente) {
-        return doAmbiente(ambiente, null);
+        return doAmbiente(ambiente, null, null);
     }
 
     /**
-     * Como {@link #doAmbiente(Map)}, mas, sem nenhuma variável do Qwen, procura
-     * o {@code qwen2.5:3b} no Ollama local ({@link DeteccaoOllama}). Variáveis
-     * definidas pelo usuário nunca são substituídas.
+     * Como {@link #doAmbiente(Map)}, com as consultas de rede da inicialização:
+     * a lista pública de modelos do OpenRouter (para achar um Qwen gratuito
+     * quando {@code OPENROUTER_MODEL} não foi definido) e, sem OpenRouter nem
+     * variáveis do Qwen, o {@code qwen2.5:3b} no Ollama local
+     * ({@link DeteccaoOllama}). Variáveis definidas pelo usuário nunca são
+     * substituídas.
      */
     public static ProvedorIA doAmbienteComOllama(Map<String, String> ambiente) {
-        return doAmbiente(ambiente, DeteccaoOllama.local());
+        return doAmbiente(ambiente, DeteccaoOllama.local(), ConfiguracaoOpenRouter.http());
     }
 
     /** @param ollama consulta ao Ollama local ({@code null}: sem detecção) */
     public static ProvedorIA doAmbiente(Map<String, String> ambiente, DeteccaoOllama.Consulta ollama) {
+        return doAmbiente(ambiente, ollama, null);
+    }
 
-        if ("simulado".equalsIgnoreCase(ambiente.getOrDefault("CHAT_SAKURA_IA", "").strip())) {
-            return new ProvedorIAFalso();
+    /**
+     * Escolha do provedor por {@code CHAT_SAKURA_IA}:
+     *
+     * <ul>
+     *   <li>{@code simulado}: provedor SIMULADO;</li>
+     *   <li>{@code groq}: somente a Groq ({@code GROQ_*}), mesmo que exista
+     *       uma chave do OpenRouter;</li>
+     *   <li>{@code openrouter}: somente o OpenRouter ({@code OPENROUTER_*});</li>
+     *   <li>{@code qwen} (ou {@code ollama}/{@code local}): somente as
+     *       variáveis {@code QWEN_*} ou o Ollama detectado;</li>
+     *   <li>vazio ou {@code auto}: Groq com {@code GROQ_API_KEY}; senão
+     *       OpenRouter com {@code OPENROUTER_API_KEY}; senão {@code QWEN_*}
+     *       ou o Ollama detectado.</li>
+     * </ul>
+     *
+     * Um provedor escolhido explicitamente nunca é trocado por outro: se
+     * faltar algo, a IA fica indisponível com a explicação (o chat continua).
+     *
+     * @param ollama     consulta ao Ollama local ({@code null}: sem detecção)
+     * @param openRouter lista de modelos do OpenRouter ({@code null}: sem
+     *                   consulta, e {@code OPENROUTER_MODEL} é obrigatório)
+     */
+    public static ProvedorIA doAmbiente(Map<String, String> ambiente, DeteccaoOllama.Consulta ollama,
+                                        ConfiguracaoOpenRouter.Catalogo openRouter) {
+
+        String escolha = ambiente.getOrDefault("CHAT_SAKURA_IA", "").strip().toLowerCase(Locale.ROOT);
+
+        switch (escolha) {
+            case "simulado":
+                return new ProvedorIAFalso();
+            case "groq":
+                return ConfiguracaoGroq.provedor(ambiente);
+            case "openrouter":
+                return ConfiguracaoOpenRouter.configurado(ambiente)
+                        ? ConfiguracaoOpenRouter.provedor(ambiente, openRouter)
+                        : new ProvedorIndisponivel(SEM_CHAVE_OPENROUTER);
+            case "qwen", "ollama", "local":
+                return qwenOuOllama(ambiente, ollama);
+            case "", "auto":
+                break;
+            default:
+                return new ProvedorIndisponivel(ESCOLHA_INVALIDA);
         }
+
+        if (ConfiguracaoGroq.configurado(ambiente)) {
+            if (ConfiguracaoOpenRouter.configurado(ambiente)) {
+                System.out.println("Sakura IA: GROQ_API_KEY e OPENROUTER_API_KEY definidas; usando a Groq"
+                        + " (defina CHAT_SAKURA_IA=openrouter para usar o OpenRouter).");
+            }
+            return ConfiguracaoGroq.provedor(ambiente);
+        }
+
+        if (ConfiguracaoOpenRouter.configurado(ambiente)) {
+            return ConfiguracaoOpenRouter.provedor(ambiente, openRouter);
+        }
+
+        return qwenOuOllama(ambiente, ollama);
+    }
+
+    /** Variáveis {@code QWEN_*}; sem elas, o Ollama detectado (se houver consulta). */
+    private static ProvedorIA qwenOuOllama(Map<String, String> ambiente, DeteccaoOllama.Consulta ollama) {
 
         Map<String, String> efetivo = ambiente;
 

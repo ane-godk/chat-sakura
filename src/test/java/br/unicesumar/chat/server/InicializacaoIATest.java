@@ -31,6 +31,17 @@ class InicializacaoIATest {
     }
 
     @Test
+    void comOpenRouterOLogMostraOModeloEOServicoSemAChave() {
+        var provedor = ProvedorIndisponivel.doAmbiente(Map.of("OPENROUTER_API_KEY", "sk-or-v1-segredo-456",
+                "OPENROUTER_MODEL", "qwen/qwen-teste:free"));
+
+        String linha = Servidor.descricaoIA(provedor, provedor.parametros());
+
+        assertTrue(linha.startsWith("Sakura IA: Qwen qwen/qwen-teste:free (OpenRouter) (contexto 16384"), linha);
+        assertFalse(linha.contains("sk-or-v1-segredo-456"), "A chave nunca aparece no log");
+    }
+
+    @Test
     void comProvedorConfiguradoOLogMostraOsLimitesEmUso() {
         String linha = Servidor.descricaoIA(new ProvedorIAFalso(), ParametrosIA.LOCAL);
 

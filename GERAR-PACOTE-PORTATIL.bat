@@ -10,8 +10,10 @@ rem    dist\ChatSakura-Portatil\      (pasta pronta para usar)
 rem    dist\ChatSakura-Portatil.zip   (a mesma pasta compactada)
 rem
 rem  O pacote leva: um Java reduzido (pasta runtime), o chat-sakura.jar,
-rem  o INICIAR-CHAT-SAKURA.bat e o LEIA-ME.txt. Nenhum banco, certificado,
-rem  senha ou configuracao pessoal entra no pacote.
+rem  o INICIAR-CHAT-SAKURA.bat, o INICIAR-COM-GROQ.bat, o
+rem  INICIAR-COM-OPENROUTER.bat e o LEIA-ME.txt.
+rem  Nenhum banco, certificado, senha, chave de API ou configuracao pessoal
+rem  entra no pacote.
 rem ==================================================================
 cd /d "%~dp0"
 title Chat Sakura - gerar pacote portatil
@@ -51,6 +53,8 @@ if errorlevel 1 goto :falhaJlink
 
 copy /y "target\chat-sakura.jar" "%PACOTE%\" >nul
 copy /y "INICIAR-CHAT-SAKURA.bat" "%PACOTE%\" >nul
+copy /y "INICIAR-COM-OPENROUTER.bat" "%PACOTE%\" >nul
+copy /y "INICIAR-COM-GROQ.bat" "%PACOTE%\" >nul
 copy /y "pacote-portatil\LEIA-ME.txt" "%PACOTE%\" >nul
 
 echo  [4/4] Compactando...

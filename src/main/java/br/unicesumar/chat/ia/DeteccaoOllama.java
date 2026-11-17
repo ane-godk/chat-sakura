@@ -19,8 +19,9 @@ import java.util.Optional;
 
 /**
  * Detecção opcional do Qwen no Ollama local, usada somente quando nenhuma
- * variável {@code QWEN_API_KEY}, {@code QWEN_BASE_URL} ou {@code QWEN_MODEL}
- * foi definida (configurações explícitas sempre prevalecem).
+ * variável {@code GROQ_API_KEY}, {@code OPENROUTER_API_KEY}, {@code QWEN_API_KEY},
+ * {@code QWEN_BASE_URL} ou {@code QWEN_MODEL} foi definida (configurações
+ * explícitas sempre prevalecem).
  *
  * Apenas lê a lista de modelos ({@code GET /api/tags}) no próprio computador
  * (127.0.0.1): não baixa modelos, não altera a configuração do Ollama e não
@@ -34,7 +35,7 @@ public final class DeteccaoOllama {
 
     static final String SEM_OLLAMA = "Ollama não encontrado em " + ENDERECO + ". Para usar os personagens de IA,"
             + " instale o Ollama, rode \"ollama pull " + MODELO + "\" e reinicie o servidor"
-            + " (ou defina QWEN_API_KEY para usar a API remota).";
+            + " (ou use o INICIAR-COM-GROQ.bat para usar o Qwen pela internet, via Groq).";
     static final String SEM_MODELO = "O Ollama está em execução, mas o modelo " + MODELO
             + " não está instalado. Rode \"ollama pull " + MODELO + "\" e reinicie o servidor.";
 

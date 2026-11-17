@@ -83,7 +83,7 @@ public interface ProvedorIA {
         private static final long serialVersionUID = 1L;
 
         public enum Codigo {
-            NAO_CONFIGURADO, AUTENTICACAO, LIMITE, TEMPO_ESGOTADO, INDISPONIVEL, RESPOSTA_INVALIDA
+            NAO_CONFIGURADO, AUTENTICACAO, LIMITE, CREDITOS, TEMPO_ESGOTADO, INDISPONIVEL, RESPOSTA_INVALIDA
         }
 
         private final Codigo codigo;

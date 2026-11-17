@@ -1,14 +1,10 @@
 package br.unicesumar.chat.server;
 
 import br.unicesumar.chat.persistence.jdbc.ConnectionFactory;
-import br.unicesumar.chat.persistence.jdbc.JdbcMensagemRepository;
-import br.unicesumar.chat.persistence.jdbc.JdbcUsuarioRepository;
 import br.unicesumar.chat.protocolo.ProtocoloJson;
 import br.unicesumar.chat.protocolo.ProtocoloSakura;
 import br.unicesumar.chat.service.ChatService;
-import br.unicesumar.chat.service.ClientRegistry;
 import br.unicesumar.chat.service.HashSenha;
-import br.unicesumar.chat.service.ServicoAutenticacao;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -241,19 +237,20 @@ class ClienteHandlerAutenticacaoTest {
         iniciarServidor(true);
         Cliente ana = cadastrarAna();
 
-        Cliente caio = new Cliente();
-        caio.enviar("Caio");
-        assertEquals("SISTEMA: Conectado como Caio", caio.ler());
-        caio.esperarHistorico();
-        ana.esperar(l -> l.contains("\"remetente\":\"Caio\"") && l.contains("\"tipo\":\"ENTRADA\""));
+        try (Cliente caio = new Cliente()) {
+            caio.enviar("Caio");
+            assertEquals("SISTEMA: Conectado como Caio", caio.ler());
+            caio.esperarHistorico();
+            ana.esperar(l -> l.contains("\"remetente\":\"Caio\"") && l.contains("\"tipo\":\"ENTRADA\""));
 
-        ana.enviar(enviarJson(1, "Oi, Caio!"));
-        caio.esperar(l -> l.matches("\\[\\d{2}/\\d{2} \\d{2}:\\d{2}\\] Ana: Oi, Caio!"));
-        caio.enviar("Oi, Ana!");
-        ana.esperar(l -> l.contains("\"remetente\":\"Caio\"") && l.contains("\"texto\":\"Oi, Ana!\""));
+            ana.enviar(enviarJson(1, "Oi, Caio!"));
+            caio.esperar(l -> l.matches("\\[\\d{2}/\\d{2} \\d{2}:\\d{2}\\] Ana: Oi, Caio!"));
+            caio.enviar("Oi, Ana!");
+            ana.esperar(l -> l.contains("\"remetente\":\"Caio\"") && l.contains("\"texto\":\"Oi, Ana!\""));
 
-        assertEquals(List.of(List.of("Ana", "1", "Oi, Caio!"), java.util.Arrays.asList("Caio", null, "Oi, Ana!")),
-                mensagens());
+            assertEquals(List.of(List.of("Ana", "1", "Oi, Caio!"), java.util.Arrays.asList("Caio", null, "Oi, Ana!")),
+                    mensagens());
+        }
     }
 
     @Test
@@ -262,10 +259,12 @@ class ClienteHandlerAutenticacaoTest {
         cadastrarAna().close();
 
         for (String nome : new String[] {"Ana", "ANA", "ana.souza", "ANA.SOUZA"}) {
-            Cliente impostor = new Cliente();
-            impostor.enviar(nome);
-            assertEquals(ClienteHandler.MENSAGEM_NOME_RESERVADO, impostor.ler(), nome);
-            assertTrue(impostor.encerrada(), nome);
+            // O servidor encerra cada tentativa; o socket do teste fecha depois de confirmar isso.
+            try (Cliente impostor = new Cliente()) {
+                impostor.enviar(nome);
+                assertEquals(ClienteHandler.MENSAGEM_NOME_RESERVADO, impostor.ler(), nome);
+                assertTrue(impostor.encerrada(), nome);
+            }
         }
 
         // Conta já conectada: um novo login válido substitui a sessão anterior
@@ -294,18 +293,21 @@ class ClienteHandlerAutenticacaoTest {
 
         // Visitantes com nomes equivalentes à conta (caixa Unicode, largura total, acento combinado).
         for (String nome : new String[] {"ÉLIA", "élia", "Ｅｌｉａ", "Élia", "ELIA"}) {
-            Cliente impostor = new Cliente();
-            impostor.enviar(nome);
-            assertEquals(ClienteHandler.MENSAGEM_NOME_RESERVADO, impostor.ler(), nome);
-            assertTrue(impostor.encerrada(), nome);
+            // O servidor encerra cada tentativa; o socket do teste fecha depois de confirmar isso.
+            try (Cliente impostor = new Cliente()) {
+                impostor.enviar(nome);
+                assertEquals(ClienteHandler.MENSAGEM_NOME_RESERVADO, impostor.ler(), nome);
+                assertTrue(impostor.encerrada(), nome);
+            }
         }
 
         // Invisíveis, espaço não convencional e alfabetos misturados são recusados para visitantes.
         for (String nome : new String[] {"Élia​", "Él­ia", "Élia ", "Аna"}) {
-            Cliente invalido = new Cliente();
-            invalido.enviar(nome);
-            assertTrue(invalido.ler().startsWith("SISTEMA: Nome inválido:"), nome);
-            assertTrue(invalido.encerrada(), nome);
+            try (Cliente invalido = new Cliente()) {
+                invalido.enviar(nome);
+                assertTrue(invalido.ler().startsWith("SISTEMA: Nome inválido:"), nome);
+                assertTrue(invalido.encerrada(), nome);
+            }
         }
 
         // Cadastro com apelido equivalente também é recusado.
@@ -316,9 +318,10 @@ class ClienteHandlerAutenticacaoTest {
         assertEquals("DADOS_INVALIDOS", ProtocoloSakura.lerResposta(misturado.ler()).codigo());
 
         // Um visitante comum segue entrando no Chat Geral.
-        Cliente caio = new Cliente();
-        caio.enviar("Caio");
-        assertEquals("SISTEMA: Conectado como Caio", caio.ler());
+        try (Cliente caio = new Cliente()) {
+            caio.enviar("Caio");
+            assertEquals("SISTEMA: Conectado como Caio", caio.ler());
+        }
     }
 
     @Test
@@ -369,14 +372,17 @@ class ClienteHandlerAutenticacaoTest {
     void servidorSemContasDeveRecusarANegociacaoEManterOLegado() throws Exception {
         iniciarServidor(false);
 
-        Cliente atualizado = new Cliente();
-        atualizado.enviar(ProtocoloSakura.NEGOCIACAO);
-        assertNotNull(ProtocoloSakura.lerNegociacaoRecusada(atualizado.ler()));
-        assertTrue(atualizado.encerrada());
+        // Escopos aninhados: as duas conexões ficam abertas até o fim, na mesma ordem de antes.
+        try (Cliente atualizado = new Cliente()) {
+            atualizado.enviar(ProtocoloSakura.NEGOCIACAO);
+            assertNotNull(ProtocoloSakura.lerNegociacaoRecusada(atualizado.ler()));
+            assertTrue(atualizado.encerrada());
 
-        Cliente legado = new Cliente();
-        legado.enviar("Ana");
-        assertEquals("SISTEMA: Conectado como Ana", legado.ler());
+            try (Cliente legado = new Cliente()) {
+                legado.enviar("Ana");
+                assertEquals("SISTEMA: Conectado como Ana", legado.ler());
+            }
+        }
     }
 
     @Test
@@ -392,10 +398,11 @@ class ClienteHandlerAutenticacaoTest {
         ana.esperar(l -> l.contains("\"texto\":\"Continua funcionando\""));
 
         // Cliente legado: mesma regra, resposta em texto.
-        Cliente caio = new Cliente();
-        caio.enviar("Caio");
-        caio.esperarHistorico();
-        caio.enviar("y".repeat(ProtocoloSakura.TAMANHO_MAXIMO_LINHA + 1));
-        caio.esperar("SISTEMA: Mensagem inválida: a linha excede o limite do protocolo."::equals);
+        try (Cliente caio = new Cliente()) {
+            caio.enviar("Caio");
+            caio.esperarHistorico();
+            caio.enviar("y".repeat(ProtocoloSakura.TAMANHO_MAXIMO_LINHA + 1));
+            caio.esperar("SISTEMA: Mensagem inválida: a linha excede o limite do protocolo."::equals);
+        }
     }
 }

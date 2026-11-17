@@ -208,35 +208,47 @@ class RobustezServidorTest {
     void limiteGlobalDeveRecusarExcedenteELiberarVagaAoDesconectar() throws Exception {
         iniciar(LimitesServidor.padrao().comConexoes(2, 10));
 
+        // Escopos aninhados: as conexões são abertas na mesma ordem e ficam
+        // abertas até o fim do teste; só "primeiro" fecha antes, de propósito.
         Cliente primeiro = new Cliente(porta());
         primeiro.boasVindas();
-        Cliente segundo = new Cliente(porta());
-        segundo.boasVindas();
+        try (Cliente segundo = new Cliente(porta())) {
+            segundo.boasVindas();
 
-        Cliente excedente = new Cliente(porta());
-        assertEquals(Servidor.MENSAGEM_LOTADO, excedente.ler());
-        assertTrue(excedente.encerrada(), "Recusado sem ocupar thread nem vaga");
-        assertEquals(2, servidor.vagas().ocupadas());
+            try (Cliente excedente = new Cliente(porta())) {
+                assertEquals(Servidor.MENSAGEM_LOTADO, excedente.ler());
+                assertTrue(excedente.encerrada(), "Recusado sem ocupar thread nem vaga");
+                assertEquals(2, servidor.vagas().ocupadas());
 
-        primeiro.close();
-        assertTrue(servidor.vagas().aguardarOcupadas(1, Duration.ofSeconds(5)), "Vaga liberada após desconexão");
+                primeiro.close();
+                assertTrue(servidor.vagas().aguardarOcupadas(1, Duration.ofSeconds(5)),
+                        "Vaga liberada após desconexão");
 
-        Cliente novo = new Cliente(porta());
-        novo.boasVindas();
-        assertEquals(2, servidor.vagas().ocupadas());
+                try (Cliente novo = new Cliente(porta())) {
+                    novo.boasVindas();
+                    assertEquals(2, servidor.vagas().ocupadas());
+                }
+            }
+        }
     }
 
     @Test
     void limitePorIpDeveSerAplicado() throws Exception {
         iniciar(LimitesServidor.padrao().comConexoes(50, 2));
 
-        new Cliente(porta()).boasVindas();
-        new Cliente(porta()).boasVindas();
+        // As duas primeiras conexões continuam abertas enquanto a terceira é recusada.
+        try (Cliente primeiro = new Cliente(porta())) {
+            primeiro.boasVindas();
+            try (Cliente segundo = new Cliente(porta())) {
+                segundo.boasVindas();
 
-        Cliente terceiro = new Cliente(porta());
-        assertEquals(Servidor.MENSAGEM_LOTADO, terceiro.ler());
-        assertTrue(terceiro.encerrada());
-        assertEquals(2, servidor.vagas().ocupadas(InetAddress.getLoopbackAddress().getHostAddress()));
+                try (Cliente terceiro = new Cliente(porta())) {
+                    assertEquals(Servidor.MENSAGEM_LOTADO, terceiro.ler());
+                    assertTrue(terceiro.encerrada());
+                    assertEquals(2, servidor.vagas().ocupadas(InetAddress.getLoopbackAddress().getHostAddress()));
+                }
+            }
+        }
     }
 
     @Test
@@ -244,19 +256,21 @@ class RobustezServidorTest {
         iniciar(LimitesServidor.padrao().comTempos(Duration.ofMillis(300), Duration.ofSeconds(30)));
 
         // Nunca informa o nome.
-        Cliente calado = new Cliente(porta());
-        calado.boasVindas();
+        try (Cliente calado = new Cliente(porta())) {
+            calado.boasVindas();
 
-        // Começa a negociação v2 e para antes do login.
-        Cliente negociando = new Cliente(porta());
-        negociando.boasVindas();
-        negociando.enviar(ProtocoloSakura.NEGOCIACAO);
-        assertEquals(ProtocoloSakura.NEGOCIACAO_ACEITA, negociando.ler());
+            // Começa a negociação v2 e para antes do login.
+            try (Cliente negociando = new Cliente(porta())) {
+                negociando.boasVindas();
+                negociando.enviar(ProtocoloSakura.NEGOCIACAO);
+                assertEquals(ProtocoloSakura.NEGOCIACAO_ACEITA, negociando.ler());
 
-        assertEquals(ClienteHandler.MENSAGEM_PRAZO_ENTRADA, calado.ler());
-        assertTrue(calado.encerrada());
-        assertTrue(negociando.encerrada());
-        assertTrue(servidor.vagas().aguardarOcupadas(0, Duration.ofSeconds(5)), "Threads e vagas liberadas");
+                assertEquals(ClienteHandler.MENSAGEM_PRAZO_ENTRADA, calado.ler());
+                assertTrue(calado.encerrada());
+                assertTrue(negociando.encerrada());
+                assertTrue(servidor.vagas().aguardarOcupadas(0, Duration.ofSeconds(5)), "Threads e vagas liberadas");
+            }
+        }
     }
 
     @Test
@@ -268,13 +282,14 @@ class RobustezServidorTest {
         Cliente caio = legado("Caio");
 
         // Bem depois do prazo de entrada, ambos continuam funcionando.
-        Cliente calado = new Cliente(porta());
-        calado.boasVindas();
-        assertTrue(calado.encerrada(), "O prazo de entrada passou");
+        try (Cliente calado = new Cliente(porta())) {
+            calado.boasVindas();
+            assertTrue(calado.encerrada(), "O prazo de entrada passou");
 
-        caio.enviar("ainda aqui");
-        ana.esperar(l -> ehMensagemCom(l, "ainda aqui"));
-        caio.esperar(l -> l.endsWith("Caio: ainda aqui"));
+            caio.enviar("ainda aqui");
+            ana.esperar(l -> ehMensagemCom(l, "ainda aqui"));
+            caio.esperar(l -> l.endsWith("Caio: ainda aqui"));
+        }
     }
 
     // ------------------------------------------------------------------
@@ -343,42 +358,44 @@ class RobustezServidorTest {
 
         Cliente ana = legado("Ana");
 
-        // Cliente lento: entra e nunca mais lê nada.
-        Cliente lento = new Cliente(porta(), 2_048);
-        lento.boasVindas();
-        lento.enviar("Lento");
-        ana.esperar(l -> l.endsWith("Lento se conectou"));
+        // Cliente lento: entra e nunca mais lê nada (o socket fica aberto até o fim do teste).
+        try (Cliente lento = new Cliente(porta(), 2_048)) {
+            lento.boasVindas();
+            lento.enviar("Lento");
+            ana.esperar(l -> l.endsWith("Lento se conectou"));
 
-        Usuario bot = new Usuario("Bot");
-        String recheio = "x".repeat(400);
-        int lotes = 100;
-        int porLote = 20;
+            Usuario bot = new Usuario("Bot");
+            String recheio = "x".repeat(400);
+            int lotes = 100;
+            int porLote = 20;
 
-        // Ana lê tudo; o lento enche o buffer TCP e depois a fila.
-        for (int lote = 0; lote < lotes; lote++) {
-            for (int i = 0; i < porLote; i++) {
-                chat.enviarMensagem(bot, "m" + (lote * porLote + i) + " " + recheio);
+            // Ana lê tudo; o lento enche o buffer TCP e depois a fila.
+            for (int lote = 0; lote < lotes; lote++) {
+                for (int i = 0; i < porLote; i++) {
+                    chat.enviarMensagem(bot, "m" + (lote * porLote + i) + " " + recheio);
+                }
+                int ultima = lote * porLote + porLote - 1;
+                ana.esperar(l -> l.contains("Bot: m" + ultima + " "));
             }
-            int ultima = lote * porLote + porLote - 1;
-            ana.esperar(l -> l.contains("Bot: m" + ultima + " "));
+
+            assertTrue(encerrados.await(10, TimeUnit.SECONDS), "O cliente lento foi desconectado");
+            assertEquals(1, chat.contarClientes(), "Só Ana continua registrada");
+
+            // Ana recebeu todas as mensagens, em ordem.
+            List<Integer> numeros = ana.recebidas.stream()
+                    .filter(l -> l.contains("Bot: m"))
+                    .map(l -> Integer.parseInt(l.substring(l.indexOf("Bot: m") + 6,
+                            l.indexOf(' ', l.indexOf("Bot: m") + 6))))
+                    .toList();
+            assertEquals(lotes * porLote, numeros.size());
+            for (int i = 0; i < numeros.size(); i++) {
+                assertEquals(i, numeros.get(i));
+            }
+
+            // O servidor segue normal depois da queda.
+            chat.enviarMensagem(bot, "depois da queda");
+            ana.esperar(l -> l.endsWith("Bot: depois da queda"));
         }
-
-        assertTrue(encerrados.await(10, TimeUnit.SECONDS), "O cliente lento foi desconectado");
-        assertEquals(1, chat.contarClientes(), "Só Ana continua registrada");
-
-        // Ana recebeu todas as mensagens, em ordem.
-        List<Integer> numeros = ana.recebidas.stream()
-                .filter(l -> l.contains("Bot: m"))
-                .map(l -> Integer.parseInt(l.substring(l.indexOf("Bot: m") + 6, l.indexOf(' ', l.indexOf("Bot: m") + 6))))
-                .toList();
-        assertEquals(lotes * porLote, numeros.size());
-        for (int i = 0; i < numeros.size(); i++) {
-            assertEquals(i, numeros.get(i));
-        }
-
-        // O servidor segue normal depois da queda.
-        chat.enviarMensagem(bot, "depois da queda");
-        ana.esperar(l -> l.endsWith("Bot: depois da queda"));
     }
 
     @Test
@@ -539,25 +556,28 @@ class RobustezServidorTest {
 
         // Duas conexões com 5 tentativas erradas cada (limite por conexão).
         for (int conexao = 0; conexao < 2; conexao++) {
-            Cliente atacante = new Cliente(porta());
-            atacante.boasVindas();
-            atacante.enviar(ProtocoloSakura.NEGOCIACAO);
-            atacante.ler();
-            for (int i = 0; i < ProtocoloSakura.TENTATIVAS_MAXIMAS; i++) {
-                atacante.enviar(ProtocoloSakura.comandoEntrar("ana", "errada-1234".toCharArray()));
-                assertFalse(ProtocoloSakura.lerResposta(atacante.ler()).sucesso());
+            // O servidor encerra cada conexão; o socket do teste fecha depois de confirmar isso.
+            try (Cliente atacante = new Cliente(porta())) {
+                atacante.boasVindas();
+                atacante.enviar(ProtocoloSakura.NEGOCIACAO);
+                atacante.ler();
+                for (int i = 0; i < ProtocoloSakura.TENTATIVAS_MAXIMAS; i++) {
+                    atacante.enviar(ProtocoloSakura.comandoEntrar("ana", "errada-1234".toCharArray()));
+                    assertFalse(ProtocoloSakura.lerResposta(atacante.ler()).sucesso());
+                }
+                assertTrue(atacante.encerrada());
             }
-            assertTrue(atacante.encerrada());
         }
 
         // Reconectar não zera o limite: mesmo a senha certa é recusada por ora.
-        Cliente terceira = new Cliente(porta());
-        terceira.boasVindas();
-        terceira.enviar(ProtocoloSakura.NEGOCIACAO);
-        terceira.ler();
-        terceira.enviar(ProtocoloSakura.comandoEntrar("ana", SENHA.toCharArray()));
-        ProtocoloSakura.RespostaAutenticacao resposta = ProtocoloSakura.lerResposta(terceira.ler());
-        assertEquals("MUITAS_TENTATIVAS", resposta.codigo());
-        assertTrue(terceira.encerrada(), "Bloqueado: a conexão é encerrada sem novas tentativas");
+        try (Cliente terceira = new Cliente(porta())) {
+            terceira.boasVindas();
+            terceira.enviar(ProtocoloSakura.NEGOCIACAO);
+            terceira.ler();
+            terceira.enviar(ProtocoloSakura.comandoEntrar("ana", SENHA.toCharArray()));
+            ProtocoloSakura.RespostaAutenticacao resposta = ProtocoloSakura.lerResposta(terceira.ler());
+            assertEquals("MUITAS_TENTATIVAS", resposta.codigo());
+            assertTrue(terceira.encerrada(), "Bloqueado: a conexão é encerrada sem novas tentativas");
+        }
     }
 }

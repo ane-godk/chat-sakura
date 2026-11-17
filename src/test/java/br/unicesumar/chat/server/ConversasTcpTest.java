@@ -51,10 +51,13 @@ class ConversasTcpTest {
     /** Provedor de IA dos testes (nunca o do ambiente da máquina). */
     private br.unicesumar.chat.ia.ProvedorIA provedor = new br.unicesumar.chat.ia.ProvedorIAFalso();
 
+    private Servidor.Servicos servicos;
+
     private void iniciarServidor() throws IOException {
         Servidor.Servicos servicos = Servidor.Servicos.montar(
                 new ConnectionFactory(pasta.resolve("tcp.db").toString()), new HashSenha(1_000),
                 Clock.systemDefaultZone(), provedor);
+        this.servicos = servicos;
         servidor = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
         threads = Executors.newCachedThreadPool();
         ServerSocket atual = servidor;
@@ -82,6 +85,9 @@ class ConversasTcpTest {
         }
         threads.shutdown();
         assertTrue(threads.awaitTermination(5, TimeUnit.SECONDS));
+        // Depois da resposta, a IA ainda consulta o banco (resumo da memória) em
+        // threads próprias: espera terminar antes de o JUnit apagar a pasta do banco.
+        assertTrue(servicos.ia().aguardar(10_000));
     }
 
     @BeforeEach
@@ -257,21 +263,22 @@ class ConversasTcpTest {
         pararServidor();
         iniciarServidor();
 
-        Cliente biaDeVolta = new Cliente();
-        biaDeVolta.enviar(ProtocoloSakura.NEGOCIACAO);
-        biaDeVolta.ler();
-        biaDeVolta.enviar(ProtocoloSakura.comandoEntrar("bia", "senha-de-teste".toCharArray()));
-        assertTrue(ProtocoloSakura.lerResposta(biaDeVolta.ler()).sucesso());
+        try (Cliente biaDeVolta = new Cliente()) {
+            biaDeVolta.enviar(ProtocoloSakura.NEGOCIACAO);
+            biaDeVolta.ler();
+            biaDeVolta.enviar(ProtocoloSakura.comandoEntrar("bia", "senha-de-teste".toCharArray()));
+            assertTrue(ProtocoloSakura.lerResposta(biaDeVolta.ler()).sucesso());
 
-        Evento conversas = biaDeVolta.esperarEvento(TipoEvento.CONVERSAS, null);
-        ProtocoloJson.ConversaJson estudos = conversas.conversas().stream()
-                .filter(c -> c.id() == grupo).findFirst().orElseThrow();
-        assertEquals(1, estudos.naoLidas());
-        assertEquals("Enquanto você estava fora", estudos.ultima().texto());
+            Evento conversas = biaDeVolta.esperarEvento(TipoEvento.CONVERSAS, null);
+            ProtocoloJson.ConversaJson estudos = conversas.conversas().stream()
+                    .filter(c -> c.id() == grupo).findFirst().orElseThrow();
+            assertEquals(1, estudos.naoLidas());
+            assertEquals("Enquanto você estava fora", estudos.ultima().texto());
 
-        req = biaDeVolta.requisitar(TipoRequisicao.HISTORICO, "conversaId", grupo);
-        assertEquals(List.of("Enquanto você estava fora"), biaDeVolta.esperarEvento(TipoEvento.HISTORICO, req)
-                .mensagens().stream().map(ProtocoloJson.MensagemJson::texto).toList());
+            req = biaDeVolta.requisitar(TipoRequisicao.HISTORICO, "conversaId", grupo);
+            assertEquals(List.of("Enquanto você estava fora"), biaDeVolta.esperarEvento(TipoEvento.HISTORICO, req)
+                    .mensagens().stream().map(ProtocoloJson.MensagemJson::texto).toList());
+        }
     }
 
     @Test
@@ -291,11 +298,12 @@ class ConversasTcpTest {
         pararServidor();
         iniciarServidor();
 
-        Cliente volta = new Cliente();
-        volta.enviar(ProtocoloSakura.NEGOCIACAO);
-        volta.ler();
-        volta.enviar(ProtocoloSakura.comandoEntrar("ana", "senha-de-teste".toCharArray()));
-        assertEquals("gato", ProtocoloSakura.lerResposta(volta.ler()).perfil().getAvatarId());
+        try (Cliente volta = new Cliente()) {
+            volta.enviar(ProtocoloSakura.NEGOCIACAO);
+            volta.ler();
+            volta.enviar(ProtocoloSakura.comandoEntrar("ana", "senha-de-teste".toCharArray()));
+            assertEquals("gato", ProtocoloSakura.lerResposta(volta.ler()).perfil().getAvatarId());
+        }
     }
 
     @Test

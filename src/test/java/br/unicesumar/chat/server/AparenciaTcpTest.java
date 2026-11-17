@@ -84,13 +84,19 @@ class AparenciaTcpTest {
         assertTrue(threads.awaitTermination(10, TimeUnit.SECONDS));
     }
 
+    /**
+     * Conexão de teste. O socket é registrado em {@link #clientes} e fechado
+     * por {@link #parar()}; fechar o socket fecha também os fluxos lidos e
+     * escritos por {@code entrada} e {@code saida}.
+     */
     private final class Cliente {
+        final Socket conexao;
         final BufferedReader entrada;
         final BufferedWriter saida;
         final List<String> recebidas = new ArrayList<>();
 
         Cliente(String login) throws Exception {
-            Socket conexao = new Socket(InetAddress.getLoopbackAddress(), socket.getLocalPort());
+            conexao = new Socket(InetAddress.getLoopbackAddress(), socket.getLocalPort());
             conexao.setSoTimeout(10_000);
             clientes.add(conexao);
             entrada = new BufferedReader(new InputStreamReader(conexao.getInputStream(), StandardCharsets.UTF_8));

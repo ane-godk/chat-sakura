@@ -182,15 +182,15 @@ class InicioLocalTest {
     void saidaDuplicadaMantemAcentosNoConsoleENoArquivo() throws Exception {
         ByteArrayOutputStream console = new ByteArrayOutputStream();
         ByteArrayOutputStream arquivo = new ByteArrayOutputStream();
-        PrintStream saida = new PrintStream(new SaidaDuplicada(
-                new PrintStream(console, true, StandardCharsets.UTF_8), arquivo), true, StandardCharsets.UTF_8);
-
-        saida.println("Conexão encerrada: ação ç ã 🌸");
-        // Um caractere de vários bytes dividido entre duas escritas.
-        byte[] flor = "ã".getBytes(StandardCharsets.UTF_8);
-        saida.write(flor, 0, 1);
-        saida.write(flor, 1, 1);
-        saida.flush();
+        try (PrintStream saida = new PrintStream(new SaidaDuplicada(
+                new PrintStream(console, true, StandardCharsets.UTF_8), arquivo), true, StandardCharsets.UTF_8)) {
+            saida.println("Conexão encerrada: ação ç ã 🌸");
+            // Um caractere de vários bytes dividido entre duas escritas.
+            byte[] flor = "ã".getBytes(StandardCharsets.UTF_8);
+            saida.write(flor, 0, 1);
+            saida.write(flor, 1, 1);
+            saida.flush();
+        }
 
         String esperado = "Conexão encerrada: ação ç ã 🌸" + System.lineSeparator() + "ã";
         assertEquals(esperado, console.toString(StandardCharsets.UTF_8));

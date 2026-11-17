@@ -428,7 +428,6 @@ chat-sakura/
 ├── pom.xml
 ├── README.md
 ├── RELATORIO_TECNICO.md
-├── ROTEIRO_VIDEO.md
 ├── AGENTS.md
 ├── sql/
 │   ├── criar_tabelas.sql
@@ -921,7 +920,6 @@ Outras limitações e melhorias futuras estão descritas no relatório técnico.
 | Documento | Conteúdo |
 |---|---|
 | [RELATORIO_TECNICO.md](RELATORIO_TECNICO.md) | Arquitetura, sincronização, segurança, protocolo, migrações, Qwen, testes e limitações |
-| [ROTEIRO_VIDEO.md](ROTEIRO_VIDEO.md) | Roteiro da demonstração em vídeo |
 | [sql/criar_tabelas.sql](sql/criar_tabelas.sql) | Esquema atual do banco (versão 3) |
 | [sql/MIGRACOES.md](sql/MIGRACOES.md) | Versões do banco, backup e restauração |
 | [AGENTS.md](AGENTS.md) | Requisitos e regras de implementação do projeto |
